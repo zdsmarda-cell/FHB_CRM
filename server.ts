@@ -16,8 +16,8 @@ async function startServer() {
   const app = express();
   
   // NOTE: The port MUST be 3000 in AI Studio environments. 
-  // We ignore a custom PORT variable for the bind to ensure the app works in preview.
-  const PORT = 3000;
+  // We use APP_PORT to override it in production environments if needed.
+  const PORT = process.env.APP_PORT ? parseInt(process.env.APP_PORT) : 3000;
 
   app.use(express.json());
 
