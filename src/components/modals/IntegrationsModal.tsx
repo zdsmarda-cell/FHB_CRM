@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Calendar, Mail, CheckCircle, AlertTriangle } from 'lucide-react';
-import { useStore } from '../../store';
+import { useStore, apiFetch } from '../../store';
 
 interface ConfigStatus {
   google: { configured: boolean; clientId: string };
@@ -12,7 +12,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<ConfigStatus | null>(null);
 
   useEffect(() => {
-    fetch('/api/auth/integrations-status')
+    apiFetch('/api/auth/integrations-status')
       .then(r => r.json())
       .then(data => setConfig(data))
       .catch(err => console.error('Failed to load integrations status:', err));
@@ -24,7 +24,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
         if (!currentUser) return;
         
         // Exchanging the code for a token on our backend...
-        fetch(`/api/auth/${event.data.provider}/exchange`, {
+        apiFetch(`/api/auth/${event.data.provider}/exchange`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: event.data.code })
@@ -60,7 +60,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
       return;
     }
     try {
-      const response = await fetch(`/api/auth/google/url`);
+      const response = await apiFetch(`/api/auth/google/url`);
       if (!response.ok) throw new Error('Failed to get auth URL');
       const { url } = await response.json();
 
@@ -77,7 +77,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
       return;
     }
     try {
-      const response = await fetch(`/api/auth/microsoft/url`);
+      const response = await apiFetch(`/api/auth/microsoft/url`);
       if (!response.ok) throw new Error('Failed to get auth URL');
       const { url } = await response.json();
 

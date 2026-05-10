@@ -7,47 +7,26 @@ export const hashPassword = (password: string) => btoa(encodeURIComponent(passwo
 
 const DEFAULT_PASS = hashPassword('password123');
 
-const MOCK_USERS: User[] = [
-  { id: '1', name: 'Admin Adam', email: 'admin@fhb.com', role: 'administrator', managerId: null, isActive: true, passwordHash: DEFAULT_PASS },
-  { id: '2', name: 'CSO Charles', email: 'cso@fhb.com', role: 'cso', managerId: null, isActive: true, passwordHash: DEFAULT_PASS },
-  { id: '3', name: 'Hunter Helen', email: 'hunter1@fhb.com', role: 'hunter', managerId: '2', isActive: true, passwordHash: DEFAULT_PASS },
-  { id: '4', name: 'Closer Chris', email: 'closer1@fhb.com', role: 'closer', managerId: '2', isActive: true, passwordHash: DEFAULT_PASS },
-  { id: '5', name: 'Farmer Fred', email: 'farmer1@fhb.com', role: 'farmer', managerId: '2', isActive: true, passwordHash: DEFAULT_PASS },
-  { id: '6', name: 'Hunter Hank', email: 'hunter2@fhb.com', role: 'hunter', managerId: '3', isActive: false, passwordHash: DEFAULT_PASS }, // Inactive example
-];
-
-const MOCK_COMPANIES: Company[] = [
-  {
-    id: 'c1',
-    companyId: '12345678',
-    name: 'Tech Corp',
-    address: 'Prague 1',
-    region: 'SK_CZ',
-    segment: 'software',
-    email: 'info@techcorp.cz',
-    phone: '+420123456789',
-    urls: ['https://techcorp.cz'],
-    contacts: [{ id: 'ct1', name: 'Jan Novak', position: 'CEO', email: 'jan@techcorp.cz', phone: '' }]
+export const apiFetch = async (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('jwt_token');
+  const headers = new Headers(options.headers || {});
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
-];
-
-const MOCK_DEALS: Deal[] = [
-  {
-    id: 'd1',
-    companyId: 'c1',
-    stage: 'lead_opportunity',
-    createdBy: '3',
-    ownerId: '3',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+  options.headers = headers;
+  const res = await fetch(url, options);
+  if (res.status === 401 && url !== '/api/auth/login') {
+    localStorage.removeItem('jwt_token');
+    useStore.setState({ currentUser: null });
   }
-];
+  return res;
+};
 
 export const useStore = create<StoreState>((set, get) => {
   // Try loading initial state from DB after a small delay
   setTimeout(async () => {
     try {
-      const res = await fetch('/api/state');
+      const res = await apiFetch('/api/state');
       if (res.ok) {
         const data = await res.json();
         set({
@@ -61,11 +40,12 @@ export const useStore = create<StoreState>((set, get) => {
         throw new Error('Failed to fetch from DB');
       }
     } catch (err) {
-      console.warn('DB state not available, falling back to mock data', err);
+      console.warn('DB state not available', err);
+      // Empty state if DB fails
       set({
-        users: MOCK_USERS,
-        companies: MOCK_COMPANIES,
-        deals: MOCK_DEALS,
+        users: [],
+        companies: [],
+        deals: [],
         auditLogs: [],
         activities: [],
       });
@@ -74,18 +54,35 @@ export const useStore = create<StoreState>((set, get) => {
 
   // Helper function to sync with DB
   const syncToDb = async (entities: Record<string, any[]>) => {
-    try {
-      await fetch('/api/sync-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entities })
-      });
-    } catch (err) {
-      console.error('Failed to sync to DB', err);
+    const res = await apiFetch('/api/sync-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entities })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to sync to DB');
     }
   };
 
   return {
+    refreshState: async () => {
+      try {
+        const res = await apiFetch('/api/state');
+        if (res.ok) {
+          const data = await res.json();
+          set({
+            users: data.users || [],
+            companies: data.companies || [],
+            deals: data.deals || [],
+            auditLogs: data.auditLogs || [],
+            activities: data.activities || []
+          });
+        }
+      } catch (err) {
+        console.warn('DB state not available', err);
+      }
+    },
     users: [],
     companies: [],
     deals: [],
@@ -95,7 +92,7 @@ export const useStore = create<StoreState>((set, get) => {
 
     login: async (email, passwordHash) => {
       try {
-        const res = await fetch('/api/auth/login', {
+        const res = await apiFetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, passwordHash })
@@ -107,13 +104,19 @@ export const useStore = create<StoreState>((set, get) => {
         }
         
         const data = await res.json();
+        if (data.token) {
+          localStorage.setItem('jwt_token', data.token);
+        }
         set({ currentUser: data.user });
       } catch (err: any) {
         throw new Error(err.message || 'invalidCredentials');
       }
     },
 
-  logout: () => set({ currentUser: null }),
+  logout: () => {
+    localStorage.removeItem('jwt_token');
+    set({ currentUser: null });
+  },
 
   requestPasswordReset: (email) => {
     const userId = get().users.find(u => u.email === email)?.id;
@@ -161,7 +164,8 @@ export const useStore = create<StoreState>((set, get) => {
     currentUser: state.users.find(u => u.id === userId) || null 
   })),
 
-  addCompanyAndDeal: (companyData, dealCreatorId) => set((state) => {
+  addCompanyAndDeal: async (companyData, dealCreatorId) => {
+    const state = get();
     const existingCompany = state.companies.find(c => c.companyId === companyData.companyId);
     if (existingCompany) {
       throw new Error('icoExists');
@@ -188,22 +192,23 @@ export const useStore = create<StoreState>((set, get) => {
       timestamp: new Date().toISOString()
     };
 
-    syncToDb({
+    await syncToDb({
       companies: [newCompany],
       deals: [newDeal],
       audit_logs: [newLog]
     });
 
-    return {
+    set((state) => ({
       companies: [...state.companies, newCompany],
       deals: [...state.deals, newDeal],
       auditLogs: [...state.auditLogs, newLog]
-    };
-  }),
+    }));
+  },
 
-  updateCompany: (id, updates, userId) => set((state) => {
+  updateCompany: async (id, updates, userId) => {
+    const state = get();
     const companyIndex = state.companies.findIndex(c => c.id === id);
-    if (companyIndex === -1) return state;
+    if (companyIndex === -1) return;
 
     const oldCompany = state.companies[companyIndex];
     if (updates.companyId && updates.companyId !== oldCompany.companyId) {
@@ -239,23 +244,24 @@ export const useStore = create<StoreState>((set, get) => {
       }
     });
 
-    syncToDb({
+    await syncToDb({
       companies: [newCompany],
       audit_logs: newLogs
     });
 
-    return {
+    set((state) => ({
       companies: newCompanies,
       auditLogs: [...state.auditLogs, ...newLogs]
-    };
-  }),
+    }));
+  },
 
-  updateDealStage: (dealId, newStage, userId) => set((state) => {
+  updateDealStage: async (dealId, newStage, userId) => {
+    const state = get();
     const dealIndex = state.deals.findIndex(d => d.id === dealId);
-    if (dealIndex === -1) return state;
+    if (dealIndex === -1) return;
 
     const oldDeal = state.deals[dealIndex];
-    if (oldDeal.stage === newStage) return state;
+    if (oldDeal.stage === newStage) return;
 
     const updatedDeal = { ...oldDeal, stage: newStage, updatedAt: new Date().toISOString() };
     const newDeals = [...state.deals];
@@ -271,20 +277,21 @@ export const useStore = create<StoreState>((set, get) => {
       timestamp: new Date().toISOString()
     };
 
-    syncToDb({
+    await syncToDb({
       deals: [updatedDeal],
       audit_logs: [newLog]
     });
 
-    return {
+    set((state) => ({
       deals: newDeals,
       auditLogs: [...state.auditLogs, newLog]
-    };
-  }),
+    }));
+  },
 
-  updateDeal: (dealId, updates, userId) => set((state) => {
+  updateDeal: async (dealId, updates, userId) => {
+    const state = get();
     const dealIndex = state.deals.findIndex(d => d.id === dealId);
-    if (dealIndex === -1) return state;
+    if (dealIndex === -1) return;
 
     const oldDeal = state.deals[dealIndex];
     const newDeal = { ...oldDeal, ...updates, updatedAt: new Date().toISOString() };
@@ -311,18 +318,19 @@ export const useStore = create<StoreState>((set, get) => {
       }
     });
 
-    syncToDb({
+    await syncToDb({
       deals: [newDeal],
       audit_logs: newLogs
     });
 
-    return {
+    set((state) => ({
       deals: newDeals,
       auditLogs: [...state.auditLogs, ...newLogs]
-    };
-  }),
+    }));
+  },
 
-  checkPostponedDeals: () => set((state) => {
+  checkPostponedDeals: async () => {
+    const state = get();
     const now = new Date();
     let hasChanges = false;
     const newDeals = state.deals.map(deal => {
@@ -342,35 +350,37 @@ export const useStore = create<StoreState>((set, get) => {
     });
 
     if (hasChanges) {
-      syncToDb({ deals: newDeals });
-      return { deals: newDeals };
+      await syncToDb({ deals: newDeals });
+      set({ deals: newDeals });
     }
-    return state;
-  }),
+  },
 
-  addUser: (user) => set((state) => {
+  addUser: async (user) => {
+    const state = get();
     if (state.users.some(u => u.email === user.email)) {
       throw new Error('emailExists');
     }
     const newUser = { ...user, id: uuidv4() };
-    syncToDb({ users: [newUser] });
-    return { users: [...state.users, newUser] };
-  }),
+    await syncToDb({ users: [newUser] });
+    set((state) => ({ users: [...state.users, newUser] }));
+  },
 
-  updateUser: (id, userData) => set((state) => {
+  updateUser: async (id, userData) => {
+    const state = get();
     if (userData.email && state.users.some(u => u.id !== id && u.email === userData.email)) {
       throw new Error('emailExists');
     }
     const updatedUsers = state.users.map(u => u.id === id ? { ...u, ...userData } : u);
     const userToSync = updatedUsers.find(u => u.id === id);
-    if (userToSync) syncToDb({ users: [userToSync] });
-    return { users: updatedUsers };
-  }),
+    if (userToSync) await syncToDb({ users: [userToSync] });
+    set({ users: updatedUsers });
+  },
 
-  addActivity: (activity) => set((state) => {
+  addActivity: async (activity) => {
+    const state = get();
     const newActivity = { ...activity, id: uuidv4(), createdAt: new Date().toISOString() };
-    syncToDb({ activities: [newActivity] });
-    return { activities: [newActivity, ...state.activities] };
-  })
+    await syncToDb({ activities: [newActivity] });
+    set((state) => ({ activities: [newActivity, ...state.activities] }));
+  }
   };
 });

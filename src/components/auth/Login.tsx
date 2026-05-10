@@ -139,7 +139,7 @@ export function Login() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`block w-full pl-10 sm:text-sm rounded-md py-3 ${emailError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                    className={`block w-full pl-10 sm:text-sm rounded-md py-3 border ${emailError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                     placeholder="zdenek.smarda@fhb.sk"
                   />
                 </div>
@@ -153,7 +153,7 @@ export function Login() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm border ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                     placeholder="••••••••"
                   />
                   {passwordError && <p className="mt-1 text-sm text-red-600">{passwordError}</p>}

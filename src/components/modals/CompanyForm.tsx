@@ -33,7 +33,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     setFormData(prev => ({ ...prev, country, region }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
     setSubmitAttempted(true);
@@ -50,13 +50,13 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     }
 
     try {
-      addCompanyAndDeal(formData, currentUser.id);
+      await addCompanyAndDeal(formData, currentUser.id);
       onClose();
     } catch (err: any) {
       if (err.message === 'icoExists') {
         setIcoError(t('errors.icoExists'));
       } else {
-        setIcoError(t('errors.generalError'));
+        setIcoError(err.message || t('errors.generalError'));
       }
     }
   };

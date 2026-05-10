@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { useStore } from '../../store';
+import { useStore, apiFetch } from '../../store';
 import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType } from '../../types';
@@ -848,7 +848,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
         company.email
       ].filter(Boolean);
 
-      const res = await fetch('/api/sync/emails', {
+      const res = await apiFetch('/api/sync/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -889,7 +889,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     if ((activityType === 'teams' || activityType === 'meeting') && (currentUser.msIntegration?.connected || currentUser.googleIntegration?.connected)) {
       try {
         const provider = activityType === 'teams' ? 'microsoft' : (currentUser.googleIntegration?.connected ? 'google' : 'microsoft');
-        const res = await fetch('/api/sync/calendar', {
+        const res = await apiFetch('/api/sync/calendar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

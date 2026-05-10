@@ -18,15 +18,16 @@ function MainLayout() {
 
   useEffect(() => {
     // Check initially when the app loads
-    checkPostponedDeals();
+    const store = useStore.getState();
+    store.refreshState().then(() => store.checkPostponedDeals());
 
     // Check periodically (every minute)
     const interval = setInterval(() => {
-      checkPostponedDeals();
+      store.refreshState().then(() => store.checkPostponedDeals());
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [checkPostponedDeals]);
+  }, []);
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;

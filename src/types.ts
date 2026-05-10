@@ -101,18 +101,19 @@ export interface StoreState {
   currentUser: User | null;
   
   // Actions
+  refreshState: () => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
   requestPasswordReset: (email: string) => string; // returns token for dev purposes
   resetPassword: (token: string, newPasswordHash: string) => void;
   
   setCurrentUser: (userId: string) => void; // Keeping for compatibility, though login is preferred
-  addCompanyAndDeal: (company: Omit<Company, 'id'>, dealCreatorId: string) => void;
-  updateCompany: (id: string, updates: Partial<Company>, userId: string) => void;
-  updateDealStage: (dealId: string, newStage: Stage, userId: string) => void;
-  updateDeal: (dealId: string, updates: Partial<Deal>, userId: string) => void;
-  checkPostponedDeals: () => void;
-  addUser: (user: Omit<User, 'id'>) => void;
-  updateUser: (id: string, user: Partial<User>) => void;
-  addActivity: (activity: Omit<Activity, 'id' | 'createdAt'>) => void;
+  addCompanyAndDeal: (company: Omit<Company, 'id'>, dealCreatorId: string) => Promise<void>;
+  updateCompany: (id: string, updates: Partial<Company>, userId: string) => Promise<void>;
+  updateDealStage: (dealId: string, newStage: Stage, userId: string) => Promise<void>;
+  updateDeal: (dealId: string, updates: Partial<Deal>, userId: string) => Promise<void>;
+  checkPostponedDeals: () => Promise<void>;
+  addUser: (user: Omit<User, 'id'>) => Promise<void>;
+  updateUser: (id: string, user: Partial<User>) => Promise<void>;
+  addActivity: (activity: Omit<Activity, 'id' | 'createdAt'>) => Promise<void>;
 }

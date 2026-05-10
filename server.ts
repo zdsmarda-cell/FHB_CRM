@@ -7,6 +7,26 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
 import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
+import jwt from "jsonwebtoken";
+
+const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
+
+// Middleware to protect routes
+const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Missing or invalid token' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    (req as any).user = decoded; // attach user to request
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Token is invalid or expired' });
+  }
+};
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -69,7 +89,7 @@ async function startServer() {
   // Memory store for tokens just to demo before SQL structure is established
   const userTokens: Record<string, any> = {};
 
-  app.get('/api/env-debug', (req, res) => {
+  app.get('/api/env-debug', authMiddleware, (req, res) => {
     try {
       let envFileContent = 'Not found';
       for (const envPath of possibleEnvPaths) {
@@ -95,7 +115,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/auth/integrations-status', (req, res) => {
+  app.get('/api/auth/integrations-status', authMiddleware, (req, res) => {
     res.json({
       google: {
         configured: !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
@@ -127,7 +147,16 @@ async function startServer() {
         }
       });
       user.isActive = true;
-      res.json({ user });
+      delete user.passwordHash; // DO NOT SEND passwordHash back to client
+
+      // generate token
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: '1h' } // 1 hour token
+      );
+
+      res.json({ token, user });
     } catch (err: any) {
       console.error('Login Error:', err);
       if (err.code === 'ETIMEDOUT') {
@@ -193,7 +222,7 @@ async function startServer() {
     `);
   });
 
-  app.post('/api/auth/google/exchange', async (req, res) => {
+  app.post('/api/auth/google/exchange', authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
       const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -214,7 +243,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/auth/microsoft/exchange', async (req, res) => {
+  app.post('/api/auth/microsoft/exchange', authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
       const clientId = process.env.MS_CLIENT_ID;
@@ -247,7 +276,7 @@ async function startServer() {
   });
 
   // API endpoints for interacting with MS / Google APIs
-  app.post('/api/sync/calendar', async (req, res) => {
+  app.post('/api/sync/calendar', authMiddleware, async (req, res) => {
     const { provider, credentials, activityDetails } = req.body;
     let meetingLink = '';
     
@@ -299,7 +328,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/sync/emails', async (req, res) => {
+  app.post('/api/sync/emails', authMiddleware, async (req, res) => {
     // ... existujici email logika zustava ...
     const { provider, credentials, relevantEmails } = req.body;
     let emailResults: any[] = [];
@@ -356,7 +385,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/state', async (req, res) => {
+  app.get('/api/state', authMiddleware, async (req, res) => {
     try {
       const [users] = await pool.query('SELECT * FROM users');
       const [companies] = await pool.query('SELECT * FROM companies');
@@ -372,6 +401,8 @@ async function startServer() {
         });
         // boolean mapper
         if ('isActive' in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        // strip sensitive fields
+        if ('passwordHash' in item) delete item.passwordHash;
         return item;
       });
 
@@ -391,7 +422,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/sync-action', async (req, res) => {
+  app.post('/api/sync-action', authMiddleware, async (req, res) => {
     try {
       const { entities } = req.body;
       const connection = await pool.getConnection();

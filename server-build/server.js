@@ -8,6 +8,22 @@ import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
 import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
+import jwt from "jsonwebtoken";
+var JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
+var authMiddleware = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "unauthorized", message: "Missing or invalid token" });
+  }
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "unauthorized", message: "Token is invalid or expired" });
+  }
+};
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var possibleEnvPaths = [
@@ -56,7 +72,7 @@ async function startServer() {
     keepAliveInitialDelay: 1e4
   });
   const userTokens = {};
-  app.get("/api/env-debug", (req, res) => {
+  app.get("/api/env-debug", authMiddleware, (req, res) => {
     try {
       let envFileContent = "Not found";
       for (const envPath of possibleEnvPaths) {
@@ -80,7 +96,7 @@ async function startServer() {
       res.status(500).json({ error: e.message });
     }
   });
-  app.get("/api/auth/integrations-status", (req, res) => {
+  app.get("/api/auth/integrations-status", authMiddleware, (req, res) => {
     res.json({
       google: {
         configured: !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
@@ -113,7 +129,14 @@ async function startServer() {
         }
       });
       user.isActive = true;
-      res.json({ user });
+      delete user.passwordHash;
+      const token = jwt.sign(
+        { id: user.id, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: "1h" }
+        // 1 hour token
+      );
+      res.json({ token, user });
     } catch (err) {
       console.error("Login Error:", err);
       if (err.code === "ETIMEDOUT") {
@@ -172,7 +195,7 @@ async function startServer() {
       </script>Authenticating... Please wait.</body></html>
     `);
   });
-  app.post("/api/auth/google/exchange", async (req, res) => {
+  app.post("/api/auth/google/exchange", authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
       const clientId = process.env.GOOGLE_CLIENT_ID;
@@ -190,7 +213,7 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-  app.post("/api/auth/microsoft/exchange", async (req, res) => {
+  app.post("/api/auth/microsoft/exchange", authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
       const clientId = process.env.MS_CLIENT_ID;
@@ -219,7 +242,7 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-  app.post("/api/sync/calendar", async (req, res) => {
+  app.post("/api/sync/calendar", authMiddleware, async (req, res) => {
     const { provider, credentials, activityDetails } = req.body;
     let meetingLink = "";
     try {
@@ -267,7 +290,7 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-  app.post("/api/sync/emails", async (req, res) => {
+  app.post("/api/sync/emails", authMiddleware, async (req, res) => {
     const { provider, credentials, relevantEmails } = req.body;
     let emailResults = [];
     try {
@@ -314,7 +337,7 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
-  app.get("/api/state", async (req, res) => {
+  app.get("/api/state", authMiddleware, async (req, res) => {
     try {
       const [users] = await pool.query("SELECT * FROM users");
       const [companies] = await pool.query("SELECT * FROM companies");
@@ -331,6 +354,7 @@ async function startServer() {
           }
         });
         if ("isActive" in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ("passwordHash" in item) delete item.passwordHash;
         return item;
       });
       res.json({
@@ -348,7 +372,7 @@ async function startServer() {
       res.status(500).json({ error: `DB state failed: ${err.message}`, details: err.message });
     }
   });
-  app.post("/api/sync-action", async (req, res) => {
+  app.post("/api/sync-action", authMiddleware, async (req, res) => {
     try {
       const { entities } = req.body;
       const connection = await pool.getConnection();

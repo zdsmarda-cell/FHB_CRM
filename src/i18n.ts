@@ -76,6 +76,10 @@ const resources = {
         add: 'Add',
         language: 'Language',
         user: 'Acting User'
+      },
+      validation: {
+        emailRequired: 'Email is required',
+        passwordRequired: 'Password is required'
       }
     }
   },
@@ -153,6 +157,10 @@ const resources = {
         add: 'Přidat',
         language: 'Jazyk',
         user: 'Zastupující Uživatel'
+      },
+      validation: {
+        emailRequired: 'Email musí být zadán',
+        passwordRequired: 'Heslo musí být zadáno'
       }
     }
   }
