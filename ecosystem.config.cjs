@@ -7,6 +7,7 @@ module.exports = {
       out_file: "./logs/crm-app-out.log",
       merge_logs: true,
       time: true,
+      env_file: ".env",
       env: {
         NODE_ENV: "production",
         APP_PORT: 3020
@@ -19,6 +20,7 @@ module.exports = {
       out_file: "./logs/crm-worker-out.log",
       merge_logs: true,
       time: true,
+      env_file: ".env",
       env: {
         NODE_ENV: "production",
       }
