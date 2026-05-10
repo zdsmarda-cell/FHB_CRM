@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
+import { google } from "googleapis";
+import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 
 dotenv.config();
 
@@ -50,18 +52,16 @@ async function startServer() {
   });
 
   app.get('/api/auth/google/callback', async (req, res) => {
-    // In a real app we'd exchange code for token using clientSecret
-    // For this demo, we'll just return success to the popup.
     const { code } = req.query;
     res.send(`
       <html><body><script>
         if (window.opener) {
-          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'google', token: 'mock-google-token' }, '*');
+          window.opener.postMessage({ type: 'OAUTH_CODE_RECEIVED', provider: 'google', code: '${code}' }, '*');
           window.close();
         } else {
           window.location.href = '/';
         }
-      </script>Authentication successful. You can close this window.</body></html>
+      </script>Authenticating... Please wait.</body></html>
     `);
   });
 
@@ -84,45 +84,230 @@ async function startServer() {
     res.send(`
       <html><body><script>
         if (window.opener) {
-          window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'microsoft', token: 'mock-ms-token' }, '*');
+          window.opener.postMessage({ type: 'OAUTH_CODE_RECEIVED', provider: 'microsoft', code: '${code}' }, '*');
           window.close();
         } else {
           window.location.href = '/';
         }
-      </script>Authentication successful. You can close this window.</body></html>
+      </script>Authenticating... Please wait.</body></html>
     `);
+  });
+
+  app.post('/api/auth/google/exchange', async (req, res) => {
+    const { code, clientId, clientSecret } = req.body;
+    try {
+      const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
+      const redirectUri = `${origin}/api/auth/google/callback`;
+      const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+      const { tokens } = await oAuth2Client.getToken(code);
+      res.json({ tokens });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/auth/microsoft/exchange', async (req, res) => {
+    const { code, clientId, clientSecret } = req.body;
+    try {
+      const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
+      const redirectUri = `${origin}/api/auth/microsoft/callback`;
+      const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: code,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code'
+        })
+      });
+      const tokens = await response.json();
+      if (tokens.error) throw new Error(tokens.error_description || tokens.error);
+      res.json({ tokens });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // API endpoints for interacting with MS / Google APIs
   app.post('/api/sync/calendar', async (req, res) => {
-    // Expected body: { provider, token, activityDetails }
-    const { provider, activityDetails } = req.body;
-    // Mock creating meeting & getting link for Teams/Google Meet
+    const { provider, credentials, activityDetails } = req.body;
     let meetingLink = '';
-    if (provider === 'microsoft' && activityDetails.type === 'teams') {
-      meetingLink = 'https://teams.microsoft.com/l/meetup-join/mock-id';
-    } else if (provider === 'google' && activityDetails.type === 'meeting') {
-      meetingLink = 'https://meet.google.com/mock-id';
-    }
     
-    res.json({ success: true, meetingLink });
+    try {
+      if (provider === 'google' && credentials?.tokens) {
+        const oAuth2Client = new google.auth.OAuth2(credentials.clientId, credentials.clientSecret);
+        oAuth2Client.setCredentials(credentials.tokens);
+        const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
+        const startDateTime = new Date(activityDetails.date);
+        const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1 hr default
+
+        const eventRes = await calendar.events.insert({
+          calendarId: 'primary',
+          conferenceDataVersion: 1,
+          requestBody: {
+            summary: activityDetails.note || 'Meeting',
+            start: { dateTime: startDateTime.toISOString() },
+            end: { dateTime: endDateTime.toISOString() },
+            conferenceData: {
+              createRequest: {
+                requestId: Math.random().toString(36).substring(7),
+                conferenceSolutionKey: { type: 'hangoutsMeet' }
+              }
+            }
+          }
+        });
+        meetingLink = eventRes.data.hangoutLink || '';
+      } else if (provider === 'microsoft' && credentials?.tokens) {
+        const client = GraphClient.init({
+          authProvider: (done) => done(null, credentials.tokens.access_token)
+        });
+        const startDateTime = new Date(activityDetails.date);
+        const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
+        
+        const event = {
+          subject: activityDetails.note || 'Meeting',
+          start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
+          end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
+          isOnlineMeeting: true,
+          onlineMeetingProvider: 'teamsForBusiness'
+        };
+        const newEvent = await client.api('/me/events').post(event);
+        meetingLink = newEvent.onlineMeeting?.joinUrl || '';
+      }
+      res.json({ success: true, meetingLink });
+    } catch (err: any) {
+      console.error('Calendar error:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   app.post('/api/sync/emails', async (req, res) => {
-    const { provider, relevantEmails } = req.body;
-    // We would use MS Graph or Google API to fetch recent emails with relevantEmails
-    // Mock returning some recent emails matching deals for UI demo
-    if (relevantEmails && relevantEmails.length > 0) {
-      res.json({
-        emails: relevantEmails.map((email: string) => ({
-          subject: 'Copilot summary: recent negotiation',
-          from: email,
-          body: `Hi,\n\nWe would like to proceed with the proposal discussed last week. Let us schedule a kickoff soon.\n\nBest regards,\n${email}`,
-          date: new Date().toISOString()
-        }))
+    // ... existujici email logika zustava ...
+    const { provider, credentials, relevantEmails } = req.body;
+    let emailResults: any[] = [];
+
+    try {
+      if (relevantEmails && relevantEmails.length > 0) {
+        if (provider === 'google' && credentials?.tokens) {
+          const oAuth2Client = new google.auth.OAuth2(credentials.clientId, credentials.clientSecret);
+          oAuth2Client.setCredentials(credentials.tokens);
+          const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+          
+          const query = relevantEmails.map((e: string) => `from:${e}`).join(' OR ');
+          const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 10 });
+          
+          if (listRes.data.messages) {
+            for (const msg of listRes.data.messages) {
+              if (!msg.id) continue;
+              const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
+              emailResults.push({
+                id: msg.id,
+                subject: msgRes.data.payload?.headers?.find(h => h.name === 'Subject')?.value || '',
+                from: msgRes.data.payload?.headers?.find(h => h.name === 'From')?.value || '',
+                date: msgRes.data.payload?.headers?.find(h => h.name === 'Date')?.value || new Date().toISOString(),
+                body: msgRes.data.snippet || ''
+              });
+            }
+          }
+        } else if (provider === 'microsoft' && credentials?.tokens) {
+          const client = GraphClient.init({
+            authProvider: (done) => done(null, credentials.tokens.access_token)
+          });
+          const queryFilters = relevantEmails.map((e: string) => `from/emailAddress/address eq '${e}'`).join(' or ');
+          const messages = await client.api('/me/messages')
+            .filter(queryFilters)
+            .select('id,subject,from,receivedDateTime,bodyPreview')
+            .top(10)
+            .get();
+          
+          if (messages && messages.value) {
+            emailResults = messages.value.map((msg: any) => ({
+              id: msg.id,
+              subject: msg.subject,
+              from: msg.from?.emailAddress?.address,
+              date: msg.receivedDateTime,
+              body: msg.bodyPreview
+            }));
+          }
+        }
+      }
+      res.json({ emails: emailResults });
+    } catch (err: any) {
+      console.error('Email syntax error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get('/api/state', async (req, res) => {
+    try {
+      const [users] = await pool.query('SELECT * FROM users');
+      const [companies] = await pool.query('SELECT * FROM companies');
+      const [deals] = await pool.query('SELECT * FROM deals');
+      const [auditLogs] = await pool.query('SELECT * FROM audit_logs');
+      const [activities] = await pool.query('SELECT * FROM activities');
+
+      const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
+        fields.forEach(f => {
+          if (typeof item[f] === 'string') {
+            try { item[f] = JSON.parse(item[f]); } catch (e) { /* ignore */ }
+          }
+        });
+        // boolean mapper
+        if ('isActive' in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        return item;
       });
-    } else {
-      res.json({ emails: [] });
+
+      res.json({
+        users: parseJsonFields(users as any[], ['googleIntegration', 'msIntegration']),
+        companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
+        deals: deals,
+        auditLogs: auditLogs,
+        activities: activities
+      });
+    } catch (err) {
+      console.error('DB State Error:', err);
+      res.status(500).json({ error: 'DB state failed' });
+    }
+  });
+
+  app.post('/api/sync-action', async (req, res) => {
+    try {
+      const { entities } = req.body;
+      const connection = await pool.getConnection();
+      await connection.beginTransaction();
+      
+      try {
+        for (const [table, rows] of Object.entries(entities as Record<string, any[]>)) {
+          if (!rows || rows.length === 0) continue;
+          
+          // Construct REPLACE INTO
+          for (const row of rows) {
+             const keys = Object.keys(row);
+             const values = Object.values(row).map(v => 
+               typeof v === 'object' && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v
+             );
+             
+             const placeholders = keys.map(() => '?').join(', ');
+             const sql = `REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
+             
+             await connection.query(sql, values);
+          }
+        }
+        await connection.commit();
+        res.json({ success: true });
+      } catch (e) {
+        await connection.rollback();
+        throw e;
+      } finally {
+        connection.release();
+      }
+    } catch (err: any) {
+       console.error('Sync Error:', err);
+       res.status(500).json({ error: err.message });
     }
   });
   app.get("/api/health", async (req, res) => {

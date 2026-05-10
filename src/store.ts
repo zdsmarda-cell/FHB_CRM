@@ -43,24 +43,57 @@ const MOCK_DEALS: Deal[] = [
   }
 ];
 
-export const useStore = create<StoreState>((set, get) => ({
-  users: MOCK_USERS,
-  companies: MOCK_COMPANIES,
-  deals: MOCK_DEALS,
-  auditLogs: [],
-  activities: [],
-  currentUser: null, // Initially not logged in
+export const useStore = create<StoreState>((set, get) => {
+  // Try loading initial state from DB after a small delay
+  setTimeout(async () => {
+    try {
+      const res = await fetch('/api/state');
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          users: data.users || [],
+          companies: data.companies || [],
+          deals: data.deals || [],
+          auditLogs: data.auditLogs || [],
+          activities: data.activities || []
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load initial state from DB', err);
+    }
+  }, 100);
 
-  login: (email, passwordHash) => {
-    const user = get().users.find(u => u.email === email && u.passwordHash === passwordHash);
-    if (!user) {
-      throw new Error('invalidCredentials');
+  // Helper function to sync with DB
+  const syncToDb = async (entities: Record<string, any[]>) => {
+    try {
+      await fetch('/api/sync-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entities })
+      });
+    } catch (err) {
+      console.error('Failed to sync to DB', err);
     }
-    if (!user.isActive) {
-      throw new Error('inactiveAccount');
-    }
-    set({ currentUser: user });
-  },
+  };
+
+  return {
+    users: [],
+    companies: [],
+    deals: [],
+    auditLogs: [],
+    activities: [],
+    currentUser: null,
+
+    login: (email, passwordHash) => {
+      const user = get().users.find(u => u.email === email && u.passwordHash === passwordHash);
+      if (!user) {
+        throw new Error('invalidCredentials');
+      }
+      if (!user.isActive) {
+        throw new Error('inactiveAccount');
+      }
+      set({ currentUser: user });
+    },
 
   logout: () => set({ currentUser: null }),
 
@@ -74,9 +107,12 @@ export const useStore = create<StoreState>((set, get) => ({
     // Set 10 min expiry
     const expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     
-    set(state => ({
-      users: state.users.map(u => u.id === userId ? { ...u, resetToken: token, resetTokenExpiry: expiry } : u)
-    }));
+    set(state => {
+      const updatedUsers = state.users.map(u => u.id === userId ? { ...u, resetToken: token, resetTokenExpiry: expiry } : u);
+      const userToSync = updatedUsers.find(u => u.id === userId);
+      if (userToSync) syncToDb({ users: [userToSync] });
+      return { users: updatedUsers };
+    });
     
     return token;
   },
@@ -89,14 +125,17 @@ export const useStore = create<StoreState>((set, get) => ({
       const isExpired = new Date(user.resetTokenExpiry).getTime() < Date.now();
       if (isExpired) throw new Error('Token has expired');
       
-      return {
-        users: state.users.map(u => u.id === user.id ? { 
-          ...u, 
-          passwordHash: newPasswordHash, 
-          resetToken: undefined, 
-          resetTokenExpiry: undefined 
-        } : u)
-      };
+      const updatedUsers = state.users.map(u => u.id === user.id ? { 
+        ...u, 
+        passwordHash: newPasswordHash, 
+        resetToken: undefined, 
+        resetTokenExpiry: undefined 
+      } : u);
+
+      const userToSync = updatedUsers.find(u => u.id === user.id);
+      if (userToSync) syncToDb({ users: [userToSync] });
+
+      return { users: updatedUsers };
     });
   },
 
@@ -110,7 +149,7 @@ export const useStore = create<StoreState>((set, get) => ({
       throw new Error('icoExists');
     }
 
-    const newCompany: Company = { ...companyData, id: uuidv4() };
+    const newCompany: Company = { ...companyData, id: uuidv4(), country: companyData.country || 'Czechia' };
     const newDeal: Deal = {
       id: uuidv4(),
       companyId: newCompany.id,
@@ -130,6 +169,12 @@ export const useStore = create<StoreState>((set, get) => ({
       changedBy: dealCreatorId,
       timestamp: new Date().toISOString()
     };
+
+    syncToDb({
+      companies: [newCompany],
+      deals: [newDeal],
+      audit_logs: [newLog]
+    });
 
     return {
       companies: [...state.companies, newCompany],
@@ -176,6 +221,11 @@ export const useStore = create<StoreState>((set, get) => ({
       }
     });
 
+    syncToDb({
+      companies: [newCompany],
+      audit_logs: newLogs
+    });
+
     return {
       companies: newCompanies,
       auditLogs: [...state.auditLogs, ...newLogs]
@@ -202,6 +252,11 @@ export const useStore = create<StoreState>((set, get) => ({
       changedBy: userId,
       timestamp: new Date().toISOString()
     };
+
+    syncToDb({
+      deals: [updatedDeal],
+      audit_logs: [newLog]
+    });
 
     return {
       deals: newDeals,
@@ -238,6 +293,11 @@ export const useStore = create<StoreState>((set, get) => ({
       }
     });
 
+    syncToDb({
+      deals: [newDeal],
+      audit_logs: newLogs
+    });
+
     return {
       deals: newDeals,
       auditLogs: [...state.auditLogs, ...newLogs]
@@ -264,6 +324,7 @@ export const useStore = create<StoreState>((set, get) => ({
     });
 
     if (hasChanges) {
+      syncToDb({ deals: newDeals });
       return { deals: newDeals };
     }
     return state;
@@ -273,17 +334,25 @@ export const useStore = create<StoreState>((set, get) => ({
     if (state.users.some(u => u.email === user.email)) {
       throw new Error('emailExists');
     }
-    return { users: [...state.users, { ...user, id: uuidv4() }] };
+    const newUser = { ...user, id: uuidv4() };
+    syncToDb({ users: [newUser] });
+    return { users: [...state.users, newUser] };
   }),
 
   updateUser: (id, userData) => set((state) => {
     if (userData.email && state.users.some(u => u.id !== id && u.email === userData.email)) {
       throw new Error('emailExists');
     }
-    return { users: state.users.map(u => u.id === id ? { ...u, ...userData } : u) };
+    const updatedUsers = state.users.map(u => u.id === id ? { ...u, ...userData } : u);
+    const userToSync = updatedUsers.find(u => u.id === id);
+    if (userToSync) syncToDb({ users: [userToSync] });
+    return { users: updatedUsers };
   }),
 
-  addActivity: (activity) => set((state) => ({
-    activities: [{ ...activity, id: uuidv4(), createdAt: new Date().toISOString() }, ...state.activities]
-  }))
-}));
+  addActivity: (activity) => set((state) => {
+    const newActivity = { ...activity, id: uuidv4(), createdAt: new Date().toISOString() };
+    syncToDb({ activities: [newActivity] });
+    return { activities: [newActivity, ...state.activities] };
+  })
+  };
+});

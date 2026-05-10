@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Region, Segment, Company } from '../../types';
 import { X, Plus, Trash2 } from 'lucide-react';
+import { COUNTRIES, getRegionForCountry } from '../../lib/countryMapping';
 
 interface CompanyFormProps {
   onClose: () => void;
@@ -18,6 +19,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     companyId: '',
     name: '',
     address: '',
+    country: 'Czechia',
     region: 'SK_CZ',
     segment: 'fashion',
     email: '',
@@ -25,6 +27,11 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     urls: [''],
     contacts: []
   });
+
+  const handleCountryChange = (country: string) => {
+    const region = getRegionForCountry(country) as Region;
+    setFormData(prev => ({ ...prev, country, region }));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,8 +105,16 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+              <select value={formData.country} onChange={e => handleCountryChange(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                {COUNTRIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.region')}</label>
-              <select value={formData.region} onChange={e => setFormData({...formData, region: e.target.value as Region})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+              <select disabled value={formData.region} onChange={e => setFormData({...formData, region: e.target.value as Region})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm bg-gray-50 text-gray-500 text-sm">
                 <option value="SK_CZ">SK & CZ</option>
                 <option value="CEE">CEE (HU, RO, PL)</option>
                 <option value="DACH">DACH (DE, AT, CH)</option>
@@ -107,6 +122,9 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
                 <option value="WORLD">World</option>
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.segment')}</label>
               <select value={formData.segment} onChange={e => setFormData({...formData, segment: e.target.value as Segment})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
