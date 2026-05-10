@@ -71,7 +71,7 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Set up MySQL connection pool
+  // Setup DB + automatic migrations
   const pool = mysql.createPool({
     host: process.env.DB_HOST || 'db.mobilgroup.cz',
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
@@ -81,10 +81,52 @@ async function startServer() {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 20000, // increased to 20s
+    connectTimeout: 20000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000
   });
+
+  // Run auto-migrations
+  try {
+    const connection = await pool.getConnection();
+    try {
+      // Create initial tables if not exist
+      if (fs.existsSync(path.join(__dirname, 'schema.sql'))) {
+        const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8');
+        const statements = schema.split(/;[ \t]*\n/).filter(s => s.trim().length > 0);
+        for (const sql of statements) {
+          try {
+            await connection.query(sql);
+          } catch (err: any) {
+             console.log(`[DB INIT] Notice: Query failed (might exist): ${err.message}`);
+          }
+        }
+      }
+      // Apply missing column alterations
+      const migrations = [
+        "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
+        "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
+        "ALTER TABLE deals ADD COLUMN lostPermanently BOOLEAN;",
+        "ALTER TABLE deals ADD COLUMN lostBy VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN lostAt DATETIME;",
+        "ALTER TABLE activities ADD COLUMN transcript TEXT;"
+      ];
+      for (const m of migrations) {
+        try {
+          await connection.query(m);
+          console.log(`[MIGRATE] Applied: ${m}`);
+        } catch (e: any) {
+          // ignore already exists
+        }
+      }
+      console.log("[DB INIT] Database migrations passed successfully.");
+    } finally {
+      connection.release();
+    }
+  } catch (err: any) {
+    console.error("[DB INIT] WARNING: Could not run migrations. DB might be offline.", err.message);
+  }
 
   // Memory store for tokens just to demo before SQL structure is established
   const userTokens: Record<string, any> = {};

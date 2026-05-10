@@ -67,10 +67,46 @@ async function startServer() {
     connectionLimit: 10,
     queueLimit: 0,
     connectTimeout: 2e4,
-    // increased to 20s
     enableKeepAlive: true,
     keepAliveInitialDelay: 1e4
   });
+  try {
+    const connection = await pool.getConnection();
+    try {
+      if (fs.existsSync(path.join(__dirname, "schema.sql"))) {
+        const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf-8");
+        const statements = schema.split(/;[ \t]*\n/).filter((s) => s.trim().length > 0);
+        for (const sql of statements) {
+          try {
+            await connection.query(sql);
+          } catch (err) {
+            console.log(`[DB INIT] Notice: Query failed (might exist): ${err.message}`);
+          }
+        }
+      }
+      const migrations = [
+        "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
+        "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
+        "ALTER TABLE deals ADD COLUMN lostPermanently BOOLEAN;",
+        "ALTER TABLE deals ADD COLUMN lostBy VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN lostAt DATETIME;",
+        "ALTER TABLE activities ADD COLUMN transcript TEXT;"
+      ];
+      for (const m of migrations) {
+        try {
+          await connection.query(m);
+          console.log(`[MIGRATE] Applied: ${m}`);
+        } catch (e) {
+        }
+      }
+      console.log("[DB INIT] Database migrations passed successfully.");
+    } finally {
+      connection.release();
+    }
+  } catch (err) {
+    console.error("[DB INIT] WARNING: Could not run migrations. DB might be offline.", err.message);
+  }
   const userTokens = {};
   app.get("/api/env-debug", authMiddleware, (req, res) => {
     try {
