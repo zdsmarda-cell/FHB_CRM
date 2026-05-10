@@ -13,23 +13,30 @@ const __dirname = path.dirname(__filename);
 
 const possibleEnvPaths = [
   path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '.env'),
   path.resolve(__dirname, '../.env'),
   path.resolve(__dirname, '../../.env')
 ];
 
 let dotenvLoaded = false;
+console.log("[ENV] Checking for .env files in the following locations:");
 for (const envPath of possibleEnvPaths) {
+  console.log(`[ENV] -> checking ${envPath}`);
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath });
-    console.log(`[ENV] Loaded .env from ${envPath}`);
+    console.log(`[ENV] ✅ Loaded .env from ${envPath}`);
     dotenvLoaded = true;
     break;
   }
 }
 
 if (!dotenvLoaded) {
+  console.log(`[ENV] ❌ No .env file found in above paths. Calling dotenv.config() directly as fallback.`);
   dotenv.config();
 }
+
+console.log(`[ENV DEBUG] SSL_KEY_PATH: ${process.env.SSL_KEY_PATH || 'Not set'}`);
+console.log(`[ENV DEBUG] SSL_CERT_PATH: ${process.env.SSL_CERT_PATH || 'Not set'}`);
 
 async function startServer() {
   const app = express();
@@ -57,6 +64,32 @@ async function startServer() {
 
   // Memory store for tokens just to demo before SQL structure is established
   const userTokens: Record<string, any> = {};
+
+  app.get('/api/env-debug', (req, res) => {
+    try {
+      let envFileContent = 'Not found';
+      for (const envPath of possibleEnvPaths) {
+         if (fs.existsSync(envPath)) {
+            envFileContent = fs.readFileSync(envPath, 'utf8');
+            break;
+         }
+      }
+
+      const dbg = {
+        cwd: process.cwd(),
+        dirname: __dirname,
+        envFileLocationsChecked: possibleEnvPaths,
+        loadedFile: dotenvLoaded ? "Yes, from one of those paths" : "Fallback dotenv.config() called",
+        sslKeyPathSetting: process.env.SSL_KEY_PATH || 'Not set',
+        sslCertPathSetting: process.env.SSL_CERT_PATH || 'Not set',
+        dbHost: process.env.DB_HOST || 'Not set',
+        envFileContent: envFileContent
+      };
+      res.json(dbg);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   app.get('/api/auth/integrations-status', (req, res) => {
     res.json({
