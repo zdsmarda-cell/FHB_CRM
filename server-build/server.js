@@ -382,9 +382,12 @@ async function startServer() {
           if (!rows || rows.length === 0) continue;
           for (const row of rows) {
             const keys = Object.keys(row);
-            const values = Object.values(row).map(
-              (v) => typeof v === "object" && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v
-            );
+            const values = Object.values(row).map((v) => {
+              if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
+                return new Date(v);
+              }
+              return typeof v === "object" && v !== null && !(v instanceof Date) ? JSON.stringify(v) : v;
+            });
             const placeholders = keys.map(() => "?").join(", ");
             const sql = `REPLACE INTO ${table} (${keys.join(", ")}) VALUES (${placeholders})`;
             await connection.query(sql, values);
