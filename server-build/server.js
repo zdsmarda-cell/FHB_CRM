@@ -3,6 +3,7 @@ import express from "express";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
@@ -62,7 +63,7 @@ async function startServer() {
       res.json({ user });
     } catch (err) {
       console.error("Login Error:", err);
-      res.status(500).json({ error: "Server error during login" });
+      res.status(500).json({ error: "Server error during login", details: err.message });
     }
   });
   app.get("/api/auth/google/url", (req, res) => {
@@ -285,7 +286,7 @@ async function startServer() {
       });
     } catch (err) {
       console.error("DB State Error:", err);
-      res.status(500).json({ error: `DB state failed: ${err.message}` });
+      res.status(500).json({ error: `DB state failed: ${err.message}`, details: err.message });
     }
   });
   app.post("/api/sync-action", async (req, res) => {
@@ -343,8 +344,37 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  const sslKeyPath = process.env.SSL_KEY_PATH;
+  const sslCertPath = process.env.SSL_CERT_PATH;
+  if (sslKeyPath && sslCertPath) {
+    try {
+      const privateKey = fs.readFileSync(sslKeyPath, "utf8");
+      const certificate = fs.readFileSync(sslCertPath, "utf8");
+      const credentials = { key: privateKey, cert: certificate };
+      const https = await import("https");
+      const httpsServer = https.createServer(credentials, app);
+      httpsServer.listen(PORT, "0.0.0.0", () => {
+        console.log(`HTTPS Server running on port ${PORT}`);
+      });
+      const httpApp = express();
+      httpApp.use("*", (req, res) => {
+        const httpsPortStr = PORT === 443 ? "" : `:${PORT}`;
+        res.redirect(`https://${req.hostname}${httpsPortStr}${req.url}`);
+      });
+      const httpPort = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT) : PORT === 443 ? 80 : PORT + 1;
+      httpApp.listen(httpPort, "0.0.0.0", () => {
+        console.log(`HTTP redirect server running on port ${httpPort}`);
+      });
+    } catch (err) {
+      console.error("Failed to start HTTPS server, falling back to HTTP:", err);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }
+  } else {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
+  }
 }
 startServer().catch(console.error);

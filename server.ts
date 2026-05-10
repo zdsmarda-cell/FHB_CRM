@@ -73,7 +73,7 @@ async function startServer() {
       res.json({ user });
     } catch (err: any) {
       console.error('Login Error:', err);
-      res.status(500).json({ error: 'Server error during login' });
+      res.status(500).json({ error: 'Server error during login', details: err.message });
     }
   });
 
@@ -324,7 +324,7 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('DB State Error:', err);
-      res.status(500).json({ error: `DB state failed: ${err.message}` });
+      res.status(500).json({ error: `DB state failed: ${err.message}`, details: err.message });
     }
   });
 
