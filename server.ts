@@ -448,8 +448,13 @@ async function startServer() {
         return item;
       });
 
+      const parsedUsers = parseJsonFields(users as any[], ['googleIntegration', 'msIntegration']);
+      const currentUserId = (req as any).user?.id;
+      const me = parsedUsers.find((u: any) => u.id === currentUserId) || null;
+
       res.json({
-        users: parseJsonFields(users as any[], ['googleIntegration', 'msIntegration']),
+        users: parsedUsers,
+        me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
         deals: deals,
         auditLogs: auditLogs,

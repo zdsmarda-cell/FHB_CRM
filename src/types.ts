@@ -93,6 +93,7 @@ export interface AuditLog {
 }
 
 export interface StoreState {
+  isInitialized: boolean;
   users: User[];
   companies: Company[];
   deals: Deal[];

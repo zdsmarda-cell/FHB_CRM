@@ -7,10 +7,15 @@ import { User } from '../../types';
 
 export function AdminPanel() {
   const { t } = useTranslation();
-  const { users } = useStore();
+  const store = useStore();
+  const { users } = store;
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+
+  React.useEffect(() => {
+    store.refreshState();
+  }, []);
 
   const handleEdit = (user: User) => {
     setEditingUser(user);

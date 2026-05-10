@@ -4,7 +4,7 @@ import { STAGES, getDealsForUser, canViewStage } from '../../lib/permissions';
 import { Stage } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Building2, Calendar, Ban } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { useNavigate } from 'react-router-dom';
 
@@ -14,6 +14,10 @@ export function KanbanBoard() {
   const { currentUser, companies, updateDealStage } = state;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    state.refreshState();
+  }, []);
 
   const visibleDeals = getDealsForUser(state, currentUser);
 

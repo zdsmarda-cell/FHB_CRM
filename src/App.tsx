@@ -54,6 +54,7 @@ function MainLayout() {
             <Link
               key={item.path}
               to={item.path}
+              onClick={() => useStore.getState().refreshState()}
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
                 isActive 
@@ -80,6 +81,16 @@ function MainLayout() {
 }
 
 export default function App() {
+  const { isInitialized } = useStore();
+
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 font-medium text-gray-500">
+        Načítám...
+      </div>
+    );
+  }
+
   return (
     <HashRouter>
       <Routes>

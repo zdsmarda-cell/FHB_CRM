@@ -12,7 +12,12 @@ export function DealDetailsView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { deals, companies, auditLogs, users, currentUser, updateCompany } = useStore();
+  const store = useStore();
+  const { deals, companies, auditLogs, users, currentUser, updateCompany } = store;
+
+  React.useEffect(() => {
+    store.refreshState();
+  }, [id]);
 
   const deal = deals.find(d => d.id === id);
   const company = companies.find(c => c.id === deal?.companyId);

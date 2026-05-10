@@ -30,11 +30,13 @@ export const useStore = create<StoreState>((set, get) => {
       if (res.ok) {
         const data = await res.json();
         set({
+          isInitialized: true,
           users: data.users || [],
           companies: data.companies || [],
           deals: data.deals || [],
           auditLogs: data.auditLogs || [],
-          activities: data.activities || []
+          activities: data.activities || [],
+          currentUser: data.me || null
         });
       } else {
         throw new Error('Failed to fetch from DB');
@@ -43,14 +45,16 @@ export const useStore = create<StoreState>((set, get) => {
       console.warn('DB state not available', err);
       // Empty state if DB fails
       set({
+        isInitialized: true,
         users: [],
         companies: [],
         deals: [],
         auditLogs: [],
         activities: [],
+        currentUser: null
       });
     }
-  }, 100);
+  }, 10);
 
   // Helper function to sync with DB
   const syncToDb = async (entities: Record<string, any[]>) => {
@@ -76,13 +80,15 @@ export const useStore = create<StoreState>((set, get) => {
             companies: data.companies || [],
             deals: data.deals || [],
             auditLogs: data.auditLogs || [],
-            activities: data.activities || []
+            activities: data.activities || [],
+            currentUser: data.me || null // keep matching data.me
           });
         }
       } catch (err) {
         console.warn('DB state not available', err);
       }
     },
+    isInitialized: false,
     users: [],
     companies: [],
     deals: [],

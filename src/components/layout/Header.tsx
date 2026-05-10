@@ -23,7 +23,13 @@ export function Header() {
   return (
     <header className="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 sticky top-0 z-20 shadow-sm">
       <div className="flex items-center gap-6">
-        <h1 className="text-xl font-bold text-indigo-700 tracking-tight">
+        <h1 
+          className="text-xl font-bold text-indigo-700 tracking-tight cursor-pointer"
+          onClick={() => {
+            useStore.getState().refreshState();
+            navigate('/');
+          }}
+        >
           {t('appName')}
         </h1>
       </div>
