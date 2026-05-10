@@ -50,6 +50,32 @@ async function startServer() {
     });
   });
 
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const { email, passwordHash } = req.body;
+      const [rows] = await pool.query('SELECT * FROM users WHERE email = ? AND passwordHash = ?', [email, passwordHash]);
+      const users: any[] = rows as any[];
+      if (users.length === 0) {
+        return res.status(401).json({ error: 'invalidCredentials' });
+      }
+      const user = users[0];
+      if (user.isActive !== 1 && user.isActive !== true) {
+        return res.status(403).json({ error: 'inactiveAccount' });
+      }
+      // parse json fields
+      ['googleIntegration', 'msIntegration'].forEach(f => {
+        if (typeof user[f] === 'string') {
+          try { user[f] = JSON.parse(user[f]); } catch (e) { /* ignore */ }
+        }
+      });
+      user.isActive = true;
+      res.json({ user });
+    } catch (err: any) {
+      console.error('Login Error:', err);
+      res.status(500).json({ error: 'Server error during login' });
+    }
+  });
+
   // OAUTH: Google
   app.get('/api/auth/google/url', (req, res) => {
     const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;

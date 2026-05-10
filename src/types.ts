@@ -101,7 +101,7 @@ export interface StoreState {
   currentUser: User | null;
   
   // Actions
-  login: (email: string, passwordHash: string) => void;
+  login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
   requestPasswordReset: (email: string) => string; // returns token for dev purposes
   resetPassword: (token: string, newPasswordHash: string) => void;

@@ -84,15 +84,24 @@ export const useStore = create<StoreState>((set, get) => {
     activities: [],
     currentUser: null,
 
-    login: (email, passwordHash) => {
-      const user = get().users.find(u => u.email === email && u.passwordHash === passwordHash);
-      if (!user) {
-        throw new Error('invalidCredentials');
+    login: async (email, passwordHash) => {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, passwordHash })
+        });
+        
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'invalidCredentials');
+        }
+        
+        const data = await res.json();
+        set({ currentUser: data.user });
+      } catch (err: any) {
+        throw new Error(err.message || 'invalidCredentials');
       }
-      if (!user.isActive) {
-        throw new Error('inactiveAccount');
-      }
-      set({ currentUser: user });
     },
 
   logout: () => set({ currentUser: null }),

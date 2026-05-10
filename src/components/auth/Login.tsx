@@ -16,11 +16,11 @@ export function Login() {
   const [resetSent, setResetSent] = useState(false);
   const [resetTokenInfo, setResetTokenInfo] = useState(''); // Only for dev simulation
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     try {
-      login(email, hashPassword(password));
+      await login(email, hashPassword(password));
       navigate('/');
     } catch (err: any) {
       setError(t(`auth.${err.message}`) || err.message);
@@ -124,7 +124,7 @@ export function Login() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className={`block w-full pl-10 sm:text-sm rounded-md py-3 ${error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
-                    placeholder="admin@fhb.com"
+                    placeholder="zdenek.smarda@fhb.sk"
                   />
                 </div>
               </div>
@@ -138,7 +138,7 @@ export function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm ${error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
-                    placeholder="password123"
+                    placeholder="••••••••"
                   />
                   {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
                 </div>
@@ -161,14 +161,6 @@ export function Login() {
                 </button>
               </div>
             </form>
-          )}
-
-          {!resetSent && !isForgot && (
-             <div className="mt-6 text-xs text-gray-500 text-center">
-                Demo Accounts:<br />
-                admin@fhb.com | cso@fhb.com | hunter1@fhb.com<br/>
-                Password for all: <strong>password123</strong>
-             </div>
           )}
 
         </div>
