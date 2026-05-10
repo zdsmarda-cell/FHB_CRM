@@ -11,11 +11,15 @@ import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 var possibleEnvPaths = [
+  process.env.ENV_FILE_PATH,
   path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "backend/.env"),
   path.resolve(__dirname, ".env"),
+  path.resolve(__dirname, "backend/.env"),
   path.resolve(__dirname, "../.env"),
-  path.resolve(__dirname, "../../.env")
-];
+  path.resolve(__dirname, "../../.env"),
+  "/home/fhb_crm/GIT/FHB_CRM/backend/.env"
+].filter(Boolean);
 var dotenvLoaded = false;
 console.log("[ENV] Checking for .env files in the following locations:");
 for (const envPath of possibleEnvPaths) {

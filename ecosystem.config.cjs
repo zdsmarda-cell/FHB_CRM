@@ -10,7 +10,8 @@ module.exports = {
       env_file: ".env",
       env: {
         NODE_ENV: "production",
-        APP_PORT: 3020
+        APP_PORT: 3020,
+        ENV_FILE_PATH: "/home/fhb_crm/GIT/FHB_CRM/backend/.env"
       }
     },
     {
@@ -23,6 +24,7 @@ module.exports = {
       env_file: ".env",
       env: {
         NODE_ENV: "production",
+        ENV_FILE_PATH: "/home/fhb_crm/GIT/FHB_CRM/backend/.env"
       }
     }
   ]

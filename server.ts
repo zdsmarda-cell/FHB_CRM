@@ -12,11 +12,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const possibleEnvPaths = [
+  process.env.ENV_FILE_PATH,
   path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), 'backend/.env'),
   path.resolve(__dirname, '.env'),
+  path.resolve(__dirname, 'backend/.env'),
   path.resolve(__dirname, '../.env'),
-  path.resolve(__dirname, '../../.env')
-];
+  path.resolve(__dirname, '../../.env'),
+  '/home/fhb_crm/GIT/FHB_CRM/backend/.env'
+].filter(Boolean) as string[];
 
 let dotenvLoaded = false;
 console.log("[ENV] Checking for .env files in the following locations:");
