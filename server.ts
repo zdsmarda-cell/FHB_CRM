@@ -8,10 +8,28 @@ import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
 import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const possibleEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(__dirname, '../.env'),
+  path.resolve(__dirname, '../../.env')
+];
+
+let dotenvLoaded = false;
+for (const envPath of possibleEnvPaths) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+    console.log(`[ENV] Loaded .env from ${envPath}`);
+    dotenvLoaded = true;
+    break;
+  }
+}
+
+if (!dotenvLoaded) {
+  dotenv.config();
+}
 
 async function startServer() {
   const app = express();
@@ -32,7 +50,9 @@ async function startServer() {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    connectTimeout: 10000
+    connectTimeout: 20000, // increased to 20s
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000
   });
 
   // Memory store for tokens just to demo before SQL structure is established
@@ -73,6 +93,9 @@ async function startServer() {
       res.json({ user });
     } catch (err: any) {
       console.error('Login Error:', err);
+      if (err.code === 'ETIMEDOUT') {
+        console.error('HINT: Your database host could not be reached. Check firewall rules, VPNs, and ensure the DB_HOST is accessible from this server.');
+      }
       res.status(500).json({ error: 'Server error during login', details: err.message });
     }
   });
@@ -324,6 +347,9 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('DB State Error:', err);
+      if (err.code === 'ETIMEDOUT') {
+        console.error('HINT: Your database host could not be reached. Check firewall rules, VPNs, and ensure the DB_HOST is accessible from this server.');
+      }
       res.status(500).json({ error: `DB state failed: ${err.message}`, details: err.message });
     }
   });

@@ -57,9 +57,18 @@ export const useStore = create<StoreState>((set, get) => {
           auditLogs: data.auditLogs || [],
           activities: data.activities || []
         });
+      } else {
+        throw new Error('Failed to fetch from DB');
       }
     } catch (err) {
-      console.error('Failed to load initial state from DB', err);
+      console.warn('DB state not available, falling back to mock data', err);
+      set({
+        users: MOCK_USERS,
+        companies: MOCK_COMPANIES,
+        deals: MOCK_DEALS,
+        auditLogs: [],
+        activities: [],
+      });
     }
   }, 100);
 
