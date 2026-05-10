@@ -18,7 +18,7 @@ var possibleEnvPaths = [
   path.resolve(__dirname, "backend/.env"),
   path.resolve(__dirname, "../.env"),
   path.resolve(__dirname, "../../.env"),
-  "/home/fhb_crm/GIT/FHB_CRM/backend/.env"
+  "/home/fhb_crm/backend/.env"
 ].filter(Boolean);
 var dotenvLoaded = false;
 console.log("[ENV] Checking for .env files in the following locations:");
