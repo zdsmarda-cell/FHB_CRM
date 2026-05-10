@@ -1,12 +1,15 @@
-import { Globe, User as UserIcon, LogOut } from 'lucide-react';
+import { Globe, User as UserIcon, LogOut, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { IntegrationsModal } from '../modals/IntegrationsModal';
 
 export function Header() {
   const { t, i18n } = useTranslation();
   const { currentUser, logout } = useStore();
   const navigate = useNavigate();
+  const [showIntegrations, setShowIntegrations] = useState(false);
 
   const toggleLanguage = () => {
     i18n.changeLanguage(i18n.language === 'cs' ? 'en' : 'cs');
@@ -26,6 +29,14 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-6">
+        <button 
+          onClick={() => setShowIntegrations(true)}
+          className="flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors text-sm font-medium"
+        >
+          <Settings className="w-4 h-4" />
+          Settings
+        </button>
+
         {/* Language Switcher */}
         <button 
           onClick={toggleLanguage}
@@ -60,6 +71,7 @@ export function Header() {
           </button>
         </div>
       </div>
+      {showIntegrations && <IntegrationsModal onClose={() => setShowIntegrations(false)} />}
     </header>
   );
 }

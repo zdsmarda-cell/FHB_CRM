@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -826,6 +826,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
   const { activities, addActivity, users, currentUser } = useStore();
   const [isAdding, setIsAdding] = useState(false);
+  const [isSyncingEmails, setIsSyncingEmails] = useState(false);
   const [activityType, setActivityType] = useState<ActivityType>('meeting');
   const [activityDate, setActivityDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [note, setNote] = useState('');
@@ -835,16 +836,90 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     .filter(a => a.dealId === deal.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const handleSave = () => {
+  const handleSyncEmails = async () => {
+    if (!currentUser) return;
+    setIsSyncingEmails(true);
+    
+    try {
+      const provider = currentUser.googleIntegration?.connected ? 'google' : 'microsoft';
+      // Gather relevant emails (deal owner, contact emails)
+      const relevantEmails = [
+        ...company.contacts.map(c => c.email),
+        company.email
+      ].filter(Boolean);
+
+      const res = await fetch('/api/sync/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          credentials: provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration,
+          relevantEmails
+        })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        // Assume backend returns new emails as Array<{ id, subject, body, date, from }>
+        if (data.emails && data.emails.length > 0) {
+          data.emails.forEach((email: any) => {
+            addActivity({
+              dealId: deal.id,
+              type: 'email',
+              date: email.date,
+              note: `Subject: ${email.subject}\nFrom: ${email.from}\n\n${email.body}`,
+              createdBy: currentUser.id,
+            });
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Email sync failed', err);
+    } finally {
+      setIsSyncingEmails(false);
+    }
+  };
+
+  const handleSave = async () => {
     if (!currentUser || !note) return;
     
+    let generatedMeetingLink = activityType === 'teams' ? meetingLink : undefined;
+
+    // Call backend to sync if applicable
+    if ((activityType === 'teams' || activityType === 'meeting') && (currentUser.msIntegration?.connected || currentUser.googleIntegration?.connected)) {
+      try {
+        const provider = activityType === 'teams' ? 'microsoft' : (currentUser.googleIntegration?.connected ? 'google' : 'microsoft');
+        const res = await fetch('/api/sync/calendar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider,
+            credentials: provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration,
+            activityDetails: {
+              type: activityType,
+              date: activityDate,
+              note
+            }
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.meetingLink && !generatedMeetingLink) {
+            generatedMeetingLink = data.meetingLink;
+          }
+        }
+      } catch (err) {
+        console.error('Calendar sync failed', err);
+      }
+    }
+
     addActivity({
       dealId: deal.id,
       type: activityType,
       date: new Date(activityDate).toISOString(),
       note,
       createdBy: currentUser.id,
-      meetingLink: activityType === 'teams' ? meetingLink : undefined,
+      meetingLink: generatedMeetingLink,
     });
     
     setIsAdding(false);
@@ -891,15 +966,28 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           <MessageSquare className="w-5 h-5 text-gray-400" />
           Activities
         </h3>
-        {canEdit && !isAdding && (
-          <button 
-            type="button"
-            onClick={() => setIsAdding(true)}
-            className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
-          >
-            <Plus className="w-4 h-4" /> Add Activity
-          </button>
-        )}
+        <div className="flex gap-3">
+          {(currentUser?.googleIntegration?.connected || currentUser?.msIntegration?.connected) && canEdit && (
+            <button 
+              type="button"
+              onClick={handleSyncEmails}
+              disabled={isSyncingEmails}
+              className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingEmails ? 'animate-spin' : ''}`} />
+              Sync Emails
+            </button>
+          )}
+          {canEdit && !isAdding && (
+            <button 
+              type="button"
+              onClick={() => setIsAdding(true)}
+              className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Add Activity
+            </button>
+          )}
+        </div>
       </div>
 
       {isAdding && (
