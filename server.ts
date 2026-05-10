@@ -398,6 +398,7 @@ async function startServer() {
 
   if (sslKeyPath && sslCertPath) {
     try {
+      console.log(`Starting HTTPS server with cert: ${sslCertPath} and key: ${sslKeyPath}`);
       const privateKey = fs.readFileSync(sslKeyPath, 'utf8');
       const certificate = fs.readFileSync(sslCertPath, 'utf8');
       const credentials = { key: privateKey, cert: certificate };
@@ -421,15 +422,15 @@ async function startServer() {
          console.log(`HTTP redirect server running on port ${httpPort}`);
       });
       
-    } catch (err) {
-      console.error('Failed to start HTTPS server, falling back to HTTP:', err);
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
+    } catch (err: any) {
+      console.error('CRITICAL: Failed to start HTTPS server:', err.message);
+      console.error('Check your SSL_KEY_PATH and SSL_CERT_PATH variables and ensure the files exist and are readable.');
+      process.exit(1);
     }
   } else {
+    console.warn("WARNING: SSL_KEY_PATH and/or SSL_CERT_PATH not found in environment. Starting plain HTTP server.");
     app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`HTTP Server running on http://localhost:${PORT}`);
     });
   }
 }
