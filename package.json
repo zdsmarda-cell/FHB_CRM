@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "tsx server.ts",
-    "build": "vite build",
+    "build:frontend": "vite build",
+    "build:backend": "esbuild server.ts worker.ts --bundle --platform=node --target=node20 --outdir=server-build --format=esm --packages=external",
+    "build": "npm run build:frontend && npm run build:backend",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
@@ -48,6 +50,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
+    "esbuild": "^0.28.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

@@ -2,8 +2,7 @@ module.exports = {
   apps: [
     {
       name: "crm-app",
-      script: "npm",
-      args: "start",
+      script: "./server-build/server.js",
       env: {
         NODE_ENV: "production",
         APP_PORT: 3010
@@ -11,8 +10,7 @@ module.exports = {
     },
     {
       name: "crm-worker",
-      script: "npm",
-      args: "run start-worker",
+      script: "./server-build/worker.js",
       env: {
         NODE_ENV: "production",
       }
