@@ -104,6 +104,7 @@ async function startServer() {
       }
       // Apply missing column alterations
       const migrations = [
+        "UPDATE deals SET stage='lead_opportunity' WHERE stage='lead';",
         "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
         "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
@@ -427,13 +428,36 @@ async function startServer() {
     }
   });
 
+  app.get('/api/deals/:id/details', authMiddleware, async (req, res) => {
+    try {
+      const dealId = req.params.id;
+      const [auditLogs] = await pool.query('SELECT * FROM audit_logs WHERE dealId = ?', [dealId]);
+      const [activities] = await pool.query('SELECT * FROM activities WHERE dealId = ?', [dealId]);
+      
+      const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
+        fields.forEach(f => {
+          if (typeof item[f] === 'string') {
+            try { item[f] = JSON.parse(item[f]); } catch (e) { /* ignore */ }
+          }
+        });
+        return item;
+      });
+
+      res.json({
+        auditLogs: auditLogs,
+        activities: activities
+      });
+    } catch (err: any) {
+      console.error('Deal details fetch error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/state', authMiddleware, async (req, res) => {
     try {
       const [users] = await pool.query('SELECT * FROM users');
       const [companies] = await pool.query('SELECT * FROM companies');
       const [deals] = await pool.query('SELECT * FROM deals');
-      const [auditLogs] = await pool.query('SELECT * FROM audit_logs');
-      const [activities] = await pool.query('SELECT * FROM activities');
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -457,8 +481,8 @@ async function startServer() {
         me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
         deals: deals,
-        auditLogs: auditLogs,
-        activities: activities
+        auditLogs: [],
+        activities: []
       });
     } catch (err: any) {
       console.error('DB State Error:', err);

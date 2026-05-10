@@ -88,6 +88,26 @@ export const useStore = create<StoreState>((set, get) => {
         console.warn('DB state not available', err);
       }
     },
+    fetchDealDetails: async (dealId: string) => {
+      try {
+        const res = await apiFetch(`/api/deals/${dealId}/details`);
+        if (res.ok) {
+          const data = await res.json();
+          set(state => ({
+            auditLogs: [
+              ...state.auditLogs.filter(log => log.dealId !== dealId),
+              ...(data.auditLogs || [])
+            ],
+            activities: [
+              ...state.activities.filter(activity => activity.dealId !== dealId),
+              ...(data.activities || [])
+            ]
+          }));
+        }
+      } catch (err) {
+        console.warn('Failed to fetch deal details', err);
+      }
+    },
     isInitialized: false,
     users: [],
     companies: [],
@@ -344,7 +364,7 @@ export const useStore = create<StoreState>((set, get) => {
         hasChanges = true;
         return {
           ...deal,
-          stage: 'lead' as Stage, // or 'opportunity', returning to 'lead'
+          stage: 'lead_opportunity' as Stage, // or 'opportunity', returning to 'lead'
           postponedUntil: undefined,
           postponedReason: undefined,
           postponedBy: undefined,

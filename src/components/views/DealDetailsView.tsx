@@ -16,7 +16,9 @@ export function DealDetailsView() {
   const { deals, companies, auditLogs, users, currentUser, updateCompany } = store;
 
   React.useEffect(() => {
-    store.refreshState();
+    if (id) {
+      store.fetchDealDetails(id);
+    }
   }, [id]);
 
   const deal = deals.find(d => d.id === id);
@@ -670,7 +672,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const handleCancelPostpone = () => {
     updateDeal(deal.id, {
-      stage: 'lead',
+      stage: 'lead_opportunity',
       postponedUntil: undefined,
       postponedReason: undefined,
       postponedBy: undefined,
@@ -696,7 +698,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const handleCancelLost = () => {
     updateDeal(deal.id, {
-      stage: 'lead',
+      stage: 'lead_opportunity',
       lostPermanently: false,
       lostReason: undefined,
       lostBy: undefined,

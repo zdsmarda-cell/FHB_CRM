@@ -103,6 +103,7 @@ export interface StoreState {
   
   // Actions
   refreshState: () => Promise<void>;
+  fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
   requestPasswordReset: (email: string) => string; // returns token for dev purposes

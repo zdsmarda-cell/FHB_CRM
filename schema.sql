@@ -1,11 +1,3 @@
-CREATE DATABASE IF NOT EXISTS fhb_crm CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE USER IF NOT EXISTS 'fhb_maintain'@'%' IDENTIFIED BY 'YourSecurePasswordHere';
-GRANT ALL PRIVILEGES ON fhb_crm.* TO 'fhb_maintain'@'%';
-FLUSH PRIVILEGES;
-
-USE fhb_crm;
-
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100),
