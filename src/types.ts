@@ -16,8 +16,8 @@ export interface User {
   passwordHash: string;
   resetToken?: string;
   resetTokenExpiry?: string;
-  googleIntegration?: { clientId: string; clientSecret: string; connected: boolean; tokens?: any };
-  msIntegration?: { clientId: string; clientSecret: string; connected: boolean; tokens?: any };
+  googleIntegration?: { connected: boolean; tokens?: any };
+  msIntegration?: { connected: boolean; tokens?: any };
 }
 
 export interface Contact {

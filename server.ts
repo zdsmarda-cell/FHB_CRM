@@ -24,24 +24,38 @@ async function startServer() {
   // Set up MySQL connection pool
   const pool = mysql.createPool({
     host: process.env.DB_HOST || 'db.mobilgroup.cz',
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
     user: process.env.DB_USER || 'fhb_maintain',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || '',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 0
+    queueLimit: 0,
+    connectTimeout: 10000
   });
 
   // Memory store for tokens just to demo before SQL structure is established
   const userTokens: Record<string, any> = {};
 
+  app.get('/api/auth/integrations-status', (req, res) => {
+    res.json({
+      google: {
+        configured: !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET,
+        clientId: process.env.GOOGLE_CLIENT_ID || ''
+      },
+      microsoft: {
+        configured: !!process.env.MS_CLIENT_ID && !!process.env.MS_CLIENT_SECRET,
+        clientId: process.env.MS_CLIENT_ID || ''
+      }
+    });
+  });
+
   // OAUTH: Google
   app.get('/api/auth/google/url', (req, res) => {
-    const { clientId } = req.query;
     const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
     const redirectUri = `${origin}/api/auth/google/callback`;
     const params = new URLSearchParams({
-      client_id: (clientId as string) || 'missing_client_id',
+      client_id: process.env.GOOGLE_CLIENT_ID || 'missing_client_id',
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.readonly',
@@ -67,11 +81,10 @@ async function startServer() {
 
   // OAUTH: Microsoft
   app.get('/api/auth/microsoft/url', (req, res) => {
-    const { clientId } = req.query;
     const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
     const redirectUri = `${origin}/api/auth/microsoft/callback`;
     const params = new URLSearchParams({
-      client_id: (clientId as string) || 'missing_client_id',
+      client_id: process.env.MS_CLIENT_ID || 'missing_client_id',
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'offline_access Calendars.ReadWrite Mail.Read OnlineMeetings.ReadWrite User.Read',
@@ -94,8 +107,15 @@ async function startServer() {
   });
 
   app.post('/api/auth/google/exchange', async (req, res) => {
-    const { code, clientId, clientSecret } = req.body;
+    const { code } = req.body;
     try {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+      
+      if (!clientId || !clientSecret) {
+         return res.status(400).json({ error: 'Google OAuth is not configured on the server.' });
+      }
+
       const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
       const redirectUri = `${origin}/api/auth/google/callback`;
       const oAuth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
@@ -108,8 +128,15 @@ async function startServer() {
   });
 
   app.post('/api/auth/microsoft/exchange', async (req, res) => {
-    const { code, clientId, clientSecret } = req.body;
+    const { code } = req.body;
     try {
+      const clientId = process.env.MS_CLIENT_ID;
+      const clientSecret = process.env.MS_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+         return res.status(400).json({ error: 'Microsoft OAuth is not configured on the server.' });
+      }
+
       const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
       const redirectUri = `${origin}/api/auth/microsoft/callback`;
       const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
@@ -139,7 +166,7 @@ async function startServer() {
     
     try {
       if (provider === 'google' && credentials?.tokens) {
-        const oAuth2Client = new google.auth.OAuth2(credentials.clientId, credentials.clientSecret);
+        const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
         oAuth2Client.setCredentials(credentials.tokens);
         const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
         const startDateTime = new Date(activityDetails.date);
@@ -193,7 +220,7 @@ async function startServer() {
     try {
       if (relevantEmails && relevantEmails.length > 0) {
         if (provider === 'google' && credentials?.tokens) {
-          const oAuth2Client = new google.auth.OAuth2(credentials.clientId, credentials.clientSecret);
+          const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
           oAuth2Client.setCredentials(credentials.tokens);
           const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
           
@@ -268,9 +295,9 @@ async function startServer() {
         auditLogs: auditLogs,
         activities: activities
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('DB State Error:', err);
-      res.status(500).json({ error: 'DB state failed' });
+      res.status(500).json({ error: `DB state failed: ${err.message}` });
     }
   });
 
