@@ -9,7 +9,7 @@ module.exports = {
       time: true,
       env: {
         NODE_ENV: "production",
-        APP_PORT: 3010
+        APP_PORT: 3020
       }
     },
     {

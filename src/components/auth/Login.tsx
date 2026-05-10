@@ -13,12 +13,29 @@ export function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetTokenInfo, setResetTokenInfo] = useState(''); // Only for dev simulation
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setEmailError('');
+    setPasswordError('');
+
+    let hasError = false;
+    if (!email) {
+      setEmailError(t('validation.emailRequired') || 'Email musí být zadán');
+      hasError = true;
+    }
+    if (!password) {
+      setPasswordError(t('validation.passwordRequired') || 'Heslo musí být zadáno');
+      hasError = true;
+    }
+
+    if (hasError) return;
+
     try {
       await login(email, hashPassword(password));
       navigate('/');
@@ -111,7 +128,7 @@ export function Login() {
               </div>
             </form>
           ) : (
-            <form className="space-y-6" onSubmit={handleLogin}>
+            <form className="space-y-6" onSubmit={handleLogin} noValidate>
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('auth.email')}</label>
                 <div className="mt-1 relative rounded-md shadow-sm">
@@ -120,13 +137,13 @@ export function Login() {
                   </div>
                   <input
                     type="email"
-                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={`block w-full pl-10 sm:text-sm rounded-md py-3 ${error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                    className={`block w-full pl-10 sm:text-sm rounded-md py-3 ${emailError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                     placeholder="zdenek.smarda@fhb.sk"
                   />
                 </div>
+                {emailError && <p className="mt-1 text-sm text-red-600">{emailError}</p>}
               </div>
 
               <div>
@@ -134,13 +151,13 @@ export function Login() {
                 <div className="mt-1">
                   <input
                     type="password"
-                    required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm ${error ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                     placeholder="••••••••"
                   />
-                  {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
+                  {passwordError && <p className="mt-1 text-sm text-red-600">{passwordError}</p>}
+                  {error && !emailError && !passwordError && <p className="mt-1 text-sm text-red-600">{error}</p>}
                 </div>
               </div>
 
