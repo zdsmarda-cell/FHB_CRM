@@ -106,7 +106,7 @@ export interface StoreState {
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
-  requestPasswordReset: (email: string) => string; // returns token for dev purposes
+  requestPasswordReset: (email: string) => Promise<string | undefined>; // returns token for dev purposes
   resetPassword: (token: string, newPasswordHash: string) => void;
   
   setCurrentUser: (userId: string) => void; // Keeping for compatibility, though login is preferred

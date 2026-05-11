@@ -144,24 +144,19 @@ export const useStore = create<StoreState>((set, get) => {
     set({ currentUser: null });
   },
 
-  requestPasswordReset: (email) => {
-    const userId = get().users.find(u => u.email === email)?.id;
-    if (!userId) {
-      // Simulate silent failure for security
-      return ''; 
+  requestPasswordReset: async (email) => {
+    try {
+      const res = await apiFetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      return data.token;
+    } catch (err) {
+      console.error('Failed to request password reset', err);
+      return undefined;
     }
-    const token = uuidv4();
-    // Set 10 min expiry
-    const expiry = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    
-    set(state => {
-      const updatedUsers = state.users.map(u => u.id === userId ? { ...u, resetToken: token, resetTokenExpiry: expiry } : u);
-      const userToSync = updatedUsers.find(u => u.id === userId);
-      if (userToSync) syncToDb({ users: [userToSync] });
-      return { users: updatedUsers };
-    });
-    
-    return token;
   },
 
   resetPassword: (token, newPasswordHash) => {

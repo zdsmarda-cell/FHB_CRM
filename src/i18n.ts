@@ -40,6 +40,7 @@ const resources = {
         logout: 'Logout',
         email: 'Email address',
         password: 'Password',
+        confirmPassword: 'Confirm Password',
         signIn: 'Sign in',
         forgotPassword: 'Forgot password?',
         resetPassword: 'Reset Password',
@@ -49,7 +50,8 @@ const resources = {
         updatePassword: 'Update Password',
         invalidCredentials: 'Email or password is incorrect.',
         inactiveAccount: 'Your account is currently inactive.',
-        checkEmail: 'If your email is in our system, you will receive a reset link shortly.'
+        checkEmail: 'If your email is in our system, you will receive a reset link shortly.',
+        resetSuccess: 'Successfully reset! Redirecting to login...'
       },
       admin: {
         users: 'Users',
@@ -79,6 +81,7 @@ const resources = {
       },
       validation: {
         emailRequired: 'Email is required',
+        emailInvalid: 'Invalid email format',
         passwordRequired: 'Password is required'
       }
     }
@@ -121,6 +124,7 @@ const resources = {
         logout: 'Odhlášení',
         email: 'Emailová adresa',
         password: 'Heslo',
+        confirmPassword: 'Potvrzení hesla',
         signIn: 'Přihlásit se',
         forgotPassword: 'Zapomenuté heslo?',
         resetPassword: 'Obnovit heslo',
@@ -130,7 +134,8 @@ const resources = {
         updatePassword: 'Aktualizovat heslo',
         invalidCredentials: 'Email nebo heslo je nesprávné.',
         inactiveAccount: 'Váš účet je nyní neaktivní.',
-        checkEmail: 'Pokud je váš email v našem systému, brzy obdržíte odkaz k obnovení.'
+        checkEmail: 'Pokud je váš email v našem systému, brzy obdržíte odkaz k obnovení.',
+        resetSuccess: 'Úspěšně obnoveno! Přesměrovávám na přihlášení...'
       },
       admin: {
         users: 'Uživatelé',
@@ -160,6 +165,7 @@ const resources = {
       },
       validation: {
         emailRequired: 'Email musí být zadán',
+        emailInvalid: 'Neplatný formát emailu',
         passwordRequired: 'Heslo musí být zadáno'
       }
     }

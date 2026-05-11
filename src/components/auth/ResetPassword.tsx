@@ -16,18 +16,22 @@ export function ResetPassword() {
   const [passwordError, setPasswordError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setPasswordError('');
-
-    if (password !== confirmPassword) {
-      setPasswordError(t('errors.passwordMismatch'));
-      return;
-    }
-
-    try {
-      if (!token) throw new Error('Missing token');
+    const handleSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      setError('');
+      setPasswordError('');
+  
+      if (!password) {
+        setPasswordError(t('validation.passwordRequired'));
+        return;
+      }
+      if (password !== confirmPassword) {
+        setPasswordError(t('errors.passwordMismatch'));
+        return;
+      }
+  
+      try {
+        if (!token) throw new Error('Missing token');
       resetPassword(token, hashPassword(password));
       setSuccess(true);
       setTimeout(() => {
@@ -61,33 +65,33 @@ export function ResetPassword() {
           {success ? (
             <div className="text-center space-y-4">
               <div className="bg-green-50 border border-green-200 text-green-700 text-sm p-4 rounded-md">
-                Successfully reset! Redirecting to login...
+                {t('auth.resetSuccess')}
               </div>
             </div>
           ) : (
-            <form className="space-y-6" onSubmit={handleSubmit}>
+            <form className="space-y-6" onSubmit={handleSubmit} noValidate>
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('auth.newPassword')}</label>
                 <div className="mt-1">
                   <input
                     type="password"
-                    required
                     value={password}
+                    autoComplete="new-password"
                     onChange={(e) => setPassword(e.target.value)}
-                    className="focus:ring-indigo-500 focus:border-indigo-500 block w-full px-4 py-3 sm:text-sm border-gray-300 rounded-md shadow-sm"
+                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm border ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Confirm Password</label>
+                <label className="block text-sm font-medium text-gray-700">{t('auth.confirmPassword')}</label>
                 <div className="mt-1">
                   <input
                     type="password"
-                    required
                     value={confirmPassword}
+                    autoComplete="new-password"
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
+                    className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm border ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                   />
                   {passwordError && <p className="mt-1 text-sm text-red-600">{passwordError}</p>}
                 </div>

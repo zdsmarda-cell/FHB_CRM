@@ -8,6 +8,8 @@ import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
 import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+import { v4 as uuidv4 } from "uuid";
 
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
 
@@ -206,6 +208,53 @@ async function startServer() {
         console.error('HINT: Your database host could not be reached. Check firewall rules, VPNs, and ensure the DB_HOST is accessible from this server.');
       }
       res.status(500).json({ error: 'Server error during login', details: err.message });
+    }
+  });
+
+  app.post('/api/auth/reset-password', async (req, res) => {
+    try {
+      const { email } = req.body;
+      const [rows] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
+      const users: any[] = rows as any[];
+      if (users.length === 0) {
+        // Silent block for non-existent emails
+        return res.json({ success: true });
+      }
+      
+      const user = users[0];
+      const resetToken = uuidv4();
+      const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+      
+      await pool.query('UPDATE users SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?', [resetToken, expiry, user.id]);
+
+      // Using nodemailer
+      if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || '587'),
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+        
+        const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
+        const resetUrl = `${origin}/#/reset-password/${resetToken}`;
+        
+        await transporter.sendMail({
+          from: process.env.EMAIL_FROM || '"CRM System" <no-reply@crm.com>',
+          to: email,
+          subject: 'Obnova hesla / Password Reset',
+          text: `Pro obnovu hesla klikněte na následující odkaz: \n\n${resetUrl}\n\nTento odkaz platí 10 minut.`,
+          html: `<p>Pro obnovu hesla klikněte na následující odkaz:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Tento odkaz platí 10 minut.</p>`
+        });
+      }
+
+      res.json({ success: true, token: process.env.SMTP_HOST ? undefined : resetToken }); // Return token only for dev without SMTP
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      res.status(500).json({ error: 'Failed to send reset email' });
     }
   });
 

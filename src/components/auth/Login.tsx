@@ -5,7 +5,7 @@ import { Briefcase, ArrowLeft, Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export function Login() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { login, requestPasswordReset } = useStore();
   
@@ -28,6 +28,12 @@ export function Login() {
     if (!email) {
       setEmailError(t('validation.emailRequired') || 'Email musí být zadán');
       hasError = true;
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setEmailError(t('validation.emailInvalid') || 'Neplatný formát emailu');
+        hasError = true;
+      }
     }
     if (!password) {
       setPasswordError(t('validation.passwordRequired') || 'Heslo musí být zadáno');
@@ -44,9 +50,19 @@ export function Login() {
     }
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = requestPasswordReset(email);
+    setEmailError('');
+    if (!email) {
+      setEmailError(t('validation.emailRequired') || 'Email musí být zadán');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+       setEmailError(t('validation.emailInvalid') || 'Neplatný formát emailu');
+       return;
+    }
+    const token = await requestPasswordReset(email);
     setResetSent(true);
     if (token) {
       // In a real app, we would send an email here.
@@ -56,7 +72,22 @@ export function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-4 right-4 flex gap-2">
+        <button
+          onClick={() => i18n.changeLanguage('cs')}
+          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${i18n.language === 'cs' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-200'}`}
+        >
+          CZ
+        </button>
+        <button
+          onClick={() => i18n.changeLanguage('en')}
+          className={`px-3 py-1 rounded text-sm font-medium transition-colors ${i18n.language === 'en' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-200'}`}
+        >
+          EN
+        </button>
+      </div>
+
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center text-indigo-600">
           <Briefcase className="w-12 h-12" />
@@ -95,7 +126,7 @@ export function Login() {
               </button>
             </div>
           ) : isForgot ? (
-            <form className="space-y-6" onSubmit={handleForgotPassword}>
+            <form className="space-y-6" onSubmit={handleForgotPassword} noValidate>
               <div>
                 <label className="block text-sm font-medium text-gray-700">{t('auth.email')}</label>
                 <div className="mt-1 relative rounded-md shadow-sm">
@@ -104,12 +135,12 @@ export function Login() {
                   </div>
                   <input
                     type="email"
-                    required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-md py-3"
+                    className={`block w-full pl-10 sm:text-sm rounded-md py-3 border ${emailError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
                   />
                 </div>
+                {emailError && <p className="mt-1 text-sm text-red-600">{emailError}</p>}
               </div>
               <div className="flex gap-3">
                 <button
@@ -138,9 +169,9 @@ export function Login() {
                   <input
                     type="email"
                     value={email}
+                    autoComplete="off"
                     onChange={(e) => setEmail(e.target.value)}
                     className={`block w-full pl-10 sm:text-sm rounded-md py-3 border ${emailError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
-                    placeholder="zdenek.smarda@fhb.sk"
                   />
                 </div>
                 {emailError && <p className="mt-1 text-sm text-red-600">{emailError}</p>}
@@ -152,9 +183,9 @@ export function Login() {
                   <input
                     type="password"
                     value={password}
+                    autoComplete="new-password"
                     onChange={(e) => setPassword(e.target.value)}
                     className={`block w-full px-4 py-3 sm:text-sm rounded-md shadow-sm border ${passwordError ? 'border-red-500 focus:ring-red-500 focus:border-red-500' : 'border-gray-300 focus:ring-indigo-500 focus:border-indigo-500'}`}
-                    placeholder="••••••••"
                   />
                   {passwordError && <p className="mt-1 text-sm text-red-600">{passwordError}</p>}
                   {error && !emailError && !passwordError && <p className="mt-1 text-sm text-red-600">{error}</p>}
