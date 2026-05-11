@@ -71,7 +71,8 @@ async function startServer() {
   // We use APP_PORT to override it in production environments if needed.
   const PORT = process.env.APP_PORT ? parseInt(process.env.APP_PORT) : 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Setup DB + automatic migrations
   const pool = mysql.createPool({
