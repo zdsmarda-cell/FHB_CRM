@@ -183,7 +183,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
                 <select 
                   value={formData.phonePrefix} 
                   onChange={e => setFormData({...formData, phonePrefix: e.target.value})} 
-                  className="w-[120px] px-2 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  className="min-w-[140px] px-2 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                 >
                   {PHONE_PREFIXES.map(p => (
                     <option key={`${p.country}-${p.code}`} value={p.code}>

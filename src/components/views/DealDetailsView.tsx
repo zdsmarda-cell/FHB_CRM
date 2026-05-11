@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -109,14 +109,7 @@ export function DealDetailsView() {
           </section>
 
           <section>
-            <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Contacts
-              </h3>
-            </div>
-            
             <ContactsManager company={company} canEdit={canEdit} />
-
           </section>
           
           <section>
@@ -271,7 +264,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
             <select 
               value={formData.phonePrefix || getDefaultPhonePrefixForCountry(company.country || '')} 
               onChange={e => setFormData({ ...formData, phonePrefix: e.target.value })}
-              className="w-[120px] px-2 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              className="min-w-[140px] px-2 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
             >
               <option value="">--</option>
               {PHONE_PREFIXES.map(p => (
@@ -349,6 +342,14 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
   const { updateCompany, currentUser, users, companies } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [showAllContacts, setShowAllContacts] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const filteredContacts = contacts.filter(c => showAllContacts || c.isActive !== false);
+  const reversedContacts = [...filteredContacts].reverse();
+  const visibleContacts = isExpanded ? reversedContacts : reversedContacts.slice(0, 3);
+  const hasMoreContacts = reversedContacts.length > 3;
+
   const handleSaveContact = () => {
     setSubmitAttempted(true);
     setEmailError(null);
@@ -479,8 +480,22 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
   };
 
   return (
-    <div className="space-y-4">
-      {contacts.map(contact => (
+    <div>
+      <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg font-semibold text-gray-900">
+            Contacts
+          </h3>
+          <button 
+            onClick={() => setShowAllContacts(!showAllContacts)}
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded"
+          >
+            {showAllContacts ? 'Active only' : 'Show all'}
+          </button>
+        </div>
+      </div>
+      <div className="space-y-4">
+        {visibleContacts.map(contact => (
         <div key={contact.id}>
           {editingId === contact.id ? (
             <ContactForm 
@@ -571,6 +586,18 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
           )}
         </div>
       ))}
+      
+      {hasMoreContacts && (
+        <div className="flex justify-center mt-2 border-t border-gray-100 pt-2">
+          <button 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center justify-center p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"
+            title={isExpanded ? "Show fewer contacts" : "Show all contacts"}
+          >
+            {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+        </div>
+      )}
 
       {canEdit && !isAdding && !editingId && (
         <button 
@@ -604,7 +631,8 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
         />
       )}
     </div>
-  )
+    </div>
+  );
 }
 
 function ContactForm({ 
@@ -649,24 +677,26 @@ function ContactForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
-          <input 
-            value={contact.name || ''} 
-            onChange={e => setContact({...contact, name: e.target.value})} 
-            className={`w-full px-3 py-2 border ${submitAttempted && !contact.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
-          />
-          {submitAttempted && !contact.name && <p className="mt-1 text-xs text-red-600">{t('errors.requiredField')}</p>}
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1">Position *</label>
-          <input 
-            value={contact.position || ''} 
-            onChange={e => setContact({...contact, position: e.target.value})} 
-            className={`w-full px-3 py-2 border ${submitAttempted && !contact.position ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
-          />
-          {submitAttempted && !contact.position && <p className="mt-1 text-xs text-red-600">{t('errors.requiredField')}</p>}
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
+            <input 
+              value={contact.name || ''} 
+              onChange={e => setContact({...contact, name: e.target.value})} 
+              className={`w-full px-3 py-2 border ${submitAttempted && !contact.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
+            />
+            {submitAttempted && !contact.name && <p className="mt-1 text-xs text-red-600">{t('errors.requiredField')}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Position *</label>
+            <input 
+              value={contact.position || ''} 
+              onChange={e => setContact({...contact, position: e.target.value})} 
+              className={`w-full px-3 py-2 border ${submitAttempted && !contact.position ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
+            />
+            {submitAttempted && !contact.position && <p className="mt-1 text-xs text-red-600">{t('errors.requiredField')}</p>}
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
@@ -684,7 +714,7 @@ function ContactForm({
             <select 
               value={contact.phonePrefix || defaultPrefix || ''} 
               onChange={e => setContact({...contact, phonePrefix: e.target.value})} 
-              className="w-[120px] px-2 py-2 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-indigo-500"
+              className="min-w-[140px] px-2 py-2 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-indigo-500"
             >
               <option value="">--</option>
               {PHONE_PREFIXES.map(p => (
