@@ -52,6 +52,12 @@ export function KanbanBoard() {
     e.preventDefault();
     const dealId = e.dataTransfer.getData('text/plain');
     if (dealId && currentUser) {
+      const deal = state.deals.find(d => d.id === dealId);
+      if (!deal) return;
+      if (!deal.ownerId && stage !== 'lead_opportunity' && stage !== 'lost') {
+        alert('Příležitost bez řešitele lze přesunout pouze do stavů Lead & Opportunity nebo Lost.');
+        return;
+      }
       updateDealStage(dealId, stage, currentUser.id);
     }
   };
@@ -84,6 +90,12 @@ export function KanbanBoard() {
     }
     return mapping;
   }, [users]);
+
+  const canTakeDeal = (deal: Deal) => {
+    if (!currentUser || deal.ownerId) return false;
+    if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
+    return canViewStage(currentUser, deal.stage);
+  };
 
   const canChangeAssignee = (deal: Deal) => {
     if (!currentUser) return false;
@@ -186,6 +198,18 @@ export function KanbanBoard() {
                         </div>
                         
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {canTakeDeal(deal) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                state.updateDeal(deal.id, { ownerId: currentUser!.id }, currentUser!.id);
+                              }}
+                              className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
+                            >
+                              Převzít
+                            </button>
+                          )}
                           {canChangeAssignee(deal) && (
                             <button 
                               type="button"

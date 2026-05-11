@@ -110,7 +110,7 @@ export interface StoreState {
   resetPassword: (token: string, newPasswordHash: string) => void;
   
   setCurrentUser: (userId: string) => void; // Keeping for compatibility, though login is preferred
-  addCompanyAndDeal: (company: Omit<Company, 'id'>, dealCreatorId: string) => Promise<void>;
+  addCompanyAndDeal: (company: Omit<Company, 'id'>, dealCreatorId: string, ownerId?: string | null) => Promise<void>;
   updateCompany: (id: string, updates: Partial<Company>, userId: string) => Promise<void>;
   updateDealStage: (dealId: string, newStage: Stage, userId: string) => Promise<void>;
   updateDeal: (dealId: string, updates: Partial<Deal>, userId: string) => Promise<void>;

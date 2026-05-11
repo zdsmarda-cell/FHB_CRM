@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Region, Segment, Company } from '../../types';
 import { X, Plus, Trash2 } from 'lucide-react';
 import { COUNTRIES, getRegionForCountry } from '../../lib/countryMapping';
+import { canViewStage, getSubordinateIds } from '../../lib/permissions';
 
 interface CompanyFormProps {
   onClose: () => void;
@@ -11,9 +12,30 @@ interface CompanyFormProps {
 
 export function CompanyForm({ onClose }: CompanyFormProps) {
   const { t } = useTranslation();
-  const { addCompanyAndDeal, currentUser, companies } = useStore();
+  const { addCompanyAndDeal, currentUser, companies, users } = useStore();
   const [icoError, setIcoError] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [ownerId, setOwnerId] = useState<string>('');
+
+  const selectableUsers = useMemo(() => {
+    if (!currentUser) return [];
+
+    const isGlobal = currentUser.role === 'administrator' || currentUser.role === 'cso';
+    const subIds = getSubordinateIds(users, currentUser.id);
+
+    return users.filter(user => {
+      if (!user.isActive) return false;
+      const hasStagePerm = canViewStage(user, 'lead_opportunity');
+      if (!hasStagePerm) return false;
+
+      if (isGlobal) {
+        return true;
+      } else {
+        return subIds.includes(user.id);
+      }
+    });
+
+  }, [users, currentUser]);
 
   const [formData, setFormData] = useState<Omit<Company, 'id'>>({
     companyId: '',
@@ -50,7 +72,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     }
 
     try {
-      await addCompanyAndDeal(formData, currentUser.id);
+      await addCompanyAndDeal(formData, currentUser.id, ownerId || null);
       onClose();
     } catch (err: any) {
       if (err.message === 'icoExists') {
@@ -134,6 +156,15 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
                 <option value="software">Software</option>
                 <option value="services">Services</option>
                 <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Přidělený řešitel / Assignee</label>
+              <select value={ownerId} onChange={e => setOwnerId(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                <option value="">bez řešitele</option>
+                {selectableUsers.map(u => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
               </select>
             </div>
           </div>

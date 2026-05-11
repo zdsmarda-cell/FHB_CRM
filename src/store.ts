@@ -180,7 +180,7 @@ export const useStore = create<StoreState>((set, get) => {
     currentUser: state.users.find(u => u.id === userId) || null 
   })),
 
-  addCompanyAndDeal: async (companyData, dealCreatorId) => {
+  addCompanyAndDeal: async (companyData, dealCreatorId, ownerId) => {
     const state = get();
     const existingCompany = state.companies.find(c => c.companyId === companyData.companyId);
     if (existingCompany) {
@@ -193,7 +193,7 @@ export const useStore = create<StoreState>((set, get) => {
       companyId: newCompany.id,
       stage: 'lead_opportunity',
       createdBy: dealCreatorId,
-      ownerId: dealCreatorId,
+      ownerId: ownerId !== undefined ? ownerId : null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
