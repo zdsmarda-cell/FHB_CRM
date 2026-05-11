@@ -71,5 +71,14 @@ CREATE TABLE IF NOT EXISTS activities (
   createdAt DATETIME
 );
 
+CREATE TABLE IF NOT EXISTS email_logs (
+  id VARCHAR(50) PRIMARY KEY,
+  recipient VARCHAR(100),
+  subject VARCHAR(255),
+  status VARCHAR(50),
+  error TEXT,
+  sentAt DATETIME
+);
+
 INSERT IGNORE INTO users (id, name, email, role, isActive, passwordHash)
 VALUES ('admin-1', 'Zdeněk Šmarda', 'zdenek.smarda@fhb.sk', 'administrator', true, 'cGFzc3dvcmQxMjNfc2VjcmV0X3NhbHQ=');

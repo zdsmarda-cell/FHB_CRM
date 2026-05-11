@@ -55,6 +55,11 @@ const resources = {
       },
       admin: {
         users: 'Users',
+        emailLogs: 'Sent Emails',
+        searchRecipient: 'Search recipient...',
+        searchSubject: 'Search subject...',
+        dateFrom: 'Date From',
+        dateTo: 'Date To',
         addUser: 'Add User',
         editUser: 'Edit User',
         status: 'Status',
@@ -139,6 +144,11 @@ const resources = {
       },
       admin: {
         users: 'Uživatelé',
+        emailLogs: 'Odeslané emaily',
+        searchRecipient: 'Hledat příjemce...',
+        searchSubject: 'Hledat předmět...',
+        dateFrom: 'Datum od',
+        dateTo: 'Datum do',
         addUser: 'Přidat Uživatele',
         editUser: 'Upravit Uživatele',
         status: 'Stav',

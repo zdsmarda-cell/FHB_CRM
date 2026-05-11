@@ -223,9 +223,8 @@ async function startServer() {
       
       const user = users[0];
       const resetToken = uuidv4();
-      const expiry = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
       
-      await pool.query('UPDATE users SET resetToken = ?, resetTokenExpiry = ? WHERE id = ?', [resetToken, expiry, user.id]);
+      await pool.query('UPDATE users SET resetToken = ?, resetTokenExpiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE id = ?', [resetToken, user.id]);
 
       // Using nodemailer
       if (process.env.SMTP_HOST && process.env.SMTP_USER) {
@@ -245,19 +244,111 @@ async function startServer() {
         const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
         const resetUrl = `${origin}/#/reset-password/${resetToken}`;
         
-        await transporter.sendMail({
-          from: process.env.EMAIL_FROM || '"CRM System" <no-reply@crm.com>',
-          to: email,
-          subject: 'Obnova hesla / Password Reset',
-          text: `Pro obnovu hesla klikněte na následující odkaz: \n\n${resetUrl}\n\nTento odkaz platí 10 minut.`,
-          html: `<p>Pro obnovu hesla klikněte na následující odkaz:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Tento odkaz platí 10 minut.</p>`
-        });
+        const subject = 'Obnova hesla / Password Reset';
+        const emailLogId = uuidv4();
+        
+        try {
+          await transporter.sendMail({
+            from: process.env.EMAIL_FROM || '"CRM System" <no-reply@crm.com>',
+            to: email,
+            subject,
+            text: `Pro obnovu hesla klikněte na následující odkaz: \n\n${resetUrl}\n\nTento odkaz platí 10 minut.`,
+            html: `<p>Pro obnovu hesla klikněte na následující odkaz:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Tento odkaz platí 10 minut.</p>`
+          });
+          
+          await pool.query(
+            'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, ?)',
+            [emailLogId, email, subject, 'sent', null, new Date()]
+          );
+        } catch (mailErr: any) {
+          console.error('Password reset email failed:', mailErr);
+          await pool.query(
+            'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, ?)',
+            [emailLogId, email, subject, 'error', mailErr.message || String(mailErr), new Date()]
+          );
+          throw mailErr;
+        }
       }
 
       res.json({ success: true, token: process.env.SMTP_HOST ? undefined : resetToken }); // Return token only for dev without SMTP
     } catch (err: any) {
       console.error('Password reset error:', err);
       res.status(500).json({ error: 'Failed to send reset email' });
+    }
+  });
+
+  app.post('/api/auth/update-password', async (req, res) => {
+    try {
+      const { token, newPasswordHash } = req.body;
+      const [rows] = await pool.query('SELECT * FROM users WHERE resetToken = ? AND resetTokenExpiry > NOW()', [token]);
+      const users: any[] = rows as any[];
+      if (users.length === 0) {
+        return res.status(400).json({ error: 'Invalid or expired token' });
+      }
+      
+      const user = users[0];
+      
+      await pool.query('UPDATE users SET passwordHash = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?', [newPasswordHash, user.id]);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Password update error:', err);
+      res.status(500).json({ error: 'Failed to update password' });
+    }
+  });
+
+  // GET Email Logs for Admin
+  app.get('/api/email_logs', async (req, res) => {
+    try {
+      const { page = '1', limit = '10', dateFrom, dateTo, recipient, subject, status } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const offset = (pageNum - 1) * limitNum;
+      
+      let query = 'SELECT * FROM email_logs WHERE 1=1';
+      let countQuery = 'SELECT COUNT(*) as total FROM email_logs WHERE 1=1';
+      const params: any[] = [];
+      
+      if (dateFrom) {
+        query += ' AND sentAt >= ?';
+        countQuery += ' AND sentAt >= ?';
+        params.push(new Date(dateFrom as string));
+      }
+      if (dateTo) {
+        query += ' AND sentAt <= ?';
+        countQuery += ' AND sentAt <= ?';
+        const toDate = new Date(dateTo as string);
+        toDate.setHours(23, 59, 59, 999);
+        params.push(toDate);
+      }
+      if (recipient) {
+        query += ' AND recipient LIKE ?';
+        countQuery += ' AND recipient LIKE ?';
+        params.push(`%${recipient}%`);
+      }
+      if (subject) {
+        query += ' AND subject LIKE ?';
+        countQuery += ' AND subject LIKE ?';
+        params.push(`%${subject}%`);
+      }
+      if (status && status !== 'all') {
+        query += ' AND status = ?';
+        countQuery += ' AND status = ?';
+        params.push(status);
+      }
+      
+      query += ' ORDER BY sentAt DESC LIMIT ? OFFSET ?';
+      const resultParams = [...params, limitNum, offset];
+      
+      const [logsRows] = await pool.query(query, resultParams);
+      const [countRows] = await pool.query(countQuery, params);
+      
+      const logs = logsRows as any[];
+      const total = (countRows as any[])[0].total;
+      
+      res.json({ logs, total, page: pageNum, limit: limitNum });
+    } catch (err: any) {
+      console.error('Failed to fetch email logs:', err);
+      res.status(500).json({ error: 'Failed to fetch email logs' });
     }
   });
 

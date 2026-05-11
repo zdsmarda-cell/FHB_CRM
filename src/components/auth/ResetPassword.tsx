@@ -16,7 +16,7 @@ export function ResetPassword() {
   const [passwordError, setPasswordError] = useState('');
   const [success, setSuccess] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError('');
       setPasswordError('');
@@ -32,7 +32,7 @@ export function ResetPassword() {
   
       try {
         if (!token) throw new Error('Missing token');
-      resetPassword(token, hashPassword(password));
+      await resetPassword(token, hashPassword(password));
       setSuccess(true);
       setTimeout(() => {
         navigate('/login');

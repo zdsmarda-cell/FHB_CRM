@@ -159,26 +159,21 @@ export const useStore = create<StoreState>((set, get) => {
     }
   },
 
-  resetPassword: (token, newPasswordHash) => {
-    set(state => {
-      const user = state.users.find(u => u.resetToken === token);
-      if (!user || !user.resetTokenExpiry) throw new Error('Invalid or expired token');
-      
-      const isExpired = new Date(user.resetTokenExpiry).getTime() < Date.now();
-      if (isExpired) throw new Error('Token has expired');
-      
-      const updatedUsers = state.users.map(u => u.id === user.id ? { 
-        ...u, 
-        passwordHash: newPasswordHash, 
-        resetToken: undefined, 
-        resetTokenExpiry: undefined 
-      } : u);
-
-      const userToSync = updatedUsers.find(u => u.id === user.id);
-      if (userToSync) syncToDb({ users: [userToSync] });
-
-      return { users: updatedUsers };
-    });
+  resetPassword: async (token, newPasswordHash) => {
+    try {
+      const res = await apiFetch('/api/auth/update-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, newPasswordHash })
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to update password');
+      }
+    } catch (err: any) {
+      console.error('Password update error:', err);
+      throw err;
+    }
   },
 
   setCurrentUser: (userId) => set((state) => ({ 
