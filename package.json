@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "start-worker": "tsx worker.ts"
+    "start-worker": "tsx worker.ts",
+    "sync": "echo 'Syncing package.json to github'"
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.0",
@@ -35,6 +36,7 @@
     "motion": "^12.23.24",
     "mysql2": "^3.22.3",
     "node-cron": "^4.2.1",
+    "nodemailer": "^8.0.7",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-i18next": "^17.0.7",
@@ -50,6 +52,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.14.0",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.0",
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.28.0",
