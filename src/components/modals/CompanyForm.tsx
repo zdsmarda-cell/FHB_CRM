@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Region, Segment, Company } from '../../types';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { COUNTRIES, getRegionForCountry } from '../../lib/countryMapping';
+import { COUNTRIES, getRegionForCountry, PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { canViewStage, getSubordinateIds } from '../../lib/permissions';
 
 interface CompanyFormProps {
@@ -46,13 +46,15 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     segment: 'fashion',
     email: '',
     phone: '',
+    phonePrefix: getDefaultPhonePrefixForCountry('Czechia'),
     urls: [''],
     contacts: []
   });
 
   const handleCountryChange = (country: string) => {
     const region = getRegionForCountry(country) as Region;
-    setFormData(prev => ({ ...prev, country, region }));
+    const phonePrefix = getDefaultPhonePrefixForCountry(country);
+    setFormData(prev => ({ ...prev, country, region, phonePrefix }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -177,7 +179,25 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.phone')}</label>
-              <input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm" />
+              <div className="flex gap-2">
+                <select 
+                  value={formData.phonePrefix} 
+                  onChange={e => setFormData({...formData, phonePrefix: e.target.value})} 
+                  className="w-1/3 px-2 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                >
+                  {PHONE_PREFIXES.map(p => (
+                    <option key={`${p.country}-${p.code}`} value={p.code}>
+                      {p.flag} {p.code}
+                    </option>
+                  ))}
+                </select>
+                <input 
+                  value={formData.phone} 
+                  onChange={e => setFormData({...formData, phone: e.target.value})} 
+                  className="w-2/3 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm" 
+                  placeholder="123 456 789"
+                />
+              </div>
             </div>
           </div>
 

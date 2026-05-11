@@ -47,14 +47,14 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
 
   const handleSave = async () => {
     if (!currentUser) return;
-    if (selectedUser === deal.ownerId) {
+    if (selectedUser === (deal.ownerId || '')) {
       onClose();
       return;
     }
     
     setIsSaving(true);
     try {
-      await updateDeal(deal.id, { ownerId: selectedUser }, currentUser.id);
+      await updateDeal(deal.id, { ownerId: selectedUser === '' ? null : selectedUser }, currentUser.id);
       onClose();
     } catch (err) {
       console.error(err);
@@ -62,6 +62,8 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
       setIsSaving(false);
     }
   };
+
+  const showUnassignOption = (deal.stage === 'lead_opportunity' || deal.stage === 'lost') && deal.ownerId;
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-900/50 flex flex-col items-center justify-center p-4">
@@ -77,10 +79,28 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
         </div>
 
         <div className="p-6 overflow-y-auto w-full">
-          {selectableUsers.length === 0 ? (
+          {selectableUsers.length === 0 && !showUnassignOption ? (
             <p className="text-sm text-gray-500 text-center py-4">Nenalezeni žádní další řešitelé pro tento stav.</p>
           ) : (
             <div className="space-y-2">
+              {showUnassignOption && (
+                <button
+                  onClick={() => setSelectedUser('')}
+                  className={`w-full text-left px-4 py-3 rounded-xl border flex items-center justify-between transition-colors ${
+                    selectedUser === '' 
+                      ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' 
+                      : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">Bez řešitele</div>
+                    <div className="text-xs text-gray-500 uppercase">Odebrat aktuálního řešitele</div>
+                  </div>
+                  {selectedUser === '' && (
+                    <Check className="w-5 h-5 text-indigo-600" />
+                  )}
+                </button>
+              )}
               {selectableUsers.map(user => (
                 <button
                   key={user.id}
@@ -114,7 +134,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
           </button>
           <button 
             type="button"
-            disabled={!selectedUser || selectedUser === deal.ownerId || isSaving}
+            disabled={selectedUser === (deal.ownerId || '') || isSaving}
             onClick={handleSave}
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >

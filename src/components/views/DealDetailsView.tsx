@@ -6,6 +6,7 @@ import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, 
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
+import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
 
 export function DealDetailsView() {
@@ -114,7 +115,7 @@ export function DealDetailsView() {
               </h3>
             </div>
             
-            <ContactsManager companyId={company.id} contacts={company.contacts} canEdit={canEdit} />
+            <ContactsManager company={company} canEdit={canEdit} />
 
           </section>
           
@@ -266,11 +267,25 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
         </div>
         <div>
           <label className="block text-gray-500 mb-1">{t('fields.phone')}</label>
-          <input 
-            value={formData.phone || ''} 
-            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-          />
+          <div className="flex gap-2">
+            <select 
+              value={formData.phonePrefix || getDefaultPhonePrefixForCountry(company.country || '')} 
+              onChange={e => setFormData({ ...formData, phonePrefix: e.target.value })}
+              className="w-1/3 px-2 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">--</option>
+              {PHONE_PREFIXES.map(p => (
+                <option key={`${p.country}-${p.code}`} value={p.code}>
+                  {p.flag} {p.code}
+                </option>
+              ))}
+            </select>
+            <input 
+              value={formData.phone || ''} 
+              onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              className="w-2/3 px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            />
+          </div>
         </div>
         <div className="col-span-2">
           <label className="block text-gray-500 mb-1">{t('fields.urls')}</label>
@@ -309,7 +324,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
       </div>
       <div>
         <span className="text-gray-500 block mb-1">{t('fields.phone')}</span>
-        <span className="font-medium text-gray-900">{company.phone || '-'}</span>
+        <span className="font-medium text-gray-900">{company.phone ? `${company.phonePrefix ? company.phonePrefix + ' ' : ''}${company.phone}` : '-'}</span>
       </div>
       <div className="col-span-2">
         <span className="text-gray-500 block mb-1">{t('fields.urls')}</span>
@@ -323,7 +338,8 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
   );
 }
 
-function ContactsManager({ companyId, contacts, canEdit }: { companyId: string, contacts: Contact[], canEdit: boolean }) {
+function ContactsManager({ company, canEdit }: { company: Company, canEdit: boolean }) {
+  const { id: companyId, contacts } = company;
   const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
@@ -354,6 +370,7 @@ function ContactsManager({ companyId, contacts, canEdit }: { companyId: string, 
         position: newContact.position || '',
         email: newContact.email || '',
         phone: newContact.phone || '',
+        phonePrefix: newContact.phonePrefix || getDefaultPhonePrefixForCountry(company.country || ''),
         photoUrl: newContact.photoUrl,
         photoWebpUrl: newContact.photoWebpUrl,
         isActive: newContact.isActive ?? true
@@ -463,6 +480,7 @@ function ContactsManager({ companyId, contacts, canEdit }: { companyId: string, 
               handleImageUpload={handleImageUpload}
               t={t}
               isEditing={true}
+              defaultPrefix={getDefaultPhonePrefixForCountry(company.country || '')}
             />
           ) : (
             <div className={`group flex gap-4 p-4 border border-gray-200 rounded-lg ${contact.isActive === false ? 'bg-gray-100 opacity-60' : 'bg-gray-50/50'}`}>
@@ -525,7 +543,9 @@ function ContactsManager({ companyId, contacts, canEdit }: { companyId: string, 
                     <div className="flex items-center gap-2 relative w-fit">
                       {contact.doNotContact && <Ban className="absolute -left-1 text-red-500/80 w-5 h-5 z-10" />}
                       <Phone className={`w-4 h-4 ${contact.doNotContact ? 'text-gray-300' : 'text-gray-400'}`} />
-                      <span className={contact.doNotContact ? 'text-gray-400 line-through' : ''}>{contact.phone}</span>
+                      <span className={contact.doNotContact ? 'text-gray-400 line-through' : ''}>
+                        {contact.phonePrefix ? `${contact.phonePrefix} ` : ''}{contact.phone}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -562,6 +582,7 @@ function ContactsManager({ companyId, contacts, canEdit }: { companyId: string, 
           handleImageUpload={handleImageUpload}
           t={t}
           isEditing={false}
+          defaultPrefix={getDefaultPhonePrefixForCountry(company.country || '')}
         />
       )}
     </div>
@@ -577,9 +598,17 @@ function ContactForm({
   fileInputRef, 
   handleImageUpload, 
   t,
-  isEditing
+  isEditing,
+  defaultPrefix
 }: any) {
   const missingEmailPhone = submitAttempted && !contact.email && !contact.phone;
+
+  // Initialize phonePrefix if needed
+  React.useEffect(() => {
+    if (!contact.phonePrefix && defaultPrefix) {
+      setContact((prev: any) => ({ ...prev, phonePrefix: defaultPrefix }));
+    }
+  }, []);
 
   return (
     <div className="p-4 border border-gray-200 rounded-lg bg-white space-y-4">
@@ -631,11 +660,25 @@ function ContactForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
-          <input 
-            value={contact.phone || ''} 
-            onChange={e => setContact({...contact, phone: e.target.value})} 
-            className={`w-full px-3 py-2 border ${missingEmailPhone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
-          />
+          <div className="flex gap-2">
+            <select 
+              value={contact.phonePrefix || defaultPrefix || ''} 
+              onChange={e => setContact({...contact, phonePrefix: e.target.value})} 
+              className="w-1/3 px-2 py-2 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-indigo-500"
+            >
+              <option value="">--</option>
+              {PHONE_PREFIXES.map(p => (
+                <option key={`${p.country}-${p.code}`} value={p.code}>
+                  {p.flag} {p.code}
+                </option>
+              ))}
+            </select>
+            <input 
+              value={contact.phone || ''} 
+              onChange={e => setContact({...contact, phone: e.target.value})} 
+              className={`w-2/3 px-3 py-2 border ${missingEmailPhone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
+            />
+          </div>
         </div>
       </div>
       <div className="flex gap-2 justify-end">

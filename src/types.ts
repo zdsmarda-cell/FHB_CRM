@@ -26,6 +26,7 @@ export interface Contact {
   position: string;
   email: string;
   phone: string;
+  phonePrefix?: string;
   photoUrl?: string;
   photoWebpUrl?: string;
   isActive?: boolean;
@@ -45,6 +46,7 @@ export interface Company {
   segment: Segment;
   email: string;
   phone: string;
+  phonePrefix?: string;
   urls: string[]; // List of URLs
   contacts: Contact[];
 }
@@ -68,7 +70,7 @@ export interface Deal {
   companyId: string;
   stage: Stage;
   createdBy: string;
-  ownerId: string;
+  ownerId: string | null;
   createdAt: string;
   updatedAt: string;
   postponedUntil?: string;

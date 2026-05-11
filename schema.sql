@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS companies (
   segment VARCHAR(50),
   email VARCHAR(100),
   phone VARCHAR(50),
+  phonePrefix VARCHAR(20),
   urls JSON,
   contacts JSON
 );
