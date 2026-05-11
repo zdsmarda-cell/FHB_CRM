@@ -183,7 +183,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
                 <select 
                   value={formData.phonePrefix} 
                   onChange={e => setFormData({...formData, phonePrefix: e.target.value})} 
-                  className="w-1/3 px-2 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  className="w-[120px] px-2 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
                 >
                   {PHONE_PREFIXES.map(p => (
                     <option key={`${p.country}-${p.code}`} value={p.code}>
@@ -194,7 +194,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
                 <input 
                   value={formData.phone} 
                   onChange={e => setFormData({...formData, phone: e.target.value})} 
-                  className="w-2/3 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm" 
+                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm" 
                   placeholder="123 456 789"
                 />
               </div>
