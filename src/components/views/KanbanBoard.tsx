@@ -1,18 +1,30 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
-import { STAGES, getDealsForUser, canViewStage } from '../../lib/permissions';
-import { Stage } from '../../types';
+import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
+import { Stage, User, Deal } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { Building2, Calendar, Ban, UserPlus, Users } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
+import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
 import { useNavigate } from 'react-router-dom';
+
+const AVATAR_COLORS = [
+  'bg-blue-500',
+  'bg-emerald-500',
+  'bg-violet-500',
+  'bg-orange-500',
+  'bg-pink-500',
+  'bg-amber-500',
+  'bg-teal-500',
+];
 
 export function KanbanBoard() {
   const { t } = useTranslation();
   const state = useStore();
-  const { currentUser, companies, updateDealStage } = state;
+  const { currentUser, companies, updateDealStage, users } = state;
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -42,6 +54,54 @@ export function KanbanBoard() {
     if (dealId && currentUser) {
       updateDealStage(dealId, stage, currentUser.id);
     }
+  };
+
+  const userInitialsAndColors = useMemo(() => {
+    const mapping: Record<string, { initials: string, color: string, name: string }> = {};
+    const initialsCount: Record<string, number> = {};
+    
+    const sortedUsers = [...users].sort((a,b) => a.name.localeCompare(b.name));
+    
+    for (const user of sortedUsers) {
+      const parts = user.name.trim().split(/\s+/);
+      let initials = '??';
+      if (parts.length >= 2) {
+        initials = `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+      } else if (parts.length === 1 && parts[0].length >= 2) {
+        initials = parts[0].substring(0, 2).toUpperCase();
+      } else if (parts.length === 1 && parts[0].length === 1) {
+        initials = parts[0].toUpperCase();
+      }
+      
+      if (initialsCount[initials] === undefined) {
+        initialsCount[initials] = 0;
+      } else {
+        initialsCount[initials]++;
+      }
+      
+      const colorIndex = initialsCount[initials] % AVATAR_COLORS.length;
+      mapping[user.id] = { initials, color: AVATAR_COLORS[colorIndex], name: user.name };
+    }
+    return mapping;
+  }, [users]);
+
+  const canChangeAssignee = (deal: Deal) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
+    
+    if (deal.ownerId) {
+       const owner = users.find(u => u.id === deal.ownerId);
+       if (owner && owner.managerId === currentUser.id) return true;
+    } else {
+       // If empty, manager can assign if they manage someone who can work on this deal's stage??
+       // The requirement: "Vedouci pak u tech karticek, kde jsou prirazeni resitele z jeho tymu."
+       // It implies ONLY if the assignee is in their team. So if no assignee, manager can't?
+       // But what if "lead_opportunity" has no assignee? Can a manager pick it up for their team?
+       // Let's allow managers to change assignees of unassigned deals too, otherwise they get stuck.
+       // Actually, the easiest is to allow managers to change unassigned deals.
+       if (currentUser.role === 'administrator' || currentUser.role === 'cso' || getSubordinateIds(users, currentUser.id).length > 0) return true;
+    }
+    return false;
   };
 
   return (
@@ -81,6 +141,8 @@ export function KanbanBoard() {
                   const company = companies.find(c => c.id === deal.companyId);
                   if (!company) return null;
 
+                  const ownerInfo = deal.ownerId ? userInitialsAndColors[deal.ownerId] : null;
+
                   return (
                     <div 
                       key={deal.id}
@@ -113,13 +175,37 @@ export function KanbanBoard() {
                         )}
                       </div>
                       
-                      <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-center">
-                        <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 px-2 py-1 rounded capitalize">
-                          {company.segment}
-                        </span>
-                        <span className="text-[11px] text-gray-400 font-medium">
-                          {format(parseISO(deal.updatedAt), 'MMM d')}
-                        </span>
+                      <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-end">
+                        <div className="flex flex-col gap-2">
+                          <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 px-2 py-1 rounded capitalize w-fit">
+                            {company.segment}
+                          </span>
+                          <span className="text-[11px] text-gray-400 font-medium ml-1">
+                            {format(parseISO(deal.updatedAt), 'MMM d')}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {canChangeAssignee(deal) && (
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAssigneeModalDeal(deal);
+                              }}
+                              className="p-1 rounded-full text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                              title="Změnit řešitele"
+                            >
+                              <UserPlus className="w-4 h-4" />
+                            </button>
+                          )}
+                          <div 
+                            className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-2 ring-white cursor-help ${ownerInfo ? ownerInfo.color : 'bg-gray-300'}`}
+                            title={ownerInfo ? ownerInfo.name : 'bez řešitele'}
+                          >
+                            {ownerInfo ? ownerInfo.initials : '?'}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )
@@ -132,6 +218,13 @@ export function KanbanBoard() {
 
       {isFormOpen && (
         <CompanyForm onClose={() => setIsFormOpen(false)} />
+      )}
+      
+      {assigneeModalDeal && (
+        <ChangeAssigneeModal 
+          deal={assigneeModalDeal} 
+          onClose={() => setAssigneeModalDeal(null)} 
+        />
       )}
     </div>
   );

@@ -154,7 +154,7 @@ export function DealDetailsView() {
                   </div>
                   <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
                     <UserIcon className="w-3 h-3" />
-                    {user?.name || 'Unknown User'}
+                    {log.changedBy === 'System' ? 'System' : (user?.name || 'Unknown User')}
                   </div>
                 </div>
               )

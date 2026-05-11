@@ -1,0 +1,127 @@
+import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { User, Deal } from '../../types';
+import { useStore } from '../../store';
+import { X, Check } from 'lucide-react';
+import { STAGES, canViewStage, getSubordinateIds } from '../../lib/permissions';
+
+interface Props {
+  deal: Deal;
+  onClose: () => void;
+}
+
+export function ChangeAssigneeModal({ deal, onClose }: Props) {
+  const { t } = useTranslation();
+  const { users, currentUser, updateDeal } = useStore();
+  const [selectedUser, setSelectedUser] = useState<string>(deal.ownerId || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Determine selectable users
+  const selectableUsers = useMemo(() => {
+    if (!currentUser) return [];
+
+    const isGlobal = currentUser.role === 'administrator' || currentUser.role === 'cso';
+    const subIds = getSubordinateIds(users, currentUser.id);
+
+    return users.filter(user => {
+      // Exclude current assignee
+      // wait, the prompt says "vyjma aktualniho", but the modal should probably let you leave it as is, or we can filter it out:
+      if (user.id === deal.ownerId) return false;
+      if (!user.isActive) return false;
+
+      // Must have permission for the stage
+      // Admin/CSO can be assigned anything? Actually "s opravnenim pracovat nad danym pripadem v prislusnem stavu"
+      // Wait, canViewStage(user, deal.stage) works for Hunter/Closer/Farmer but also returns true for Admin/CSO.
+      const hasStagePerm = canViewStage(user, deal.stage);
+      if (!hasStagePerm) return false;
+
+      if (isGlobal) {
+        return true;
+      } else {
+        // Manager only sees people they manage
+        return subIds.includes(user.id);
+      }
+    });
+
+  }, [users, currentUser, deal.ownerId, deal.stage]);
+
+  const handleSave = async () => {
+    if (!currentUser) return;
+    if (selectedUser === deal.ownerId) {
+      onClose();
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      await updateDeal(deal.id, { ownerId: selectedUser }, currentUser.id);
+      onClose();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-gray-900/50 flex flex-col items-center justify-center p-4">
+      <div className="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+          <h2 className="text-lg font-semibold text-gray-800">Změna řešitele</h2>
+          <button 
+            onClick={onClose}
+            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto w-full">
+          {selectableUsers.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">Nenalezeni žádní další řešitelé pro tento stav.</p>
+          ) : (
+            <div className="space-y-2">
+              {selectableUsers.map(user => (
+                <button
+                  key={user.id}
+                  onClick={() => setSelectedUser(user.id)}
+                  className={`w-full text-left px-4 py-3 rounded-xl border flex items-center justify-between transition-colors ${
+                    selectedUser === user.id 
+                      ? 'border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600' 
+                      : 'border-gray-200 hover:border-indigo-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{user.name}</div>
+                    <div className="text-xs text-gray-500 uppercase">{user.role}</div>
+                  </div>
+                  {selectedUser === user.id && (
+                    <Check className="w-5 h-5 text-indigo-600" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            {t('common.cancel')}
+          </button>
+          <button 
+            type="button"
+            disabled={!selectedUser || selectedUser === deal.ownerId || isSaving}
+            onClick={handleSave}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? 'Ukládám...' : 'Uložit'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
