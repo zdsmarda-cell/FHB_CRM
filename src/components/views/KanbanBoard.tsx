@@ -244,14 +244,21 @@ export function KanbanBoard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
-                                if (
+                                const willAdvance = 
                                   deal.stage === 'lead_opportunity' &&
                                   deal.leadSourceId &&
                                   deal.ecommercePlatformId &&
                                   deal.estimatedMonthlyParcels &&
-                                  deal.estimatedMonthlyParcels > 0
-                                ) {
+                                  deal.estimatedMonthlyParcels > 0;
+                                  
+                                if (willAdvance) {
+                                  if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${t('stages.discovery_proposal')}. Chcete pokračovat?`)) {
+                                    return;
+                                  }
+                                }
+                                
+                                const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
+                                if (willAdvance) {
                                   updates.stage = 'discovery_proposal';
                                 }
                                 state.updateDeal(deal.id, updates, currentUser!.id);

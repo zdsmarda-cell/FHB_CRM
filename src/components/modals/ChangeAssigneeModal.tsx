@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { User, Deal } from '../../types';
 import { useStore } from '../../store';
-import { X, Check } from 'lucide-react';
+import { X, Check, AlertTriangle } from 'lucide-react';
 import { STAGES, canViewStage, getSubordinateIds } from '../../lib/permissions';
 
 interface Props {
@@ -42,6 +42,14 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
 
   }, [users, currentUser, currentAssigneeId, deal.stage]);
 
+  const willAdvance = deal.stage === 'lead_opportunity' &&
+    currentAssigneeField === 'hunterId' &&
+    selectedUser !== '' &&
+    deal.leadSourceId &&
+    deal.ecommercePlatformId &&
+    deal.estimatedMonthlyParcels &&
+    deal.estimatedMonthlyParcels > 0;
+
   const handleSave = async () => {
     if (!currentUser) return;
     if (selectedUser === currentAssigneeId) {
@@ -54,15 +62,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
       const updates: Partial<Deal> = { [currentAssigneeField]: selectedUser === '' ? null : selectedUser };
       
       // Auto promote if all required fields are set
-      if (
-        deal.stage === 'lead_opportunity' &&
-        currentAssigneeField === 'hunterId' &&
-        selectedUser !== '' &&
-        deal.leadSourceId &&
-        deal.ecommercePlatformId &&
-        deal.estimatedMonthlyParcels &&
-        deal.estimatedMonthlyParcels > 0
-      ) {
+      if (willAdvance) {
         updates.stage = 'discovery_proposal';
       }
 
@@ -91,6 +91,20 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
         </div>
 
         <div className="p-6 overflow-y-auto w-full">
+          {willAdvance && (
+            <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-blue-400" aria-hidden="true" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700">
+                    Přiřazením bude příležitost automaticky posunuta do fáze <strong>{t('stages.discovery_proposal')}</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           {selectableUsers.length === 0 && !showUnassignOption ? (
             <p className="text-sm text-gray-500 text-center py-4">Nenalezeni žádní další řešitelé pro tento stav.</p>
           ) : (
