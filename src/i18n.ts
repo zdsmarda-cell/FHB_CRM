@@ -71,6 +71,7 @@ const resources = {
       },
       errors: {
         emailExists: 'This email already exists in the system.',
+        contactEmailExists: 'A contact with this email already exists.',
         icoExists: 'Company with this ID already exists.',
         passwordMismatch: 'Passwords do not match.',
         generalError: 'An error occurred. Please check the fields below.',
@@ -91,7 +92,36 @@ const resources = {
         edit: 'Edit',
         language: 'Language',
         user: 'Acting User',
-        error: 'Error'
+        error: 'Error',
+        contacts: 'Contacts',
+        activities: 'Activities',
+        history: 'History',
+        addContact: 'Add Contact',
+        newContact: 'New Contact',
+        editContact: 'Edit Contact',
+        activeOnly: 'Active only',
+        showAll: 'Show all',
+        search: 'Search...',
+        advancingToContracting: 'The deal was automatically moved to the Contracting stage.'
+      },
+      deal: {
+        attributes: {
+          leadSource: 'Lead source',
+          ecommercePlatform: 'E-commerce platform',
+          estimatedParcels: 'Estimated monthly parcels',
+          deliveryCountries: 'Delivery countries',
+          averageItems: 'Average items per order',
+          averageWeight: 'Average parcel weight (kg)',
+          averageVolume: 'Average parcel volume (cm³)',
+          pricingOffers: 'Pricing offers',
+          addOffer: 'Add offer',
+          download: 'Download',
+          addedBy: 'Added by',
+          noOffers: 'No pricing offers added yet.',
+          enterValidInteger: 'Please enter a valid integer greater than zero.',
+          notSelected: 'Not selected',
+          title: 'Attributes'
+        }
       },
       validation: {
         emailRequired: 'Email is required',
@@ -169,6 +199,7 @@ const resources = {
       },
       errors: {
         emailExists: 'Zadaný email již v systému existuje.',
+        contactEmailExists: 'Kontakt s tímto emailem již existuje.',
         icoExists: 'Společnost s tímto IČO již existuje.',
         passwordMismatch: 'Hesla se neshodují.',
         generalError: 'Vyskytla se chyba. Zkontrolujte prosím pole níže.',
@@ -189,7 +220,36 @@ const resources = {
         edit: 'Upravit',
         language: 'Jazyk',
         user: 'Zastupující Uživatel',
-        error: 'Chyba'
+        error: 'Chyba',
+        contacts: 'Kontakty',
+        activities: 'Aktivity',
+        history: 'Historie',
+        addContact: 'Přidat kontakt',
+        newContact: 'Nový kontakt',
+        editContact: 'Upravit kontakt',
+        activeOnly: 'Pouze aktivní',
+        showAll: 'Zobrazit všechny',
+        search: 'Hledat...',
+        advancingToContracting: 'Příležitost byla automaticky posunuta do fáze Contracting.'
+      },
+      deal: {
+        attributes: {
+          leadSource: 'Zdroj leadu',
+          ecommercePlatform: 'E-commerce platforma',
+          estimatedParcels: 'Odhadovaný měsíční počet balíků',
+          deliveryCountries: 'Země doručení',
+          averageItems: 'Průměrný počet ks v objednávce',
+          averageWeight: 'Průměrná hmotnost zásilky (kg)',
+          averageVolume: 'Průměrný objem balíku (cm³)',
+          pricingOffers: 'Cenové nabídky',
+          addOffer: 'Přidat nabídku',
+          download: 'Stáhnout',
+          addedBy: 'Přidal',
+          noOffers: 'Zatím nebyly přidány žádné cenové nabídky.',
+          enterValidInteger: 'Zadejte prosím platné celé číslo větší než nula.',
+          notSelected: 'Nevybráno',
+          title: 'Atributy'
+        }
       },
       validation: {
         emailRequired: 'Email musí být zadán',

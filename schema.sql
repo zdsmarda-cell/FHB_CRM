@@ -50,6 +50,11 @@ CREATE TABLE IF NOT EXISTS deals (
   leadSourceId VARCHAR(50),
   ecommercePlatformId VARCHAR(50),
   estimatedMonthlyParcels INT,
+  deliveryCountries JSON,
+  averageItemsPerOrder INT,
+  averageParcelWeight INT,
+  averageParcelVolume INT,
+  pricingOffers JSON,
   createdAt DATETIME,
   updatedAt DATETIME
 );

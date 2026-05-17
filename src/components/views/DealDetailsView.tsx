@@ -158,9 +158,7 @@ export function DealDetailsView() {
           <ActivitiesManager deal={deal} company={company} canEdit={canEdit} />
 
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mt-8 pt-6 border-t border-gray-100">
-            <Clock className="w-5 h-5 text-gray-400" />
-            History
-          </h3>
+            <Clock className="w-5 h-5 text-gray-400" />{t('common.history')}</h3>
           
           <div className="space-y-4">
             {paginatedLogs.map(log => {
@@ -521,9 +519,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   return (
     <div className="mb-8">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Atributy
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-900">{t('deal.attributes.title')}</h3>
         {canEdit && !isEditing && (
           <button onClick={handleEdit} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">
             {t('common.edit')}
@@ -549,33 +545,33 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           )}
           
           <div>
-            <label className="block text-gray-500 mb-1">Zdroj leadu *</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.leadSource')} *</label>
             <select 
               value={formData.leadSourceId || ''} 
               onChange={e => setFormData({ ...formData, leadSourceId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
             >
-              <option value="">Nevybráno</option>
+              <option value="">{t('deal.attributes.notSelected')}</option>
               {leadSources.filter(ls => ls.isActive !== false || ls.id === deal.leadSourceId).map(ls => (
                 <option key={ls.id} value={ls.id}>{ls.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-gray-500 mb-1">E-commerce platforma *</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.ecommercePlatform')} *</label>
             <select 
               value={formData.ecommercePlatformId || ''} 
               onChange={e => setFormData({ ...formData, ecommercePlatformId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
             >
-              <option value="">Nevybráno</option>
+              <option value="">{t('deal.attributes.notSelected')}</option>
               {ecommercePlatforms.filter(ec => ec.isActive !== false || ec.id === deal.ecommercePlatformId).map(ec => (
                 <option key={ec.id} value={ec.id}>{ec.name}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-gray-500 mb-1">Odhadovaný měsíční počet balíků *</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.estimatedParcels')} *</label>
             <input 
               type="text"
               value={parcelsStr} 
@@ -591,14 +587,14 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (parcelsError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
             />
             {parcelsError && (
-              <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>
+              <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>
             )}
           </div>
           
           {showCloserAttributes && (
             <>
               <div>
-                <label className="block text-gray-500 mb-1">Země doručení</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.deliveryCountries')}</label>
                 <div className="max-h-40 overflow-y-auto border border-gray-300 rounded p-2 grid grid-cols-2 gap-2 text-sm bg-white">
                   {PHONE_PREFIXES.filter(p => p.country !== 'Other').map(p => (
                     <label key={p.country} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
@@ -615,7 +611,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               </div>
               
               <div>
-                <label className="block text-gray-500 mb-1">Průměrný počet ks v objednávce</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.averageItems')}</label>
                 <input 
                   type="text"
                   value={itemsStr} 
@@ -626,11 +622,11 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.items ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
-                {errors.items && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+                {errors.items && <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>}
               </div>
 
               <div>
-                <label className="block text-gray-500 mb-1">Průměrná hmotnost zásilky (kg)</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.averageWeight')}</label>
                 <input 
                   type="text"
                   value={weightStr} 
@@ -641,11 +637,11 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.weight ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
-                {errors.weight && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+                {errors.weight && <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>}
               </div>
 
               <div>
-                <label className="block text-gray-500 mb-1">Průměrný objem balíku (cm³)</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.averageVolume')}</label>
                 <input 
                   type="text"
                   value={volumeStr} 
@@ -656,7 +652,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.volume ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
-                {errors.volume && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+                {errors.volume && <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>}
               </div>
             </>
           )}
@@ -669,22 +665,22 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       ) : (
         <div className="space-y-4 text-sm mt-3">
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Zdroj leadu</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.leadSource')}</span>
             <span className="text-gray-900 font-medium">{lsName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">E-commerce platforma</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.ecommercePlatform')}</span>
             <span className="text-gray-900 font-medium">{ecName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný měsíč. počet balíků</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.estimatedParcels')}</span>
             <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'}</span>
           </div>
           
           {showCloserAttributes && (
             <>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Země doručení</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.deliveryCountries')}</span>
                 <div className="flex flex-wrap gap-1 mt-1">
                   {deal.deliveryCountries?.length ? deal.deliveryCountries.map(c => {
                     const p = PHONE_PREFIXES.find(prefix => prefix.country === c);
@@ -697,15 +693,15 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 </div>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný počet ks v objednávce</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.averageItems')}</span>
                 <span className="text-gray-900 font-medium">{deal.averageItemsPerOrder || '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrná hmotnost zásilky (kg)</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.averageWeight')}</span>
                 <span className="text-gray-900 font-medium">{deal.averageParcelWeight || '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný objem balíku (cm³)</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.averageVolume')}</span>
                 <span className="text-gray-900 font-medium">{deal.averageParcelVolume || '-'}</span>
               </div>
             </>
@@ -716,7 +712,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       {showCloserAttributes && (
         <div className="mt-6 pt-6 border-t border-gray-100">
           <div className="flex justify-between items-center mb-3">
-            <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">Cenové nabídky</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">{t('deal.attributes.pricingOffers')}</span>
             {canEdit && (
               <div>
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
@@ -724,7 +720,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   onClick={() => fileInputRef.current?.click()}
                   className="text-xs bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-50 font-medium flex items-center gap-1 shadow-sm"
                 >
-                  <Upload className="w-3 h-3" /> Přidat nabídku
+                  <Upload className="w-3 h-3" /> {t('deal.attributes.addOffer')}
                 </button>
               </div>
             )}
@@ -743,17 +739,17 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                       <div>
                         <p className="text-xs font-medium text-gray-800">{offer.filename}</p>
                         <p className="text-[10px] text-gray-500">
-                          {format(parseISO(offer.dateSent), 'MMM d, yyyy HH:mm')} • Přidal {u?.name || 'Unknown'}
+                          {format(parseISO(offer.dateSent), 'MMM d, yyyy HH:mm')} • {t('deal.attributes.addedBy')} {u?.name || 'Unknown'}
                         </p>
                       </div>
                     </div>
-                    <button className="text-xs text-indigo-600 hover:underline">Stáhnout</button>
+                    <button className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</button>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <p className="text-xs text-gray-500">Zatím nebyly přidány žádné cenové nabídky.</p>
+            <p className="text-xs text-gray-500">{t('deal.attributes.noOffers')}</p>
           )}
         </div>
       )}
@@ -797,7 +793,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
       );
 
       if (emailExists) {
-        setEmailError('Kontakt s tímto emailem již existuje. (A contact with this email already exists.)');
+        setEmailError(t('errors.contactEmailExists'));
         return;
       }
     }
@@ -913,14 +909,12 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
     <div>
       <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
         <div className="flex items-center gap-3">
-          <h3 className="text-lg font-semibold text-gray-900">
-            Contacts
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900">{t('common.contacts')}</h3>
           <button 
             onClick={() => setShowAllContacts(!showAllContacts)}
             className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded"
           >
-            {showAllContacts ? 'Active only' : 'Show all'}
+            {showAllContacts ? t('common.activeOnly') : t('common.showAll')}
           </button>
         </div>
       </div>
@@ -1038,7 +1032,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
           }}
           className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
         >
-          <Plus className="w-4 h-4" /> Add Contact
+          <Plus className="w-4 h-4" /> {t('common.addContact')}
         </button>
       )}
 
@@ -1089,7 +1083,7 @@ function ContactForm({
 
   return (
     <div className="p-4 border border-gray-200 rounded-lg bg-white space-y-4">
-      <h4 className="font-medium text-gray-900">{isEditing ? 'Edit Contact' : 'New Contact'}</h4>
+      <h4 className="font-medium text-gray-900">{isEditing ? t('common.editContact') : t('common.newContact')}</h4>
       
       <div className="flex items-center gap-4">
         <div className="flex-shrink-0">
@@ -1354,6 +1348,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 }
 
 function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
+  const { t } = useTranslation();
   const { activities, addActivity, users, currentUser } = useStore();
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
@@ -1493,9 +1488,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-gray-400" />
-          Activities
-        </h3>
+          <MessageSquare className="w-5 h-5 text-gray-400" />{t('common.activities')}</h3>
         <div className="flex gap-3">
           {(currentUser?.googleIntegration?.connected || currentUser?.msIntegration?.connected) && canEdit && (
             <button 
