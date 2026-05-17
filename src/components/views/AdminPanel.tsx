@@ -154,19 +154,33 @@ export function AdminPanel() {
             </div>
             <ul className="divide-y divide-gray-100">
               {store.leadSources.map(s => (
-                <li key={s.id} className="py-3 flex justify-between items-center group">
-                  <span className="text-sm text-gray-700">{s.name}</span>
-                  <button 
-                    onClick={() => {
-                      if (window.confirm('Opravdu to chcete smazat?')) {
-                        store.deleteLeadSource(s.id);
-                      }
-                    }}
-                    className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
-                    title="Smazat"
-                  >
-                    <XCircle className="w-4 h-4" />
-                  </button>
+                <li key={s.id} className="py-3 flex justify-between items-center group gap-2">
+                  <input
+                    type="text"
+                    value={s.name}
+                    onChange={(e) => store.updateLeadSource(s.id, { name: e.target.value })}
+                    className={`flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-1 py-0.5 transition-colors ${s.isActive === false ? 'text-gray-400 line-through' : 'text-gray-700'}`}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => store.updateLeadSource(s.id, { isActive: s.isActive === false ? true : false })}
+                      className="text-xs text-gray-500 hover:text-gray-800 border px-2 py-1 rounded"
+                    >
+                      {s.isActive === false ? 'Aktivovat' : 'Deaktivovat'}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (window.confirm('Opravdu to chcete smazat?')) {
+                          store.deleteLeadSource(s.id).catch(err => alert(err.message));
+                        }
+                      }}
+                      disabled={store.deals.some(d => d.leadSourceId === s.id)}
+                      className={`transition-opacity p-1 rounded ${store.deals.some(d => d.leadSourceId === s.id) ? 'text-gray-300 cursor-not-allowed opacity-100' : 'text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-50'}`}
+                      title={store.deals.some(d => d.leadSourceId === s.id) ? 'Nelze smazat (je přiřazeno k příležitostem)' : 'Smazat'}
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
                 </li>
               ))}
               {store.leadSources.length === 0 && (
@@ -201,19 +215,33 @@ export function AdminPanel() {
             </div>
             <ul className="divide-y divide-gray-100">
               {store.ecommercePlatforms.map(s => (
-                <li key={s.id} className="py-3 flex justify-between items-center group">
-                  <span className="text-sm text-gray-700">{s.name}</span>
-                  <button 
-                    onClick={() => {
-                      if (window.confirm('Opravdu to chcete smazat?')) {
-                        store.deleteEcommercePlatform(s.id);
-                      }
-                    }}
-                    className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
-                    title="Smazat"
-                  >
-                    <XCircle className="w-4 h-4" />
-                  </button>
+                <li key={s.id} className="py-3 flex justify-between items-center group gap-2">
+                  <input
+                    type="text"
+                    value={s.name}
+                    onChange={(e) => store.updateEcommercePlatform(s.id, { name: e.target.value })}
+                    className={`flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-1 py-0.5 transition-colors ${s.isActive === false ? 'text-gray-400 line-through' : 'text-gray-700'}`}
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => store.updateEcommercePlatform(s.id, { isActive: s.isActive === false ? true : false })}
+                      className="text-xs text-gray-500 hover:text-gray-800 border px-2 py-1 rounded"
+                    >
+                      {s.isActive === false ? 'Aktivovat' : 'Deaktivovat'}
+                    </button>
+                    <button 
+                      onClick={() => {
+                        if (window.confirm('Opravdu to chcete smazat?')) {
+                          store.deleteEcommercePlatform(s.id).catch(err => alert(err.message));
+                        }
+                      }}
+                      disabled={store.deals.some(d => d.ecommercePlatformId === s.id)}
+                      className={`transition-opacity p-1 rounded ${store.deals.some(d => d.ecommercePlatformId === s.id) ? 'text-gray-300 cursor-not-allowed opacity-100' : 'text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-50'}`}
+                      title={store.deals.some(d => d.ecommercePlatformId === s.id) ? 'Nelze smazat (je přiřazeno k příležitostem)' : 'Smazat'}
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
                 </li>
               ))}
               {store.ecommercePlatforms.length === 0 && (

@@ -120,6 +120,8 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN leadSourceId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN ecommercePlatformId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN estimatedMonthlyParcels INT;",
+        "ALTER TABLE lead_sources ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE ecommerce_platforms ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
         "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
         "UPDATE deals SET closerId = ownerId WHERE stage = 'discovery_proposal' AND ownerId IS NOT NULL;",
         "UPDATE deals SET farmerId = ownerId WHERE (stage = 'contracting' OR stage = 'farming') AND ownerId IS NOT NULL;",
@@ -636,8 +638,8 @@ async function startServer() {
         me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
         deals: deals,
-        leadSources: leadSources,
-        ecommercePlatforms: ecommercePlatforms,
+        leadSources: parseJsonFields(leadSources as any[], []),
+        ecommercePlatforms: parseJsonFields(ecommercePlatforms as any[], []),
         auditLogs: [],
         activities: []
       });
@@ -699,6 +701,15 @@ async function startServer() {
       const allowedTables = ['lead_sources', 'ecommerce_platforms'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
+      }
+
+      // Check if there are any deals referencing the entity
+      const fkColumn = table === 'lead_sources' ? 'leadSourceId' : 'ecommercePlatformId';
+      const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
+      const count = (rows as any[])[0].count;
+
+      if (count > 0) {
+        return res.status(400).json({ error: `Cannot delete because there are ${count} deals referencing this entity.` });
       }
 
       await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);

@@ -123,14 +123,18 @@ export const useStore = create<StoreState>((set, get) => {
     currentUser: null,
 
     addLeadSource: async (name) => {
-      const newSource = { id: uuidv4(), name };
-      await persistStateToDB({ lead_sources: [newSource] });
+      const newSource = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ lead_sources: [newSource] });
       set(state => ({ leadSources: [...state.leadSources, newSource] }));
     },
-    updateLeadSource: async (id, name) => {
-      await persistStateToDB({ lead_sources: [{ id, name }] });
+    updateLeadSource: async (id, updates) => {
+      const state = get();
+      const existing = state.leadSources.find(s => s.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ lead_sources: [updated] });
       set(state => ({
-        leadSources: state.leadSources.map(s => s.id === id ? { ...s, name } : s)
+        leadSources: state.leadSources.map(s => s.id === id ? updated : s)
       }));
     },
     deleteLeadSource: async (id) => {
@@ -138,20 +142,29 @@ export const useStore = create<StoreState>((set, get) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table: 'lead_sources', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
       });
       set(state => ({
         leadSources: state.leadSources.filter(s => s.id !== id)
       }));
     },
     addEcommercePlatform: async (name) => {
-      const newPlatform = { id: uuidv4(), name };
-      await persistStateToDB({ ecommerce_platforms: [newPlatform] });
+      const newPlatform = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ ecommerce_platforms: [newPlatform] });
       set(state => ({ ecommercePlatforms: [...state.ecommercePlatforms, newPlatform] }));
     },
-    updateEcommercePlatform: async (id, name) => {
-      await persistStateToDB({ ecommerce_platforms: [{ id, name }] });
+    updateEcommercePlatform: async (id, updates) => {
+      const state = get();
+      const existing = state.ecommercePlatforms.find(p => p.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ ecommerce_platforms: [updated] });
       set(state => ({
-        ecommercePlatforms: state.ecommercePlatforms.map(s => s.id === id ? { ...s, name } : s)
+        ecommercePlatforms: state.ecommercePlatforms.map(s => s.id === id ? updated : s)
       }));
     },
     deleteEcommercePlatform: async (id) => {
@@ -159,6 +172,11 @@ export const useStore = create<StoreState>((set, get) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table: 'ecommerce_platforms', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
       });
       set(state => ({
         ecommercePlatforms: state.ecommercePlatforms.filter(s => s.id !== id)

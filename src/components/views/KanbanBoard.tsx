@@ -151,13 +151,7 @@ export function KanbanBoard() {
        const owner = users.find(u => u.id === curId);
        if (owner && owner.managerId === currentUser.id) return true;
     } else {
-       // If empty, manager can assign if they manage someone who can work on this deal's stage??
-       // The requirement: "Vedouci pak u tech karticek, kde jsou prirazeni resitele z jeho tymu."
-       // It implies ONLY if the assignee is in their team. So if no assignee, manager can't?
-       // But what if "lead_opportunity" has no assignee? Can a manager pick it up for their team?
-       // Let's allow managers to change assignees of unassigned deals too, otherwise they get stuck.
-       // Actually, the easiest is to allow managers to change unassigned deals.
-       if (currentUser.role === 'administrator' || currentUser.role === 'cso' || getSubordinateIds(users, currentUser.id).length > 0) return true;
+       if (getSubordinateIds(users, currentUser.id).length > 0) return true;
     }
     return false;
   };

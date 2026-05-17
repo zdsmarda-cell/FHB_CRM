@@ -68,11 +68,13 @@ export interface Activity {
 export interface LeadSource {
   id: string;
   name: string;
+  isActive?: boolean;
 }
 
 export interface EcommercePlatform {
   id: string;
   name: string;
+  isActive?: boolean;
 }
 
 export interface Deal {
@@ -122,10 +124,10 @@ export interface StoreState {
   
   // Actions
   refreshState: () => Promise<void>;
-  updateLeadSource: (id: string, name: string) => Promise<void>;
+  updateLeadSource: (id: string, updates: Partial<LeadSource>) => Promise<void>;
   addLeadSource: (name: string) => Promise<void>;
   deleteLeadSource: (id: string) => Promise<void>;
-  updateEcommercePlatform: (id: string, name: string) => Promise<void>;
+  updateEcommercePlatform: (id: string, updates: Partial<EcommercePlatform>) => Promise<void>;
   addEcommercePlatform: (name: string) => Promise<void>;
   deleteEcommercePlatform: (id: string) => Promise<void>;
   fetchDealDetails: (dealId: string) => Promise<void>;

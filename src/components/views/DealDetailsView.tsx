@@ -411,7 +411,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
             >
               <option value="">Nevybráno</option>
-              {leadSources.map(ls => (
+              {leadSources.filter(ls => ls.isActive !== false || ls.id === deal.leadSourceId).map(ls => (
                 <option key={ls.id} value={ls.id}>{ls.name}</option>
               ))}
             </select>
@@ -424,7 +424,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
             >
               <option value="">Nevybráno</option>
-              {ecommercePlatforms.map(ec => (
+              {ecommercePlatforms.filter(ec => ec.isActive !== false || ec.id === deal.ecommercePlatformId).map(ec => (
                 <option key={ec.id} value={ec.id}>{ec.name}</option>
               ))}
             </select>
