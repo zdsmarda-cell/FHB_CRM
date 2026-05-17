@@ -71,13 +71,36 @@ export function DealDetailsView() {
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-1">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-200 rounded-full text-gray-500 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
             <h2 className="text-2xl font-bold text-gray-900 leading-tight">{company.name}</h2>
             <p className="text-sm text-gray-500 mt-1">{t('fields.ico')}: {company.companyId}</p>
+          </div>
+          
+          <div className="ml-8 flex flex-wrap items-center gap-2">
+            {[
+              { role: 'Hunter', id: deal.hunterId },
+              { role: 'Closer', id: deal.closerId },
+              { role: 'Farmer', id: deal.farmerId }
+            ].map(({ role, id }) => {
+              if (!id) return null;
+              const user = users.find(u => u.id === id);
+              if (!user) return null;
+              return (
+                <div key={role} className="flex items-center gap-2 bg-white/60 border border-gray-200 rounded-lg pl-1.5 pr-3 py-1.5 shadow-sm" title={`${role}: ${user.name}`}>
+                  <div className="flex-shrink-0 w-7 h-7 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                    {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col justify-center">
+                    <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold leading-none">{role}</span>
+                    <span className="text-gray-900 font-medium text-sm leading-none mt-1 truncate max-w-[120px]">{user.name}</span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         {canEdit && !isEditing && (
