@@ -7,6 +7,7 @@ import { Building2, Calendar, Ban, UserPlus, Users } from 'lucide-react';
 import React, { useState, useEffect, useMemo } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
+import { LostDealModal } from '../modals/LostDealModal';
 import { useNavigate } from 'react-router-dom';
 
 const AVATAR_COLORS = [
@@ -40,6 +41,7 @@ export function KanbanBoard() {
   const { currentUser, companies, updateDealStage, users } = state;
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
+  const [lostDealId, setLostDealId] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -90,7 +92,11 @@ export function KanbanBoard() {
         }
       }
       
-      updateDealStage(dealId, stage, currentUser.id);
+      if (stage === 'lost' && deal.stage !== 'lost') {
+        setLostDealId(dealId);
+      } else {
+        updateDealStage(dealId, stage, currentUser.id);
+      }
     }
   };
 
@@ -283,6 +289,13 @@ export function KanbanBoard() {
         <ChangeAssigneeModal 
           deal={assigneeModalDeal} 
           onClose={() => setAssigneeModalDeal(null)} 
+        />
+      )}
+
+      {lostDealId && (
+        <LostDealModal
+          dealId={lostDealId}
+          onClose={() => setLostDealId(null)}
         />
       )}
     </div>
