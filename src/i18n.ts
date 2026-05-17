@@ -81,6 +81,7 @@ const resources = {
         save: 'Save',
         cancel: 'Cancel',
         add: 'Add',
+        edit: 'Edit',
         language: 'Language',
         user: 'Acting User'
       },
@@ -170,6 +171,7 @@ const resources = {
         save: 'Uložit',
         cancel: 'Zrušit',
         add: 'Přidat',
+        edit: 'Upravit',
         language: 'Jazyk',
         user: 'Zastupující Uživatel'
       },

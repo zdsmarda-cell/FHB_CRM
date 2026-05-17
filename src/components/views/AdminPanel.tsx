@@ -6,6 +6,64 @@ import { UserForm } from '../modals/UserForm';
 import { User } from '../../types';
 import { EmailLogsTable } from './EmailLogsTable';
 
+import { ConfirmModal } from '../modals/ConfirmModal';
+
+const EditableAttributeItem = ({
+  item,
+  onUpdateName,
+  onToggleActive,
+  onDelete,
+  isDeleteDisabled
+}: {
+  item: any;
+  onUpdateName: (name: string) => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+  isDeleteDisabled: boolean;
+}) => {
+  const [val, setVal] = React.useState(item.name);
+  const [showConfirm, setShowConfirm] = React.useState(false);
+  React.useEffect(() => { setVal(item.name); }, [item.name]);
+
+  return (
+    <>
+      <li className="py-3 flex justify-between items-center group gap-2">
+        <input
+          type="text"
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onBlur={() => { if (val !== item.name) onUpdateName(val); }}
+          className={`flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-1 py-0.5 transition-colors ${item.isActive === false ? 'text-gray-400 line-through' : 'text-gray-700'}`}
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleActive}
+            className="text-xs text-gray-500 hover:text-gray-800 border px-2 py-1 rounded"
+          >
+            {item.isActive === false ? 'Aktivovat' : 'Deaktivovat'}
+          </button>
+          <button 
+            onClick={() => setShowConfirm(true)}
+            disabled={isDeleteDisabled}
+            className={`transition-opacity p-1 rounded ${isDeleteDisabled ? 'text-gray-300 cursor-not-allowed opacity-100' : 'text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-50'}`}
+            title={isDeleteDisabled ? 'Nelze smazat (je přiřazeno k příležitostem)' : 'Smazat'}
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </div>
+      </li>
+      <ConfirmModal
+        isOpen={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={onDelete}
+        title="Smazat položku"
+        message="Opravdu chcete tuto položku smazat? Tato akce je nevratná."
+        confirmText="Smazat"
+      />
+    </>
+  );
+};
+
 export function AdminPanel() {
   const { t } = useTranslation();
   const store = useStore();
@@ -154,34 +212,14 @@ export function AdminPanel() {
             </div>
             <ul className="divide-y divide-gray-100">
               {store.leadSources.map(s => (
-                <li key={s.id} className="py-3 flex justify-between items-center group gap-2">
-                  <input
-                    type="text"
-                    value={s.name}
-                    onChange={(e) => store.updateLeadSource(s.id, { name: e.target.value })}
-                    className={`flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-1 py-0.5 transition-colors ${s.isActive === false ? 'text-gray-400 line-through' : 'text-gray-700'}`}
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => store.updateLeadSource(s.id, { isActive: s.isActive === false ? true : false })}
-                      className="text-xs text-gray-500 hover:text-gray-800 border px-2 py-1 rounded"
-                    >
-                      {s.isActive === false ? 'Aktivovat' : 'Deaktivovat'}
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (window.confirm('Opravdu to chcete smazat?')) {
-                          store.deleteLeadSource(s.id).catch(err => alert(err.message));
-                        }
-                      }}
-                      disabled={store.deals.some(d => d.leadSourceId === s.id)}
-                      className={`transition-opacity p-1 rounded ${store.deals.some(d => d.leadSourceId === s.id) ? 'text-gray-300 cursor-not-allowed opacity-100' : 'text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-50'}`}
-                      title={store.deals.some(d => d.leadSourceId === s.id) ? 'Nelze smazat (je přiřazeno k příležitostem)' : 'Smazat'}
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                </li>
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateLeadSource(s.id, { name })}
+                  onToggleActive={() => store.updateLeadSource(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteLeadSource(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.deals.some(d => d.leadSourceId === s.id)}
+                />
               ))}
               {store.leadSources.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">Zatím žádné zdroje leadů.</li>
@@ -215,34 +253,14 @@ export function AdminPanel() {
             </div>
             <ul className="divide-y divide-gray-100">
               {store.ecommercePlatforms.map(s => (
-                <li key={s.id} className="py-3 flex justify-between items-center group gap-2">
-                  <input
-                    type="text"
-                    value={s.name}
-                    onChange={(e) => store.updateEcommercePlatform(s.id, { name: e.target.value })}
-                    className={`flex-1 text-sm bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none px-1 py-0.5 transition-colors ${s.isActive === false ? 'text-gray-400 line-through' : 'text-gray-700'}`}
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => store.updateEcommercePlatform(s.id, { isActive: s.isActive === false ? true : false })}
-                      className="text-xs text-gray-500 hover:text-gray-800 border px-2 py-1 rounded"
-                    >
-                      {s.isActive === false ? 'Aktivovat' : 'Deaktivovat'}
-                    </button>
-                    <button 
-                      onClick={() => {
-                        if (window.confirm('Opravdu to chcete smazat?')) {
-                          store.deleteEcommercePlatform(s.id).catch(err => alert(err.message));
-                        }
-                      }}
-                      disabled={store.deals.some(d => d.ecommercePlatformId === s.id)}
-                      className={`transition-opacity p-1 rounded ${store.deals.some(d => d.ecommercePlatformId === s.id) ? 'text-gray-300 cursor-not-allowed opacity-100' : 'text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-50'}`}
-                      title={store.deals.some(d => d.ecommercePlatformId === s.id) ? 'Nelze smazat (je přiřazeno k příležitostem)' : 'Smazat'}
-                    >
-                      <XCircle className="w-4 h-4" />
-                    </button>
-                  </div>
-                </li>
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateEcommercePlatform(s.id, { name })}
+                  onToggleActive={() => store.updateEcommercePlatform(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteEcommercePlatform(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.deals.some(d => d.ecommercePlatformId === s.id)}
+                />
               ))}
               {store.ecommercePlatforms.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">Zatím žádné e-commerce platformy.</li>

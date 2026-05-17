@@ -17,6 +17,7 @@ export function DealDetailsView() {
   const { deals, companies, auditLogs, users, currentUser, updateCompany } = store;
 
   React.useEffect(() => {
+    store.refreshState();
     if (id) {
       store.fetchDealDetails(id);
     }
@@ -345,16 +346,19 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Deal>>({
     leadSourceId: deal.leadSourceId,
-    ecommercePlatformId: deal.ecommercePlatformId,
-    estimatedMonthlyParcels: deal.estimatedMonthlyParcels
+    ecommercePlatformId: deal.ecommercePlatformId
   });
+  
+  const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
+  const [parcelsError, setParcelsError] = useState<boolean>(false);
 
   const handleEdit = () => {
     setFormData({
       leadSourceId: deal.leadSourceId,
-      ecommercePlatformId: deal.ecommercePlatformId,
-      estimatedMonthlyParcels: deal.estimatedMonthlyParcels
+      ecommercePlatformId: deal.ecommercePlatformId
     });
+    setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
+    setParcelsError(false);
     setIsEditing(true);
   };
 
@@ -362,23 +366,33 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     setIsEditing(false);
   };
 
+  const willAdvance = deal.stage === 'lead_opportunity' &&
+    deal.hunterId &&
+    formData.leadSourceId &&
+    formData.ecommercePlatformId &&
+    parcelsStr &&
+    !parcelsError &&
+    Number(parcelsStr) > 0;
+
   const handleSave = () => {
     if (!currentUser) return;
+    
+    if (parcelsStr) {
+      const num = Number(parcelsStr);
+      if (!Number.isInteger(num) || num <= 0) {
+        setParcelsError(true);
+        return;
+      }
+    }
 
     let nextStage = deal.stage;
-    if (
-      deal.stage === 'lead_opportunity' &&
-      deal.hunterId &&
-      formData.leadSourceId &&
-      formData.ecommercePlatformId &&
-      formData.estimatedMonthlyParcels &&
-      formData.estimatedMonthlyParcels > 0
-    ) {
+    if (willAdvance) {
       nextStage = 'discovery_proposal';
     }
 
     updateDeal(deal.id, {
       ...formData,
+      estimatedMonthlyParcels: parcelsStr ? Number(parcelsStr) : undefined,
       stage: nextStage
     }, currentUser.id);
 
@@ -403,6 +417,20 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
       {isEditing ? (
         <div className="space-y-4 text-sm mt-3">
+          {willAdvance && (
+            <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-blue-400" aria-hidden="true" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700">
+                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{t('stages.discovery_proposal')}</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-gray-500 mb-1">Zdroj leadu *</label>
             <select 
@@ -432,17 +460,26 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           <div>
             <label className="block text-gray-500 mb-1">Odhadovaný měsíční počet balíků *</label>
             <input 
-              type="number"
-              min="1"
-              step="1"
-              value={formData.estimatedMonthlyParcels || ''} 
-              onChange={e => setFormData({ ...formData, estimatedMonthlyParcels: parseInt(e.target.value) || undefined })}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              type="text"
+              value={parcelsStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setParcelsStr(val);
+                if (val && (!Number.isInteger(Number(val)) || Number(val) <= 0)) {
+                  setParcelsError(true);
+                } else {
+                  setParcelsError(false);
+                }
+              }}
+              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${parcelsError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
             />
+            {parcelsError && (
+              <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">Zrušit</button>
-            <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">Uložit</button>
+            <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">{t('common.cancel')}</button>
+            <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">{t('common.save')}</button>
           </div>
         </div>
       ) : (
@@ -684,7 +721,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
                         </div>
                       ) : (
                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => handleEditClick(contact)} className="text-xs text-indigo-600 font-medium hover:underline">Edit</button>
+                          <button onClick={() => handleEditClick(contact)} className="text-xs text-indigo-600 font-medium hover:underline">{t('common.edit')}</button>
                           <button onClick={() => handleToggleActive(contact)} className="text-xs text-gray-500 font-medium hover:underline">
                             {contact.isActive === false ? 'Activate' : 'Deactivate'}
                           </button>
