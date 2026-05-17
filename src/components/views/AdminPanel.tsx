@@ -8,18 +8,18 @@ import { EmailLogsTable } from './EmailLogsTable';
 
 import { ConfirmModal } from '../modals/ConfirmModal';
 
-const EditableAttributeItem = ({
+const EditableAttributeItem: React.FC<{
+  item: any;
+  onUpdateName: (name: string) => void | Promise<void>;
+  onToggleActive: () => void | Promise<void>;
+  onDelete: () => void | Promise<void>;
+  isDeleteDisabled: boolean;
+}> = ({
   item,
   onUpdateName,
   onToggleActive,
   onDelete,
   isDeleteDisabled
-}: {
-  item: any;
-  onUpdateName: (name: string) => void;
-  onToggleActive: () => void;
-  onDelete: () => void;
-  isDeleteDisabled: boolean;
 }) => {
   const [val, setVal] = React.useState(item.name);
   const [showConfirm, setShowConfirm] = React.useState(false);

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
 import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
-import { Contact, Company, Region, Segment, Deal, Activity, ActivityType } from '../../types';
+import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
 import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
@@ -138,6 +138,9 @@ export function DealDetailsView() {
 
           <section>
             <DealAttributesForm deal={deal} canEdit={canEdit} />
+            {['closer', 'farmer', 'cso', 'administrator'].includes(currentUser.role) && (
+              <CloserAttributesForm deal={deal} canEdit={canEdit} />
+            )}
           </section>
 
           <section>
@@ -521,6 +524,300 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
+  const { t } = useTranslation();
+  const { updateDeal, currentUser, users } = useStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<Deal>>({
+    deliveryCountries: deal.deliveryCountries || [],
+    averageItemsPerOrder: deal.averageItemsPerOrder,
+    averageParcelWeight: deal.averageParcelWeight,
+    averageParcelVolume: deal.averageParcelVolume
+  });
+  
+  const [itemsStr, setItemsStr] = useState<string>(deal.averageItemsPerOrder?.toString() || '');
+  const [weightStr, setWeightStr] = useState<string>(deal.averageParcelWeight?.toString() || '');
+  const [volumeStr, setVolumeStr] = useState<string>(deal.averageParcelVolume?.toString() || '');
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleEdit = () => {
+    setFormData({
+      deliveryCountries: deal.deliveryCountries || [],
+      averageItemsPerOrder: deal.averageItemsPerOrder,
+      averageParcelWeight: deal.averageParcelWeight,
+      averageParcelVolume: deal.averageParcelVolume
+    });
+    setItemsStr(deal.averageItemsPerOrder?.toString() || '');
+    setWeightStr(deal.averageParcelWeight?.toString() || '');
+    setVolumeStr(deal.averageParcelVolume?.toString() || '');
+    setErrors({});
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
+
+  const validateInt = (val: string, field: string) => {
+    if (!val) {
+      setErrors(prev => ({ ...prev, [field]: false }));
+      return true;
+    }
+    const num = Number(val);
+    const valid = Number.isInteger(num) && num > 0;
+    setErrors(prev => ({ ...prev, [field]: !valid }));
+    return valid;
+  };
+
+  const willAdvance = deal.stage === 'discovery_proposal' &&
+    deal.closerId &&
+    formData.deliveryCountries && formData.deliveryCountries.length > 0 &&
+    itemsStr && !errors.items && Number(itemsStr) > 0 &&
+    weightStr && !errors.weight && Number(weightStr) > 0 &&
+    volumeStr && !errors.volume && Number(volumeStr) > 0 &&
+    deal.pricingOffers && deal.pricingOffers.length > 0;
+
+  const handleSave = () => {
+    if (!currentUser) return;
+    
+    const validItems = validateInt(itemsStr, 'items');
+    const validWeight = validateInt(weightStr, 'weight');
+    const validVolume = validateInt(volumeStr, 'volume');
+
+    if (!validItems || !validWeight || !validVolume) return;
+
+    let nextStage = deal.stage;
+    if (willAdvance) {
+      nextStage = 'contracting';
+    }
+
+    updateDeal(deal.id, {
+      ...formData,
+      averageItemsPerOrder: itemsStr ? Number(itemsStr) : undefined,
+      averageParcelWeight: weightStr ? Number(weightStr) : undefined,
+      averageParcelVolume: volumeStr ? Number(volumeStr) : undefined,
+      stage: nextStage
+    }, currentUser.id);
+
+    setIsEditing(false);
+  };
+
+  const handleCountryToggle = (country: string) => {
+    const current = formData.deliveryCountries || [];
+    if (current.includes(country)) {
+      setFormData({ ...formData, deliveryCountries: current.filter(c => c !== country) });
+    } else {
+      setFormData({ ...formData, deliveryCountries: [...current, country] });
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+    
+    const newOffer: PricingOffer = {
+      id: uuidv4(),
+      filename: file.name,
+      dateSent: new Date().toISOString(),
+      createdBy: currentUser.id
+    };
+
+    let nextStage = deal.stage;
+    
+    const canAdvance = deal.stage === 'discovery_proposal' &&
+      deal.closerId &&
+      deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+      deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+      deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+      deal.averageParcelVolume && deal.averageParcelVolume > 0;
+
+    if (canAdvance) {
+      nextStage = 'contracting';
+      alert(t('common.advancingToContracting', 'Příležitost byla automaticky posunuta do fáze Contracting.'));
+    }
+
+    updateDeal(deal.id, {
+      pricingOffers: [...(deal.pricingOffers || []), newOffer],
+      stage: nextStage
+    }, currentUser.id);
+  };
+
+  return (
+    <div className="mb-8">
+      <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Atributy produktu (Closer)
+        </h3>
+        {canEdit && !isEditing && (
+          <button onClick={handleEdit} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">
+            {t('common.edit')}
+          </button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-4 text-sm mt-3">
+          {willAdvance && (
+            <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <AlertTriangle className="h-5 w-5 text-blue-400" aria-hidden="true" />
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-blue-700">
+                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{t('stages.contracting', 'Contracting')}</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div>
+            <label className="block text-gray-500 mb-1">Země doručení</label>
+            <div className="max-h-40 overflow-y-auto border border-gray-300 rounded p-2 grid grid-cols-2 gap-2 text-sm bg-white">
+              {PHONE_PREFIXES.filter(p => p.country !== 'Other').map(p => (
+                <label key={p.country} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                  <input 
+                    type="checkbox" 
+                    checked={(formData.deliveryCountries || []).includes(p.country)}
+                    onChange={() => handleCountryToggle(p.country)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span>{p.flag} {p.country}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-gray-500 mb-1">Průměrný počet ks v objednávce</label>
+            <input 
+              type="text"
+              value={itemsStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setItemsStr(val);
+                validateInt(val, 'items');
+              }}
+              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.items ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
+            />
+            {errors.items && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+          </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Průměrná hmotnost zásilky (kg)</label>
+            <input 
+              type="text"
+              value={weightStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setWeightStr(val);
+                validateInt(val, 'weight');
+              }}
+              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.weight ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
+            />
+            {errors.weight && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+          </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Průměrný objem balíku (cm³)</label>
+            <input 
+              type="text"
+              value={volumeStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setVolumeStr(val);
+                validateInt(val, 'volume');
+              }}
+              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.volume ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
+            />
+            {errors.volume && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">{t('common.cancel')}</button>
+            <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">{t('common.save')}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 text-sm mt-3">
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Země doručení</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {deal.deliveryCountries?.length ? deal.deliveryCountries.map(c => {
+                const p = PHONE_PREFIXES.find(prefix => prefix.country === c);
+                return (
+                  <span key={c} className="inline-flex items-center gap-1 bg-gray-100 text-gray-800 text-xs px-2 py-0.5 rounded border border-gray-200">
+                    {p?.flag} {c}
+                  </span>
+                );
+              }) : <span className="text-gray-900 font-medium">-</span>}
+            </div>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný počet ks v objednávce</span>
+            <span className="text-gray-900 font-medium">{deal.averageItemsPerOrder || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrná hmotnost zásilky (kg)</span>
+            <span className="text-gray-900 font-medium">{deal.averageParcelWeight || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný objem balíku (cm³)</span>
+            <span className="text-gray-900 font-medium">{deal.averageParcelVolume || '-'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Pricing Offers Section */}
+      <div className="mt-6 pt-6 border-t border-gray-100">
+        <div className="flex justify-between items-center mb-3">
+          <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">Cenové nabídky</span>
+          {canEdit && (
+            <div>
+              <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-50 font-medium flex items-center gap-1 shadow-sm"
+              >
+                <Upload className="w-3 h-3" /> Přidat nabídku
+              </button>
+            </div>
+          )}
+        </div>
+        
+        {deal.pricingOffers && deal.pricingOffers.length > 0 ? (
+          <div className="space-y-2">
+            {deal.pricingOffers.slice().reverse().map(offer => {
+              const u = users.find(user => user.id === offer.createdBy);
+              return (
+                <div key={offer.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded">
+                      <Upload className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-gray-800">{offer.filename}</p>
+                      <p className="text-[10px] text-gray-500">
+                        {format(parseISO(offer.dateSent), 'MMM d, yyyy HH:mm')} • Přidal {u?.name || 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+                  <button className="text-xs text-indigo-600 hover:underline">Stáhnout</button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">Zatím nebyly přidány žádné cenové nabídky.</p>
+        )}
+      </div>
     </div>
   );
 }

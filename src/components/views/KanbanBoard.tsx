@@ -9,6 +9,7 @@ import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
 import { LostDealModal } from '../modals/LostDealModal';
 import { useNavigate } from 'react-router-dom';
+import { AlertModal } from '../modals/AlertModal';
 
 const AVATAR_COLORS = [
   'bg-blue-500',
@@ -42,6 +43,7 @@ export function KanbanBoard() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
   const [lostDealId, setLostDealId] = useState<string | null>(null);
+  const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string; }>({ isOpen: false, message: '' });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -80,20 +82,26 @@ export function KanbanBoard() {
       if (isForwardMove) {
         if (deal.stage === 'lead_opportunity') {
           if (!deal.hunterId) {
-            alert('Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.');
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingHunter') });
             return;
           }
           if (!deal.leadSourceId || !deal.ecommercePlatformId || !deal.estimatedMonthlyParcels || deal.estimatedMonthlyParcels <= 0) {
-            alert('Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet balíků větší jak 0) než můžete posunout do dalšího stavu.');
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingAttributes') });
             return;
           }
         }
-        if (deal.stage === 'discovery_proposal' && !deal.closerId) {
-          alert('Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.');
-          return;
+        if (deal.stage === 'discovery_proposal') {
+          if (!deal.closerId) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingCloser') });
+            return;
+          }
+          if (!deal.deliveryCountries?.length || !deal.averageItemsPerOrder || !deal.averageParcelWeight || !deal.averageParcelVolume || !deal.pricingOffers?.length) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingCloserAttributes', 'Prvně musíte vyplnit atributy produktu (země doručení, ks, váha, objem) a přidat cenovou nabídku, než můžete posunout do dalšího stavu.') });
+            return;
+          }
         }
         if (deal.stage === 'contracting' && !deal.farmerId) {
-          alert('Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.');
+          setAlertInfo({ isOpen: true, message: t('errors.kanban.missingFarmer') });
           return;
         }
       }
@@ -315,6 +323,13 @@ export function KanbanBoard() {
           onClose={() => setLostDealId(null)}
         />
       )}
+
+      <AlertModal
+        isOpen={alertInfo.isOpen}
+        onClose={() => setAlertInfo({ isOpen: false, message: '' })}
+        title={t('common.error', 'Chyba')}
+        message={alertInfo.message}
+      />
     </div>
   );
 }

@@ -42,13 +42,24 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
 
   }, [users, currentUser, currentAssigneeId, deal.stage]);
 
-  const willAdvance = deal.stage === 'lead_opportunity' &&
+  const willAdvanceToDiscovery = deal.stage === 'lead_opportunity' &&
     currentAssigneeField === 'hunterId' &&
     selectedUser !== '' &&
     deal.leadSourceId &&
     deal.ecommercePlatformId &&
     deal.estimatedMonthlyParcels &&
     deal.estimatedMonthlyParcels > 0;
+
+  const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
+    currentAssigneeField === 'closerId' &&
+    selectedUser !== '' &&
+    deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+    deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+    deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+    deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
+    deal.pricingOffers && deal.pricingOffers.length > 0;
+
+  const willAdvance = willAdvanceToDiscovery || willAdvanceToContracting;
 
   const handleSave = async () => {
     if (!currentUser) return;
@@ -62,8 +73,10 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
       const updates: Partial<Deal> = { [currentAssigneeField]: selectedUser === '' ? null : selectedUser };
       
       // Auto promote if all required fields are set
-      if (willAdvance) {
+      if (willAdvanceToDiscovery) {
         updates.stage = 'discovery_proposal';
+      } else if (willAdvanceToContracting) {
+        updates.stage = 'contracting';
       }
 
       await updateDeal(deal.id, updates, currentUser.id);
@@ -99,7 +112,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    Přiřazením bude příležitost automaticky posunuta do fáze <strong>{t('stages.discovery_proposal')}</strong>.
+                    Přiřazením bude příležitost automaticky posunuta do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : t('stages.contracting', 'Contracting')}</strong>.
                   </p>
                 </div>
               </div>

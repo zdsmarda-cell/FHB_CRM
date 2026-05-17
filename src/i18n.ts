@@ -75,7 +75,14 @@ const resources = {
         passwordMismatch: 'Passwords do not match.',
         generalError: 'An error occurred. Please check the fields below.',
         requiredField: 'This field is required.',
-        emailOrPhoneRequired: 'Email or phone is required.'
+        emailOrPhoneRequired: 'Email or phone is required.',
+        kanban: {
+          missingHunter: 'First you must assign a hunter before moving to the next stage.',
+          missingAttributes: 'First you must fill in the attributes (Lead source, E-commerce platform, Estimated monthly parcels > 0) before moving to the next stage.',
+          missingCloser: 'First you must assign a closer before moving to the next stage.',
+          missingCloserAttributes: 'First you must fill in the product attributes (Delivery countries, items, weight, volume) and add a pricing offer before moving to the next stage.',
+          missingFarmer: 'First you must assign a farmer before moving to the next stage.'
+        }
       },
       common: {
         save: 'Save',
@@ -83,7 +90,8 @@ const resources = {
         add: 'Add',
         edit: 'Edit',
         language: 'Language',
-        user: 'Acting User'
+        user: 'Acting User',
+        error: 'Error'
       },
       validation: {
         emailRequired: 'Email is required',
@@ -165,7 +173,14 @@ const resources = {
         passwordMismatch: 'Hesla se neshodují.',
         generalError: 'Vyskytla se chyba. Zkontrolujte prosím pole níže.',
         requiredField: 'Toto pole je povinné.',
-        emailOrPhoneRequired: 'Zadejte email nebo telefon.'
+        emailOrPhoneRequired: 'Zadejte email nebo telefon.',
+        kanban: {
+          missingHunter: 'Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.',
+          missingAttributes: 'Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet balíků větší jak 0) než můžete posunout do dalšího stavu.',
+          missingCloser: 'Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.',
+          missingCloserAttributes: 'Prvně musíte vyplnit atributy produktu (země doručení, počet ks, hmotnost, objem balíku) a přidat cenovou nabídku, než můžete posunout do dalšího stavu.',
+          missingFarmer: 'Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.'
+        }
       },
       common: {
         save: 'Uložit',
@@ -173,7 +188,8 @@ const resources = {
         add: 'Přidat',
         edit: 'Upravit',
         language: 'Jazyk',
-        user: 'Zastupující Uživatel'
+        user: 'Zastupující Uživatel',
+        error: 'Chyba'
       },
       validation: {
         emailRequired: 'Email musí být zadán',

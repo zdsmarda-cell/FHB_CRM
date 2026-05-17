@@ -390,16 +390,32 @@ export const useStore = create<StoreState>((set, get) => {
       const oldVal = oldDeal[field];
       const newVal = newDeal[field];
       
-      if (oldVal !== newVal && typeof newVal !== 'object') {
-        newLogs.push({
-          id: uuidv4(),
-          dealId: dealId,
-          field,
-          oldValue: String(oldVal),
-          newValue: String(newVal),
-          changedBy: userId,
-          timestamp: new Date().toISOString()
-        });
+      if (oldVal !== newVal) {
+        if (typeof newVal === 'object' || typeof oldVal === 'object') {
+          const oldStr = JSON.stringify(oldVal || null);
+          const newStr = JSON.stringify(newVal || null);
+          if (oldStr !== newStr) {
+            newLogs.push({
+              id: uuidv4(),
+              dealId: dealId,
+              field,
+              oldValue: oldStr,
+              newValue: newStr,
+              changedBy: userId,
+              timestamp: new Date().toISOString()
+            });
+          }
+        } else {
+          newLogs.push({
+            id: uuidv4(),
+            dealId: dealId,
+            field,
+            oldValue: String(oldVal),
+            newValue: String(newVal),
+            changedBy: userId,
+            timestamp: new Date().toISOString()
+          });
+        }
       }
     });
 

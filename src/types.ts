@@ -77,6 +77,14 @@ export interface EcommercePlatform {
   isActive?: boolean;
 }
 
+export interface PricingOffer {
+  id: string;
+  filename: string;
+  fileData?: string; // e.g. base64 or URL
+  dateSent: string;
+  createdBy: string;
+}
+
 export interface Deal {
   id: string;
   companyId: string;
@@ -88,6 +96,11 @@ export interface Deal {
   leadSourceId?: string;
   ecommercePlatformId?: string;
   estimatedMonthlyParcels?: number;
+  deliveryCountries?: string[];
+  averageItemsPerOrder?: number;
+  averageParcelWeight?: number;
+  averageParcelVolume?: number;
+  pricingOffers?: PricingOffer[];
   createdAt: string;
   updatedAt: string;
   postponedUntil?: string;
