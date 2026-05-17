@@ -1202,6 +1202,13 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
         />
       )}
     </div>
+
+    <AlertModal
+      isOpen={appAlert.isOpen}
+      onClose={() => setAppAlert({ ...appAlert, isOpen: false })}
+      title={appAlert.title}
+      message={appAlert.message}
+    />
     </div>
   );
 }
@@ -1490,13 +1497,6 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           )}
         </div>
       )}
-      
-      <AlertModal
-        isOpen={appAlert.isOpen}
-        onClose={() => setAppAlert({ ...appAlert, isOpen: false })}
-        title={appAlert.title}
-        message={appAlert.message}
-      />
     </div>
   );
 }

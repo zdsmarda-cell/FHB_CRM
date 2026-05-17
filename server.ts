@@ -592,9 +592,6 @@ async function startServer() {
 
   const multer = (await import('multer')).default;
   
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  
   // Depending on whether running from `server-build/server.js` or project root via `tsx`
   const baseDir = __dirname.endsWith('server-build') ? path.resolve(__dirname, '..') : __dirname;
   const uploadDir = process.env.UPLOAD_DIR 
