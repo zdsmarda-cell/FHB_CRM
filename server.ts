@@ -592,7 +592,11 @@ async function startServer() {
 
   const multer = (await import('multer')).default;
   
-  const uploadDir = process.env.UPLOAD_DIR ? path.resolve(process.cwd(), process.env.UPLOAD_DIR) : path.join(process.cwd(), 'uploads');
+  // Depending on whether running from `dist/server.cjs` or project root via `tsx`
+  const baseDir = __dirname.endsWith('dist') ? path.resolve(__dirname, '..') : process.cwd();
+  const uploadDir = process.env.UPLOAD_DIR 
+    ? path.resolve(baseDir, process.env.UPLOAD_DIR) 
+    : path.join(baseDir, 'uploads');
 
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {

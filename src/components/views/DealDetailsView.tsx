@@ -9,6 +9,7 @@ import { getSubordinateIds } from '../../lib/permissions';
 import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
 import { ConfirmModal } from '../modals/ConfirmModal';
+import { AlertModal } from '../modals/AlertModal';
 
 export function DealDetailsView() {
   const { id } = useParams<{ id: string }>();
@@ -368,6 +369,12 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [appAlert, setAppAlert] = useState<{ isOpen: boolean, title: string, message: string }>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
+
   const showCloserAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
 
   const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
@@ -385,17 +392,24 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     try {
       if (offerToDelete.url) {
         const token = localStorage.getItem('jwt_token');
-        await fetch(`/api/upload?url=${encodeURIComponent(offerToDelete.url)}`, {
+        const res = await fetch(`/api/upload?url=${encodeURIComponent(offerToDelete.url)}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
+        const deleteData = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(deleteData.error || 'Delete failed');
       }
       
       const newOffers = deal.pricingOffers?.filter(o => o.id !== offerToDelete.id) || [];
       await updateDeal(deal.id, { pricingOffers: newOffers }, currentUser!.id);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete offer err:', err);
+      setAppAlert({
+        isOpen: true,
+        title: t('common.error', 'Chyba'),
+        message: err.message || t('common.errorDesc', 'Něco se pokazilo.')
+      });
     } finally {
       setOfferToDelete(null);
     }
@@ -562,16 +576,24 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
       if (canAdvance) {
         nextStage = 'contracting';
-        alert(t('common.advancingToContracting', 'Příležitost byla automaticky posunuta do fáze Contracting.'));
+        setAppAlert({
+          isOpen: true,
+          title: t('common.success', 'Úspěch'),
+          message: t('common.advancingToContracting', 'Příležitost byla automaticky posunuta do fáze Contracting.')
+        });
       }
 
       await updateDeal(deal.id, {
         pricingOffers: [...(deal.pricingOffers || []), newOffer],
         stage: nextStage
       }, currentUser.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error('File upload err:', err);
-      // alert('File upload failed.');
+      setAppAlert({
+        isOpen: true,
+        title: t('common.error', 'Chyba'),
+        message: err.message || t('common.errorDesc', 'Něco se pokazilo.')
+      });
     }
   };
 
@@ -834,6 +856,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
         title={t('common.delete', 'Smazat')}
         message={t('deal.attributes.deleteOfferConfirm', 'Opravdu chcete smazat tento soubor?')}
       />
+
+      <AlertModal
+        isOpen={appAlert.isOpen}
+        onClose={() => setAppAlert({ ...appAlert, isOpen: false })}
+        title={appAlert.title}
+        message={appAlert.message}
+      />
     </div>
   );
 }
@@ -850,6 +879,12 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [showAllContacts, setShowAllContacts] = useState(false);
+
+  const [appAlert, setAppAlert] = useState<{ isOpen: boolean, title: string, message: string }>({
+    isOpen: false,
+    title: '',
+    message: ''
+  });
   const [isExpanded, setIsExpanded] = useState(false);
 
   const filteredContacts = contacts.filter(c => showAllContacts || c.isActive !== false);
@@ -994,16 +1029,21 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
               headers: { 'Authorization': `Bearer ${token}` },
               body: fd
             });
-            const dat = await res.json();
-            if (!res.ok) throw new Error(dat.error);
+            const dat = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(dat.error || 'Upload failed');
             
             setNewContact(prev => ({
               ...prev,
               photoUrl: dat.fileUrl,
               photoWebpUrl: dat.fileUrl
             }));
-          } catch(err) {
+          } catch(err: any) {
             console.error('Image upload err:', err);
+            setAppAlert({
+              isOpen: true,
+              title: t('common.error', 'Chyba'),
+              message: err.message || t('common.errorDesc', 'Něco se pokazilo.')
+            });
           }
         }, file.type || 'image/png', 0.8);
       };
@@ -1450,6 +1490,13 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           )}
         </div>
       )}
+      
+      <AlertModal
+        isOpen={appAlert.isOpen}
+        onClose={() => setAppAlert({ ...appAlert, isOpen: false })}
+        title={appAlert.title}
+        message={appAlert.message}
+      />
     </div>
   );
 }
