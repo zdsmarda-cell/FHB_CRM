@@ -9,6 +9,8 @@ import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
 import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import jwt from "jsonwebtoken";
+import nodemailer from "nodemailer";
+import { v4 as uuidv4 } from "uuid";
 var JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
 var authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -56,7 +58,8 @@ console.log(`[ENV DEBUG] SSL_CERT_PATH: ${process.env.SSL_CERT_PATH || "Not set"
 async function startServer() {
   const app = express();
   const PORT = process.env.APP_PORT ? parseInt(process.env.APP_PORT) : 3e3;
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
   const pool = mysql.createPool({
     host: process.env.DB_HOST || "db.mobilgroup.cz",
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
@@ -85,12 +88,24 @@ async function startServer() {
         }
       }
       const migrations = [
+        "UPDATE deals SET stage='lead_opportunity' WHERE stage='lead';",
         "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
         "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
         "ALTER TABLE deals ADD COLUMN lostPermanently BOOLEAN;",
         "ALTER TABLE deals ADD COLUMN lostBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN lostAt DATETIME;",
+        "ALTER TABLE deals ADD COLUMN hunterId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN closerId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN farmerId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN leadSourceId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN ecommercePlatformId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN estimatedMonthlyParcels INT;",
+        "ALTER TABLE lead_sources ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE ecommerce_platforms ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
+        "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
+        "UPDATE deals SET closerId = ownerId WHERE stage = 'discovery_proposal' AND ownerId IS NOT NULL;",
+        "UPDATE deals SET farmerId = ownerId WHERE (stage = 'contracting' OR stage = 'farming') AND ownerId IS NOT NULL;",
         "ALTER TABLE activities ADD COLUMN transcript TEXT;"
       ];
       for (const m of migrations) {
@@ -179,6 +194,129 @@ async function startServer() {
         console.error("HINT: Your database host could not be reached. Check firewall rules, VPNs, and ensure the DB_HOST is accessible from this server.");
       }
       res.status(500).json({ error: "Server error during login", details: err.message });
+    }
+  });
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      const [rows] = await pool.query("SELECT * FROM users WHERE email = ?", [email]);
+      const users = rows;
+      if (users.length === 0) {
+        return res.json({ success: true });
+      }
+      const user = users[0];
+      const resetToken = uuidv4();
+      await pool.query("UPDATE users SET resetToken = ?, resetTokenExpiry = DATE_ADD(NOW(), INTERVAL 10 MINUTE) WHERE id = ?", [resetToken, user.id]);
+      if (process.env.SMTP_HOST && process.env.SMTP_USER) {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: parseInt(process.env.SMTP_PORT || "587"),
+          secure: process.env.SMTP_SECURE === "true",
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+        const origin = req.headers["x-forwarded-host"] ? `https://${req.headers["x-forwarded-host"]}` : `http://${req.headers.host}`;
+        const resetUrl = `${origin}/#/reset-password/${resetToken}`;
+        const subject = "Obnova hesla / Password Reset";
+        const emailLogId = uuidv4();
+        try {
+          await transporter.sendMail({
+            from: process.env.EMAIL_FROM || '"CRM System" <no-reply@crm.com>',
+            to: email,
+            subject,
+            text: `Pro obnovu hesla klikn\u011Bte na n\xE1sleduj\xEDc\xED odkaz: 
+
+${resetUrl}
+
+Tento odkaz plat\xED 10 minut.`,
+            html: `<p>Pro obnovu hesla klikn\u011Bte na n\xE1sleduj\xEDc\xED odkaz:</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>Tento odkaz plat\xED 10 minut.</p>`
+          });
+          await pool.query(
+            "INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, ?)",
+            [emailLogId, email, subject, "sent", null, /* @__PURE__ */ new Date()]
+          );
+        } catch (mailErr) {
+          console.error("Password reset email failed:", mailErr);
+          await pool.query(
+            "INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, ?)",
+            [emailLogId, email, subject, "error", mailErr.message || String(mailErr), /* @__PURE__ */ new Date()]
+          );
+          throw mailErr;
+        }
+      }
+      res.json({ success: true, token: process.env.SMTP_HOST ? void 0 : resetToken });
+    } catch (err) {
+      console.error("Password reset error:", err);
+      res.status(500).json({ error: "Failed to send reset email" });
+    }
+  });
+  app.post("/api/auth/update-password", async (req, res) => {
+    try {
+      const { token, newPasswordHash } = req.body;
+      const [rows] = await pool.query("SELECT * FROM users WHERE resetToken = ? AND resetTokenExpiry > NOW()", [token]);
+      const users = rows;
+      if (users.length === 0) {
+        return res.status(400).json({ error: "Invalid or expired token" });
+      }
+      const user = users[0];
+      await pool.query("UPDATE users SET passwordHash = ?, resetToken = NULL, resetTokenExpiry = NULL WHERE id = ?", [newPasswordHash, user.id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Password update error:", err);
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+  app.get("/api/email_logs", async (req, res) => {
+    try {
+      const { page = "1", limit = "10", dateFrom, dateTo, recipient, subject, status } = req.query;
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      const offset = (pageNum - 1) * limitNum;
+      let query = "SELECT * FROM email_logs WHERE 1=1";
+      let countQuery = "SELECT COUNT(*) as total FROM email_logs WHERE 1=1";
+      const params = [];
+      if (dateFrom) {
+        query += " AND sentAt >= ?";
+        countQuery += " AND sentAt >= ?";
+        params.push(new Date(dateFrom));
+      }
+      if (dateTo) {
+        query += " AND sentAt <= ?";
+        countQuery += " AND sentAt <= ?";
+        const toDate = new Date(dateTo);
+        toDate.setHours(23, 59, 59, 999);
+        params.push(toDate);
+      }
+      if (recipient) {
+        query += " AND recipient LIKE ?";
+        countQuery += " AND recipient LIKE ?";
+        params.push(`%${recipient}%`);
+      }
+      if (subject) {
+        query += " AND subject LIKE ?";
+        countQuery += " AND subject LIKE ?";
+        params.push(`%${subject}%`);
+      }
+      if (status && status !== "all") {
+        query += " AND status = ?";
+        countQuery += " AND status = ?";
+        params.push(status);
+      }
+      query += " ORDER BY sentAt DESC LIMIT ? OFFSET ?";
+      const resultParams = [...params, limitNum, offset];
+      const [logsRows] = await pool.query(query, resultParams);
+      const [countRows] = await pool.query(countQuery, params);
+      const logs = logsRows;
+      const total = countRows[0].total;
+      res.json({ logs, total, page: pageNum, limit: limitNum });
+    } catch (err) {
+      console.error("Failed to fetch email logs:", err);
+      res.status(500).json({ error: "Failed to fetch email logs" });
     }
   });
   app.get("/api/auth/google/url", (req, res) => {
@@ -373,13 +511,38 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/deals/:id/details", authMiddleware, async (req, res) => {
+    try {
+      const dealId = req.params.id;
+      const [auditLogs] = await pool.query("SELECT * FROM audit_logs WHERE dealId = ?", [dealId]);
+      const [activities] = await pool.query("SELECT * FROM activities WHERE dealId = ?", [dealId]);
+      const parseJsonFields = (arr, fields) => arr.map((item) => {
+        fields.forEach((f) => {
+          if (typeof item[f] === "string") {
+            try {
+              item[f] = JSON.parse(item[f]);
+            } catch (e) {
+            }
+          }
+        });
+        return item;
+      });
+      res.json({
+        auditLogs,
+        activities
+      });
+    } catch (err) {
+      console.error("Deal details fetch error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get("/api/state", authMiddleware, async (req, res) => {
     try {
       const [users] = await pool.query("SELECT * FROM users");
       const [companies] = await pool.query("SELECT * FROM companies");
       const [deals] = await pool.query("SELECT * FROM deals");
-      const [auditLogs] = await pool.query("SELECT * FROM audit_logs");
-      const [activities] = await pool.query("SELECT * FROM activities");
+      const [leadSources] = await pool.query("SELECT * FROM lead_sources");
+      const [ecommercePlatforms] = await pool.query("SELECT * FROM ecommerce_platforms");
       const parseJsonFields = (arr, fields) => arr.map((item) => {
         fields.forEach((f) => {
           if (typeof item[f] === "string") {
@@ -393,12 +556,18 @@ async function startServer() {
         if ("passwordHash" in item) delete item.passwordHash;
         return item;
       });
+      const parsedUsers = parseJsonFields(users, ["googleIntegration", "msIntegration"]);
+      const currentUserId = req.user?.id;
+      const me = parsedUsers.find((u) => u.id === currentUserId) || null;
       res.json({
-        users: parseJsonFields(users, ["googleIntegration", "msIntegration"]),
+        users: parsedUsers,
+        me,
         companies: parseJsonFields(companies, ["urls", "contacts"]),
         deals,
-        auditLogs,
-        activities
+        leadSources: parseJsonFields(leadSources, []),
+        ecommercePlatforms: parseJsonFields(ecommercePlatforms, []),
+        auditLogs: [],
+        activities: []
       });
     } catch (err) {
       console.error("DB State Error:", err);
@@ -440,6 +609,29 @@ async function startServer() {
     } catch (err) {
       console.error("Sync Error:", err);
       res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/delete-entity", authMiddleware, async (req, res) => {
+    try {
+      const { table, id } = req.body;
+      if (!table || !id) {
+        return res.status(400).json({ error: "Missing table or id" });
+      }
+      const allowedTables = ["lead_sources", "ecommerce_platforms"];
+      if (!allowedTables.includes(table)) {
+        return res.status(403).json({ error: "Deletion not allowed for this table" });
+      }
+      const fkColumn = table === "lead_sources" ? "leadSourceId" : "ecommercePlatformId";
+      const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
+      const count = rows[0].count;
+      if (count > 0) {
+        return res.status(400).json({ error: `Cannot delete because there are ${count} deals referencing this entity.` });
+      }
+      await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Delete Error:", err);
+      res.status(500).json({ error: `Delete failed: ${err.message}` });
     }
   });
   app.get("/api/health", async (req, res) => {
