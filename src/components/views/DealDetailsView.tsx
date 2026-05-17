@@ -828,7 +828,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <a href={offer.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</a>
+                      <a href={offer.url?.replace(/^\/uploads\//, '/api/uploads/')} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</a>
                       {canDeleteOffer && (
                         <button 
                           onClick={() => handleDeleteOffer(offer)}
@@ -1089,8 +1089,8 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
             <div className={`group flex gap-4 p-4 border border-gray-200 rounded-lg ${contact.isActive === false ? 'bg-gray-100 opacity-60' : 'bg-gray-50/50'}`}>
               <div className="flex-shrink-0">
                 {contact.photoWebpUrl ? (
-                  <a href={contact.photoUrl} target="_blank" rel="noreferrer" title="Click to view full image">
-                    <img src={contact.photoWebpUrl} alt={contact.name} className="w-16 h-16 rounded-full object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
+                  <a href={contact.photoUrl?.replace(/^\/uploads\//, '/api/uploads/')} target="_blank" rel="noreferrer" title="Click to view full image">
+                    <img src={contact.photoWebpUrl?.replace(/^\/uploads\//, '/api/uploads/')} alt={contact.name} className="w-16 h-16 rounded-full object-cover border border-gray-200 hover:opacity-80 transition-opacity" />
                   </a>
                 ) : (
                   <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-500 flex items-center justify-center text-xl font-medium">
@@ -1236,7 +1236,7 @@ function ContactForm({
         <div className="flex-shrink-0">
           <div 
             className="w-16 h-16 rounded-full bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors bg-cover bg-center"
-            style={contact.photoWebpUrl ? { backgroundImage: `url(${contact.photoWebpUrl})`, borderStyle: 'solid' } : {}}
+            style={contact.photoWebpUrl ? { backgroundImage: `url(${contact.photoWebpUrl.replace(/^\/uploads\//, '/api/uploads/')})`, borderStyle: 'solid' } : {}}
             onClick={() => fileInputRef.current?.click()}
           >
             {!contact.photoWebpUrl && <Upload className="w-5 h-5 text-gray-400" />}

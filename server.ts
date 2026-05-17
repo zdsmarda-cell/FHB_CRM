@@ -592,8 +592,11 @@ async function startServer() {
 
   const multer = (await import('multer')).default;
   
-  // Depending on whether running from `dist/server.cjs` or project root via `tsx`
-  const baseDir = __dirname.endsWith('dist') ? path.resolve(__dirname, '..') : process.cwd();
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  
+  // Depending on whether running from `server-build/server.js` or project root via `tsx`
+  const baseDir = __dirname.endsWith('server-build') ? path.resolve(__dirname, '..') : __dirname;
   const uploadDir = process.env.UPLOAD_DIR 
     ? path.resolve(baseDir, process.env.UPLOAD_DIR) 
     : path.join(baseDir, 'uploads');
@@ -613,8 +616,8 @@ async function startServer() {
   });
   const upload = multer({ storage });
 
-  // Serve static uploads
-  app.use('/uploads', express.static(uploadDir));
+  // Serve static uploads under /api/uploads to bypass frontend routing/proxy
+  app.use('/api/uploads', express.static(uploadDir));
 
   app.post('/api/upload', authMiddleware, upload.single('file'), (req, res) => {
     try {
@@ -629,7 +632,7 @@ async function startServer() {
         return res.status(500).json({ error: 'File was processed but could not be saved to disk. Check directory permissions.' });
       }
       
-      res.json({ success: true, fileUrl: `/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
+      res.json({ success: true, fileUrl: `/api/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
     } catch (err: any) {
       console.error('Upload error:', err);
       res.status(500).json({ error: err.message });
@@ -639,13 +642,23 @@ async function startServer() {
   app.delete('/api/upload', authMiddleware, (req, res) => {
     try {
       const fileUrl = req.query.url as string;
-      if (!fileUrl || !fileUrl.startsWith('/uploads/')) {
+      if (!fileUrl) {
         return res.status(400).json({ error: 'Invalid url' });
       }
 
       // decode URI component in case filename has spaces, etc.
       const decodedUrl = decodeURIComponent(fileUrl);
-      const filePath = path.join(uploadDir, decodedUrl.replace('/uploads/', ''));
+      
+      let relativePath = '';
+      if (decodedUrl.startsWith('/api/uploads/')) {
+        relativePath = decodedUrl.replace('/api/uploads/', '');
+      } else if (decodedUrl.startsWith('/uploads/')) {
+        relativePath = decodedUrl.replace('/uploads/', '');
+      } else {
+         return res.status(400).json({ error: 'Invalid url' });
+      }
+
+      const filePath = path.join(uploadDir, relativePath);
       
       // verify path is inside uploadDir
       const resolvedPath = path.resolve(filePath);
@@ -822,7 +835,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Production static serving
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = path.join(baseDir, 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
