@@ -113,6 +113,10 @@ export function DealDetailsView() {
           </section>
 
           <section>
+            <DealAttributesForm deal={deal} canEdit={canEdit} />
+          </section>
+
+          <section>
             <ContactsManager company={company} canEdit={canEdit} />
           </section>
           
@@ -331,6 +335,132 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
           ) : null)}
         </div>
       </div>
+    </div>
+  );
+}
+
+function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
+  const { t } = useTranslation();
+  const { leadSources, ecommercePlatforms, updateDeal, currentUser } = useStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState<Partial<Deal>>({
+    leadSourceId: deal.leadSourceId,
+    ecommercePlatformId: deal.ecommercePlatformId,
+    estimatedMonthlyParcels: deal.estimatedMonthlyParcels
+  });
+
+  const handleEdit = () => {
+    setFormData({
+      leadSourceId: deal.leadSourceId,
+      ecommercePlatformId: deal.ecommercePlatformId,
+      estimatedMonthlyParcels: deal.estimatedMonthlyParcels
+    });
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+  };
+
+  const handleSave = () => {
+    if (!currentUser) return;
+
+    let nextStage = deal.stage;
+    if (
+      deal.stage === 'lead_opportunity' &&
+      deal.hunterId &&
+      formData.leadSourceId &&
+      formData.ecommercePlatformId &&
+      formData.estimatedMonthlyParcels &&
+      formData.estimatedMonthlyParcels > 0
+    ) {
+      nextStage = 'discovery_proposal';
+    }
+
+    updateDeal(deal.id, {
+      ...formData,
+      stage: nextStage
+    }, currentUser.id);
+
+    setIsEditing(false);
+  };
+
+  const lsName = leadSources.find(s => s.id === deal.leadSourceId)?.name || '-';
+  const ecName = ecommercePlatforms.find(s => s.id === deal.ecommercePlatformId)?.name || '-';
+
+  return (
+    <div className="mb-8">
+      <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Atributy příležitosti
+        </h3>
+        {canEdit && !isEditing && (
+          <button onClick={handleEdit} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">
+            {t('common.edit')}
+          </button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <div className="space-y-4 text-sm mt-3">
+          <div>
+            <label className="block text-gray-500 mb-1">Zdroj leadu *</label>
+            <select 
+              value={formData.leadSourceId || ''} 
+              onChange={e => setFormData({ ...formData, leadSourceId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Nevybráno</option>
+              {leadSources.map(ls => (
+                <option key={ls.id} value={ls.id}>{ls.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-500 mb-1">E-commerce platforma *</label>
+            <select 
+              value={formData.ecommercePlatformId || ''} 
+              onChange={e => setFormData({ ...formData, ecommercePlatformId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Nevybráno</option>
+              {ecommercePlatforms.map(ec => (
+                <option key={ec.id} value={ec.id}>{ec.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-500 mb-1">Odhadovaný měsíční počet balíků *</label>
+            <input 
+              type="number"
+              min="1"
+              step="1"
+              value={formData.estimatedMonthlyParcels || ''} 
+              onChange={e => setFormData({ ...formData, estimatedMonthlyParcels: parseInt(e.target.value) || undefined })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">Zrušit</button>
+            <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">Uložit</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 text-sm mt-3">
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Zdroj leadu</span>
+            <span className="text-gray-900 font-medium">{lsName}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">E-commerce platforma</span>
+            <span className="text-gray-900 font-medium">{ecName}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný měsíč. počet balíků</span>
+            <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

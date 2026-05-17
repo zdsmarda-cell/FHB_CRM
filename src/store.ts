@@ -34,6 +34,8 @@ export const useStore = create<StoreState>((set, get) => {
           users: data.users || [],
           companies: data.companies || [],
           deals: data.deals || [],
+          leadSources: data.leadSources || [],
+          ecommercePlatforms: data.ecommercePlatforms || [],
           auditLogs: data.auditLogs || [],
           activities: data.activities || [],
           currentUser: data.me || null
@@ -79,6 +81,8 @@ export const useStore = create<StoreState>((set, get) => {
             users: data.users || [],
             companies: data.companies || [],
             deals: data.deals || [],
+            leadSources: data.leadSources || [],
+            ecommercePlatforms: data.ecommercePlatforms || [],
             auditLogs: data.auditLogs || [],
             activities: data.activities || [],
             currentUser: data.me || null // keep matching data.me
@@ -112,9 +116,54 @@ export const useStore = create<StoreState>((set, get) => {
     users: [],
     companies: [],
     deals: [],
+    leadSources: [],
+    ecommercePlatforms: [],
     auditLogs: [],
     activities: [],
     currentUser: null,
+
+    addLeadSource: async (name) => {
+      const newSource = { id: uuidv4(), name };
+      await persistStateToDB({ lead_sources: [newSource] });
+      set(state => ({ leadSources: [...state.leadSources, newSource] }));
+    },
+    updateLeadSource: async (id, name) => {
+      await persistStateToDB({ lead_sources: [{ id, name }] });
+      set(state => ({
+        leadSources: state.leadSources.map(s => s.id === id ? { ...s, name } : s)
+      }));
+    },
+    deleteLeadSource: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'lead_sources', id })
+      });
+      set(state => ({
+        leadSources: state.leadSources.filter(s => s.id !== id)
+      }));
+    },
+    addEcommercePlatform: async (name) => {
+      const newPlatform = { id: uuidv4(), name };
+      await persistStateToDB({ ecommerce_platforms: [newPlatform] });
+      set(state => ({ ecommercePlatforms: [...state.ecommercePlatforms, newPlatform] }));
+    },
+    updateEcommercePlatform: async (id, name) => {
+      await persistStateToDB({ ecommerce_platforms: [{ id, name }] });
+      set(state => ({
+        ecommercePlatforms: state.ecommercePlatforms.map(s => s.id === id ? { ...s, name } : s)
+      }));
+    },
+    deleteEcommercePlatform: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'ecommerce_platforms', id })
+      });
+      set(state => ({
+        ecommercePlatforms: state.ecommercePlatforms.filter(s => s.id !== id)
+      }));
+    },
 
     login: async (email, passwordHash) => {
       try {

@@ -78,9 +78,15 @@ export function KanbanBoard() {
       const isForwardMove = targetIdx > currentIdx && stage !== 'lost';
 
       if (isForwardMove) {
-        if (deal.stage === 'lead_opportunity' && !deal.hunterId) {
-          alert('Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.');
-          return;
+        if (deal.stage === 'lead_opportunity') {
+          if (!deal.hunterId) {
+            alert('Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.');
+            return;
+          }
+          if (!deal.leadSourceId || !deal.ecommercePlatformId || !deal.estimatedMonthlyParcels || deal.estimatedMonthlyParcels <= 0) {
+            alert('Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet balíků větší jak 0) než můžete posunout do dalšího stavu.');
+            return;
+          }
         }
         if (deal.stage === 'discovery_proposal' && !deal.closerId) {
           alert('Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.');
@@ -244,7 +250,17 @@ export function KanbanBoard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                state.updateDeal(deal.id, { [getAssigneeField(deal.stage)]: currentUser!.id }, currentUser!.id);
+                                const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
+                                if (
+                                  deal.stage === 'lead_opportunity' &&
+                                  deal.leadSourceId &&
+                                  deal.ecommercePlatformId &&
+                                  deal.estimatedMonthlyParcels &&
+                                  deal.estimatedMonthlyParcels > 0
+                                ) {
+                                  updates.stage = 'discovery_proposal';
+                                }
+                                state.updateDeal(deal.id, updates, currentUser!.id);
                               }}
                               className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
                             >

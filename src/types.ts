@@ -65,6 +65,16 @@ export interface Activity {
   transcript?: string;
 }
 
+export interface LeadSource {
+  id: string;
+  name: string;
+}
+
+export interface EcommercePlatform {
+  id: string;
+  name: string;
+}
+
 export interface Deal {
   id: string;
   companyId: string;
@@ -73,6 +83,9 @@ export interface Deal {
   hunterId: string | null;
   closerId: string | null;
   farmerId: string | null;
+  leadSourceId?: string;
+  ecommercePlatformId?: string;
+  estimatedMonthlyParcels?: number;
   createdAt: string;
   updatedAt: string;
   postponedUntil?: string;
@@ -104,9 +117,17 @@ export interface StoreState {
   auditLogs: AuditLog[];
   activities: Activity[];
   currentUser: User | null;
+  leadSources: LeadSource[];
+  ecommercePlatforms: EcommercePlatform[];
   
   // Actions
   refreshState: () => Promise<void>;
+  updateLeadSource: (id: string, name: string) => Promise<void>;
+  addLeadSource: (name: string) => Promise<void>;
+  deleteLeadSource: (id: string) => Promise<void>;
+  updateEcommercePlatform: (id: string, name: string) => Promise<void>;
+  addEcommercePlatform: (name: string) => Promise<void>;
+  deleteEcommercePlatform: (id: string) => Promise<void>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;

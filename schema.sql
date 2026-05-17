@@ -47,8 +47,21 @@ CREATE TABLE IF NOT EXISTS deals (
   hunterId VARCHAR(50),
   closerId VARCHAR(50),
   farmerId VARCHAR(50),
+  leadSourceId VARCHAR(50),
+  ecommercePlatformId VARCHAR(50),
+  estimatedMonthlyParcels INT,
   createdAt DATETIME,
   updatedAt DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS lead_sources (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ecommerce_platforms (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (

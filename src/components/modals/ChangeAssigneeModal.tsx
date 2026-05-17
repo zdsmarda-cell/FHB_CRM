@@ -51,7 +51,22 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     
     setIsSaving(true);
     try {
-      await updateDeal(deal.id, { [currentAssigneeField]: selectedUser === '' ? null : selectedUser }, currentUser.id);
+      const updates: Partial<Deal> = { [currentAssigneeField]: selectedUser === '' ? null : selectedUser };
+      
+      // Auto promote if all required fields are set
+      if (
+        deal.stage === 'lead_opportunity' &&
+        currentAssigneeField === 'hunterId' &&
+        selectedUser !== '' &&
+        deal.leadSourceId &&
+        deal.ecommercePlatformId &&
+        deal.estimatedMonthlyParcels &&
+        deal.estimatedMonthlyParcels > 0
+      ) {
+        updates.stage = 'discovery_proposal';
+      }
+
+      await updateDeal(deal.id, updates, currentUser.id);
       onClose();
     } catch (err) {
       console.error(err);

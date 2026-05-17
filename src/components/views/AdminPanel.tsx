@@ -11,9 +11,11 @@ export function AdminPanel() {
   const store = useStore();
   const { users } = store;
 
-  const [activeTab, setActiveTab] = useState<'users' | 'emails'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'settings'>('users');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
+  const [newLeadSource, setNewLeadSource] = useState('');
+  const [newEcommercePlatform, setNewEcommercePlatform] = useState('');
 
   React.useEffect(() => {
     store.refreshState();
@@ -57,6 +59,12 @@ export function AdminPanel() {
           className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'emails' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           {t('admin.emailLogs')}
+        </button>
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'settings' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          Nastavení (Číselníky)
         </button>
       </div>
 
@@ -116,8 +124,104 @@ export function AdminPanel() {
           </tbody>
         </table>
       </div>
-      ) : (
+      ) : activeTab === 'emails' ? (
         <EmailLogsTable />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Lead Sources */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Zdroje leadů</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newLeadSource}
+                onChange={e => setNewLeadSource(e.target.value)}
+                placeholder="Nový zdroj leadu"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newLeadSource.trim()) {
+                    store.addLeadSource(newLeadSource.trim());
+                    setNewLeadSource('');
+                  }
+                }}
+                disabled={!newLeadSource.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                Přidat
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.leadSources.map(s => (
+                <li key={s.id} className="py-3 flex justify-between items-center group">
+                  <span className="text-sm text-gray-700">{s.name}</span>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm('Opravdu to chcete smazat?')) {
+                        store.deleteLeadSource(s.id);
+                      }
+                    }}
+                    className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
+                    title="Smazat"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </li>
+              ))}
+              {store.leadSources.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">Zatím žádné zdroje leadů.</li>
+              )}
+            </ul>
+          </div>
+          
+          {/* Ecommerce Platforms */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">E-commerce platformy</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newEcommercePlatform}
+                onChange={e => setNewEcommercePlatform(e.target.value)}
+                placeholder="Nová e-commerce platforma"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newEcommercePlatform.trim()) {
+                    store.addEcommercePlatform(newEcommercePlatform.trim());
+                    setNewEcommercePlatform('');
+                  }
+                }}
+                disabled={!newEcommercePlatform.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                Přidat
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.ecommercePlatforms.map(s => (
+                <li key={s.id} className="py-3 flex justify-between items-center group">
+                  <span className="text-sm text-gray-700">{s.name}</span>
+                  <button 
+                    onClick={() => {
+                      if (window.confirm('Opravdu to chcete smazat?')) {
+                        store.deleteEcommercePlatform(s.id);
+                      }
+                    }}
+                    className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-red-50 rounded"
+                    title="Smazat"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </li>
+              ))}
+              {store.ecommercePlatforms.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">Zatím žádné e-commerce platformy.</li>
+              )}
+            </ul>
+          </div>
+        </div>
       )}
 
       {isFormOpen && (

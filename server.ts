@@ -117,6 +117,9 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN hunterId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN closerId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN farmerId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN leadSourceId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN ecommercePlatformId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN estimatedMonthlyParcels INT;",
         "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
         "UPDATE deals SET closerId = ownerId WHERE stage = 'discovery_proposal' AND ownerId IS NOT NULL;",
         "UPDATE deals SET farmerId = ownerId WHERE (stage = 'contracting' OR stage = 'farming') AND ownerId IS NOT NULL;",
@@ -608,6 +611,8 @@ async function startServer() {
       const [users] = await pool.query('SELECT * FROM users');
       const [companies] = await pool.query('SELECT * FROM companies');
       const [deals] = await pool.query('SELECT * FROM deals');
+      const [leadSources] = await pool.query('SELECT * FROM lead_sources');
+      const [ecommercePlatforms] = await pool.query('SELECT * FROM ecommerce_platforms');
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -631,6 +636,8 @@ async function startServer() {
         me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
         deals: deals,
+        leadSources: leadSources,
+        ecommercePlatforms: ecommercePlatforms,
         auditLogs: [],
         activities: []
       });
@@ -682,6 +689,26 @@ async function startServer() {
        res.status(500).json({ error: err.message });
     }
   });
+  app.post('/api/delete-entity', authMiddleware, async (req, res) => {
+    try {
+      const { table, id } = req.body;
+      if (!table || !id) {
+        return res.status(400).json({ error: 'Missing table or id' });
+      }
+      
+      const allowedTables = ['lead_sources', 'ecommerce_platforms'];
+      if (!allowedTables.includes(table)) {
+        return res.status(403).json({ error: 'Deletion not allowed for this table' });
+      }
+
+      await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete Error:', err);
+      res.status(500).json({ error: `Delete failed: ${err.message}` });
+    }
+  });
+
   app.get("/api/health", async (req, res) => {
     try {
       if (process.env.DB_PASSWORD && process.env.DB_NAME) {
