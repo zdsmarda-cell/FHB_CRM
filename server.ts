@@ -592,10 +592,12 @@ async function startServer() {
 
   const multer = (await import('multer')).default;
   
+  const uploadDir = process.env.UPLOAD_DIR ? path.resolve(process.cwd(), process.env.UPLOAD_DIR) : path.join(process.cwd(), 'uploads');
+
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
       const ico = req.body.ico || 'unknown_ico';
-      const dir = path.join(process.cwd(), 'uploads', ico);
+      const dir = path.join(uploadDir, ico);
       fs.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
@@ -608,7 +610,7 @@ async function startServer() {
   const upload = multer({ storage });
 
   // Serve static uploads
-  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+  app.use('/uploads', express.static(uploadDir));
 
   app.post('/api/upload', authMiddleware, upload.single('file'), (req, res) => {
     try {

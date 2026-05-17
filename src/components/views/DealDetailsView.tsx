@@ -499,7 +499,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     formDataBody.append('documentPrefix', documentPrefix);
 
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('jwt_token');
       const uploadRes = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
@@ -933,7 +933,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
           fd.append('documentPrefix', prefix);
           
           try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('jwt_token');
             const res = await fetch('/api/upload', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` },
