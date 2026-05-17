@@ -138,9 +138,6 @@ export function DealDetailsView() {
 
           <section>
             <DealAttributesForm deal={deal} canEdit={canEdit} />
-            {['closer', 'farmer', 'cso', 'administrator'].includes(currentUser.role) && (
-              <CloserAttributesForm deal={deal} canEdit={canEdit} />
-            )}
           </section>
 
           <section>
@@ -368,191 +365,41 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
 
 function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
   const { t } = useTranslation();
-  const { leadSources, ecommercePlatforms, updateDeal, currentUser } = useStore();
+  const { leadSources, ecommercePlatforms, updateDeal, currentUser, users } = useStore();
   const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const showCloserAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
+
   const [formData, setFormData] = useState<Partial<Deal>>({
     leadSourceId: deal.leadSourceId,
-    ecommercePlatformId: deal.ecommercePlatformId
-  });
-  
-  const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
-  const [parcelsError, setParcelsError] = useState<boolean>(false);
-
-  const handleEdit = () => {
-    setFormData({
-      leadSourceId: deal.leadSourceId,
-      ecommercePlatformId: deal.ecommercePlatformId
-    });
-    setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
-    setParcelsError(false);
-    setIsEditing(true);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-  };
-
-  const willAdvance = deal.stage === 'lead_opportunity' &&
-    deal.hunterId &&
-    formData.leadSourceId &&
-    formData.ecommercePlatformId &&
-    parcelsStr &&
-    !parcelsError &&
-    Number(parcelsStr) > 0;
-
-  const handleSave = () => {
-    if (!currentUser) return;
-    
-    if (parcelsStr) {
-      const num = Number(parcelsStr);
-      if (!Number.isInteger(num) || num <= 0) {
-        setParcelsError(true);
-        return;
-      }
-    }
-
-    let nextStage = deal.stage;
-    if (willAdvance) {
-      nextStage = 'discovery_proposal';
-    }
-
-    updateDeal(deal.id, {
-      ...formData,
-      estimatedMonthlyParcels: parcelsStr ? Number(parcelsStr) : undefined,
-      stage: nextStage
-    }, currentUser.id);
-
-    setIsEditing(false);
-  };
-
-  const lsName = leadSources.find(s => s.id === deal.leadSourceId)?.name || '-';
-  const ecName = ecommercePlatforms.find(s => s.id === deal.ecommercePlatformId)?.name || '-';
-
-  return (
-    <div className="mb-8">
-      <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Atributy příležitosti
-        </h3>
-        {canEdit && !isEditing && (
-          <button onClick={handleEdit} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">
-            {t('common.edit')}
-          </button>
-        )}
-      </div>
-
-      {isEditing ? (
-        <div className="space-y-4 text-sm mt-3">
-          {willAdvance && (
-            <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <AlertTriangle className="h-5 w-5 text-blue-400" aria-hidden="true" />
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-blue-700">
-                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{t('stages.discovery_proposal')}</strong>.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-          <div>
-            <label className="block text-gray-500 mb-1">Zdroj leadu *</label>
-            <select 
-              value={formData.leadSourceId || ''} 
-              onChange={e => setFormData({ ...formData, leadSourceId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-            >
-              <option value="">Nevybráno</option>
-              {leadSources.filter(ls => ls.isActive !== false || ls.id === deal.leadSourceId).map(ls => (
-                <option key={ls.id} value={ls.id}>{ls.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-gray-500 mb-1">E-commerce platforma *</label>
-            <select 
-              value={formData.ecommercePlatformId || ''} 
-              onChange={e => setFormData({ ...formData, ecommercePlatformId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
-            >
-              <option value="">Nevybráno</option>
-              {ecommercePlatforms.filter(ec => ec.isActive !== false || ec.id === deal.ecommercePlatformId).map(ec => (
-                <option key={ec.id} value={ec.id}>{ec.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-gray-500 mb-1">Odhadovaný měsíční počet balíků *</label>
-            <input 
-              type="text"
-              value={parcelsStr} 
-              onChange={e => {
-                const val = e.target.value;
-                setParcelsStr(val);
-                if (val && (!Number.isInteger(Number(val)) || Number(val) <= 0)) {
-                  setParcelsError(true);
-                } else {
-                  setParcelsError(false);
-                }
-              }}
-              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${parcelsError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
-            />
-            {parcelsError && (
-              <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>
-            )}
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">{t('common.cancel')}</button>
-            <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">{t('common.save')}</button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4 text-sm mt-3">
-          <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Zdroj leadu</span>
-            <span className="text-gray-900 font-medium">{lsName}</span>
-          </div>
-          <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">E-commerce platforma</span>
-            <span className="text-gray-900 font-medium">{ecName}</span>
-          </div>
-          <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný měsíč. počet balíků</span>
-            <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
-  const { t } = useTranslation();
-  const { updateDeal, currentUser, users } = useStore();
-  const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState<Partial<Deal>>({
+    ecommercePlatformId: deal.ecommercePlatformId,
     deliveryCountries: deal.deliveryCountries || [],
     averageItemsPerOrder: deal.averageItemsPerOrder,
     averageParcelWeight: deal.averageParcelWeight,
     averageParcelVolume: deal.averageParcelVolume
   });
   
+  const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
+  const [parcelsError, setParcelsError] = useState<boolean>(false);
+  
   const [itemsStr, setItemsStr] = useState<string>(deal.averageItemsPerOrder?.toString() || '');
   const [weightStr, setWeightStr] = useState<string>(deal.averageParcelWeight?.toString() || '');
   const [volumeStr, setVolumeStr] = useState<string>(deal.averageParcelVolume?.toString() || '');
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleEdit = () => {
     setFormData({
+      leadSourceId: deal.leadSourceId,
+      ecommercePlatformId: deal.ecommercePlatformId,
       deliveryCountries: deal.deliveryCountries || [],
       averageItemsPerOrder: deal.averageItemsPerOrder,
       averageParcelWeight: deal.averageParcelWeight,
       averageParcelVolume: deal.averageParcelVolume
     });
+    setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
+    setParcelsError(false);
+    
     setItemsStr(deal.averageItemsPerOrder?.toString() || '');
     setWeightStr(deal.averageParcelWeight?.toString() || '');
     setVolumeStr(deal.averageParcelVolume?.toString() || '');
@@ -575,7 +422,16 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
     return valid;
   };
 
-  const willAdvance = deal.stage === 'discovery_proposal' &&
+  const willAdvanceToDiscovery = deal.stage === 'lead_opportunity' &&
+    deal.hunterId &&
+    formData.leadSourceId &&
+    formData.ecommercePlatformId &&
+    parcelsStr &&
+    !parcelsError &&
+    Number(parcelsStr) > 0;
+    
+  // Check conditions including the form state
+  const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
     deal.closerId &&
     formData.deliveryCountries && formData.deliveryCountries.length > 0 &&
     itemsStr && !errors.items && Number(itemsStr) > 0 &&
@@ -586,6 +442,14 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
   const handleSave = () => {
     if (!currentUser) return;
     
+    if (parcelsStr) {
+      const num = Number(parcelsStr);
+      if (!Number.isInteger(num) || num <= 0) {
+        setParcelsError(true);
+        return;
+      }
+    }
+    
     const validItems = validateInt(itemsStr, 'items');
     const validWeight = validateInt(weightStr, 'weight');
     const validVolume = validateInt(volumeStr, 'volume');
@@ -593,12 +457,15 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
     if (!validItems || !validWeight || !validVolume) return;
 
     let nextStage = deal.stage;
-    if (willAdvance) {
+    if (willAdvanceToDiscovery) {
+      nextStage = 'discovery_proposal';
+    } else if (willAdvanceToContracting) {
       nextStage = 'contracting';
     }
 
     updateDeal(deal.id, {
       ...formData,
+      estimatedMonthlyParcels: parcelsStr ? Number(parcelsStr) : undefined,
       averageItemsPerOrder: itemsStr ? Number(itemsStr) : undefined,
       averageParcelWeight: weightStr ? Number(weightStr) : undefined,
       averageParcelVolume: volumeStr ? Number(volumeStr) : undefined,
@@ -648,11 +515,14 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
     }, currentUser.id);
   };
 
+  const lsName = leadSources.find(s => s.id === deal.leadSourceId)?.name || '-';
+  const ecName = ecommercePlatforms.find(s => s.id === deal.ecommercePlatformId)?.name || '-';
+
   return (
     <div className="mb-8">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2 mb-4">
         <h3 className="text-lg font-semibold text-gray-900">
-          Atributy produktu (Closer)
+          Atributy
         </h3>
         {canEdit && !isEditing && (
           <button onClick={handleEdit} className="text-sm text-indigo-600 font-medium hover:text-indigo-800">
@@ -663,7 +533,7 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
 
       {isEditing ? (
         <div className="space-y-4 text-sm mt-3">
-          {willAdvance && (
+          {(willAdvanceToDiscovery || willAdvanceToContracting) && (
             <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -671,7 +541,7 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{t('stages.contracting', 'Contracting')}</strong>.
+                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : t('stages.contracting', 'Contracting')}</strong>.
                   </p>
                 </div>
               </div>
@@ -679,67 +549,118 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
           )}
           
           <div>
-            <label className="block text-gray-500 mb-1">Země doručení</label>
-            <div className="max-h-40 overflow-y-auto border border-gray-300 rounded p-2 grid grid-cols-2 gap-2 text-sm bg-white">
-              {PHONE_PREFIXES.filter(p => p.country !== 'Other').map(p => (
-                <label key={p.country} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                  <input 
-                    type="checkbox" 
-                    checked={(formData.deliveryCountries || []).includes(p.country)}
-                    onChange={() => handleCountryToggle(p.country)}
-                    className="rounded text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span>{p.flag} {p.country}</span>
-                </label>
+            <label className="block text-gray-500 mb-1">Zdroj leadu *</label>
+            <select 
+              value={formData.leadSourceId || ''} 
+              onChange={e => setFormData({ ...formData, leadSourceId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Nevybráno</option>
+              {leadSources.filter(ls => ls.isActive !== false || ls.id === deal.leadSourceId).map(ls => (
+                <option key={ls.id} value={ls.id}>{ls.name}</option>
               ))}
-            </div>
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-500 mb-1">E-commerce platforma *</label>
+            <select 
+              value={formData.ecommercePlatformId || ''} 
+              onChange={e => setFormData({ ...formData, ecommercePlatformId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">Nevybráno</option>
+              {ecommercePlatforms.filter(ec => ec.isActive !== false || ec.id === deal.ecommercePlatformId).map(ec => (
+                <option key={ec.id} value={ec.id}>{ec.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-gray-500 mb-1">Odhadovaný měsíční počet balíků *</label>
+            <input 
+              type="text"
+              value={parcelsStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setParcelsStr(val);
+                if (val && (!Number.isInteger(Number(val)) || Number(val) <= 0)) {
+                  setParcelsError(true);
+                } else {
+                  setParcelsError(false);
+                }
+              }}
+              className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (parcelsError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
+            />
+            {parcelsError && (
+              <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>
+            )}
           </div>
           
-          <div>
-            <label className="block text-gray-500 mb-1">Průměrný počet ks v objednávce</label>
-            <input 
-              type="text"
-              value={itemsStr} 
-              onChange={e => {
-                const val = e.target.value;
-                setItemsStr(val);
-                validateInt(val, 'items');
-              }}
-              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.items ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
-            />
-            {errors.items && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
-          </div>
+          {showCloserAttributes && (
+            <>
+              <div>
+                <label className="block text-gray-500 mb-1">Země doručení</label>
+                <div className="max-h-40 overflow-y-auto border border-gray-300 rounded p-2 grid grid-cols-2 gap-2 text-sm bg-white">
+                  {PHONE_PREFIXES.filter(p => p.country !== 'Other').map(p => (
+                    <label key={p.country} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                      <input 
+                        type="checkbox" 
+                        checked={(formData.deliveryCountries || []).includes(p.country)}
+                        onChange={() => handleCountryToggle(p.country)}
+                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span>{p.flag} {p.country}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-gray-500 mb-1">Průměrný počet ks v objednávce</label>
+                <input 
+                  type="text"
+                  value={itemsStr} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setItemsStr(val);
+                    validateInt(val, 'items');
+                  }}
+                  className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.items ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
+                />
+                {errors.items && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+              </div>
 
-          <div>
-            <label className="block text-gray-500 mb-1">Průměrná hmotnost zásilky (kg)</label>
-            <input 
-              type="text"
-              value={weightStr} 
-              onChange={e => {
-                const val = e.target.value;
-                setWeightStr(val);
-                validateInt(val, 'weight');
-              }}
-              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.weight ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
-            />
-            {errors.weight && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
-          </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Průměrná hmotnost zásilky (kg)</label>
+                <input 
+                  type="text"
+                  value={weightStr} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setWeightStr(val);
+                    validateInt(val, 'weight');
+                  }}
+                  className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.weight ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
+                />
+                {errors.weight && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+              </div>
 
-          <div>
-            <label className="block text-gray-500 mb-1">Průměrný objem balíku (cm³)</label>
-            <input 
-              type="text"
-              value={volumeStr} 
-              onChange={e => {
-                const val = e.target.value;
-                setVolumeStr(val);
-                validateInt(val, 'volume');
-              }}
-              className={`w-full px-3 py-2 border rounded outline-none transition-colors ${errors.volume ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'}`}
-            />
-            {errors.volume && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
-          </div>
-
+              <div>
+                <label className="block text-gray-500 mb-1">Průměrný objem balíku (cm³)</label>
+                <input 
+                  type="text"
+                  value={volumeStr} 
+                  onChange={e => {
+                    const val = e.target.value;
+                    setVolumeStr(val);
+                    validateInt(val, 'volume');
+                  }}
+                  className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.volume ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
+                />
+                {errors.volume && <p className="mt-1 text-xs text-red-600">Zadejte prosím platné celé číslo větší než nula.</p>}
+              </div>
+            </>
+          )}
+          
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">{t('common.cancel')}</button>
             <button onClick={handleSave} className="px-3 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded hover:bg-indigo-700">{t('common.save')}</button>
@@ -748,76 +669,94 @@ function CloserAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean 
       ) : (
         <div className="space-y-4 text-sm mt-3">
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Země doručení</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {deal.deliveryCountries?.length ? deal.deliveryCountries.map(c => {
-                const p = PHONE_PREFIXES.find(prefix => prefix.country === c);
-                return (
-                  <span key={c} className="inline-flex items-center gap-1 bg-gray-100 text-gray-800 text-xs px-2 py-0.5 rounded border border-gray-200">
-                    {p?.flag} {c}
-                  </span>
-                );
-              }) : <span className="text-gray-900 font-medium">-</span>}
-            </div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Zdroj leadu</span>
+            <span className="text-gray-900 font-medium">{lsName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný počet ks v objednávce</span>
-            <span className="text-gray-900 font-medium">{deal.averageItemsPerOrder || '-'}</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">E-commerce platforma</span>
+            <span className="text-gray-900 font-medium">{ecName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrná hmotnost zásilky (kg)</span>
-            <span className="text-gray-900 font-medium">{deal.averageParcelWeight || '-'}</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný měsíč. počet balíků</span>
+            <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'}</span>
           </div>
-          <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný objem balíku (cm³)</span>
-            <span className="text-gray-900 font-medium">{deal.averageParcelVolume || '-'}</span>
-          </div>
+          
+          {showCloserAttributes && (
+            <>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Země doručení</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {deal.deliveryCountries?.length ? deal.deliveryCountries.map(c => {
+                    const p = PHONE_PREFIXES.find(prefix => prefix.country === c);
+                    return (
+                      <span key={c} className="inline-flex items-center gap-1 bg-gray-100 text-gray-800 text-xs px-2 py-0.5 rounded border border-gray-200">
+                        {p?.flag} {c}
+                      </span>
+                    );
+                  }) : <span className="text-gray-900 font-medium">-</span>}
+                </div>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný počet ks v objednávce</span>
+                <span className="text-gray-900 font-medium">{deal.averageItemsPerOrder || '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrná hmotnost zásilky (kg)</span>
+                <span className="text-gray-900 font-medium">{deal.averageParcelWeight || '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Průměrný objem balíku (cm³)</span>
+                <span className="text-gray-900 font-medium">{deal.averageParcelVolume || '-'}</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
-      {/* Pricing Offers Section */}
-      <div className="mt-6 pt-6 border-t border-gray-100">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">Cenové nabídky</span>
-          {canEdit && (
-            <div>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="text-xs bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-50 font-medium flex items-center gap-1 shadow-sm"
-              >
-                <Upload className="w-3 h-3" /> Přidat nabídku
-              </button>
+      {showCloserAttributes && (
+        <div className="mt-6 pt-6 border-t border-gray-100">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-gray-500 block text-xs uppercase tracking-wider font-semibold">Cenové nabídky</span>
+            {canEdit && (
+              <div>
+                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs bg-white border border-gray-300 text-gray-700 px-2 py-1 rounded hover:bg-gray-50 font-medium flex items-center gap-1 shadow-sm"
+                >
+                  <Upload className="w-3 h-3" /> Přidat nabídku
+                </button>
+              </div>
+            )}
+          </div>
+          
+          {deal.pricingOffers && deal.pricingOffers.length > 0 ? (
+            <div className="space-y-2">
+              {deal.pricingOffers.slice().reverse().map(offer => {
+                const u = users.find(user => user.id === offer.createdBy);
+                return (
+                  <div key={offer.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded">
+                        <Upload className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-gray-800">{offer.filename}</p>
+                        <p className="text-[10px] text-gray-500">
+                          {format(parseISO(offer.dateSent), 'MMM d, yyyy HH:mm')} • Přidal {u?.name || 'Unknown'}
+                        </p>
+                      </div>
+                    </div>
+                    <button className="text-xs text-indigo-600 hover:underline">Stáhnout</button>
+                  </div>
+                );
+              })}
             </div>
+          ) : (
+            <p className="text-xs text-gray-500">Zatím nebyly přidány žádné cenové nabídky.</p>
           )}
         </div>
-        
-        {deal.pricingOffers && deal.pricingOffers.length > 0 ? (
-          <div className="space-y-2">
-            {deal.pricingOffers.slice().reverse().map(offer => {
-              const u = users.find(user => user.id === offer.createdBy);
-              return (
-                <div key={offer.id} className="flex justify-between items-center bg-gray-50 p-2 rounded border border-gray-200">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-indigo-100 text-indigo-700 rounded">
-                      <Upload className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-gray-800">{offer.filename}</p>
-                      <p className="text-[10px] text-gray-500">
-                        {format(parseISO(offer.dateSent), 'MMM d, yyyy HH:mm')} • Přidal {u?.name || 'Unknown'}
-                      </p>
-                    </div>
-                  </div>
-                  <button className="text-xs text-indigo-600 hover:underline">Stáhnout</button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">Zatím nebyly přidány žádné cenové nabídky.</p>
-        )}
-      </div>
+      )}
     </div>
   );
 }
