@@ -8,6 +8,7 @@ import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, Pricin
 import { getSubordinateIds } from '../../lib/permissions';
 import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
+import { ConfirmModal } from '../modals/ConfirmModal';
 
 export function DealDetailsView() {
   const { id } = useParams<{ id: string }>();
@@ -377,23 +378,31 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                          currentUser?.role === 'cso' || 
                          isVedouci;
 
-  const handleDeleteOffer = async (offer: PricingOffer) => {
-    if (!window.confirm(t('deal.attributes.deleteOfferConfirm', 'Opravdu chcete smazat tento soubor?'))) return;
+  const [offerToDelete, setOfferToDelete] = useState<PricingOffer | null>(null);
+
+  const confirmDeleteOffer = async () => {
+    if (!offerToDelete) return;
     try {
-      if (offer.url) {
+      if (offerToDelete.url) {
         const token = localStorage.getItem('jwt_token');
-        await fetch(`/api/upload?url=${encodeURIComponent(offer.url)}`, {
+        await fetch(`/api/upload?url=${encodeURIComponent(offerToDelete.url)}`, {
           method: 'DELETE',
           headers: { 'Authorization': `Bearer ${token}` }
         });
       }
       
-      const newOffers = deal.pricingOffers?.filter(o => o.id !== offer.id) || [];
+      const newOffers = deal.pricingOffers?.filter(o => o.id !== offerToDelete.id) || [];
       await updateDeal(deal.id, { pricingOffers: newOffers }, currentUser!.id);
       
     } catch (err) {
       console.error('Delete offer err:', err);
+    } finally {
+      setOfferToDelete(null);
     }
+  };
+
+  const handleDeleteOffer = (offer: PricingOffer) => {
+    setOfferToDelete(offer);
   };
 
   const [formData, setFormData] = useState<Partial<Deal>>({
@@ -817,6 +826,14 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           )}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={offerToDelete !== null}
+        onClose={() => setOfferToDelete(null)}
+        onConfirm={confirmDeleteOffer}
+        title={t('common.delete', 'Smazat')}
+        message={t('deal.attributes.deleteOfferConfirm', 'Opravdu chcete smazat tento soubor?')}
+      />
     </div>
   );
 }

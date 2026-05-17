@@ -618,6 +618,8 @@ async function startServer() {
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
+      console.log('File uploaded to:', req.file.path, 'Size:', req.file.size);
+      
       // Verify file actually exists
       if (!fs.existsSync(req.file.path)) {
         return res.status(500).json({ error: 'File was processed but could not be saved to disk. Check directory permissions.' });
