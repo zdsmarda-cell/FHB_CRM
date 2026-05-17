@@ -13,7 +13,9 @@ interface Props {
 export function ChangeAssigneeModal({ deal, onClose }: Props) {
   const { t } = useTranslation();
   const { users, currentUser, updateDeal } = useStore();
-  const [selectedUser, setSelectedUser] = useState<string>(deal.ownerId || '');
+  const currentAssigneeField = deal.stage === 'lead_opportunity' ? 'hunterId' : (deal.stage === 'discovery_proposal' ? 'closerId' : 'farmerId');
+  const currentAssigneeId = deal[currentAssigneeField] || '';
+  const [selectedUser, setSelectedUser] = useState<string>(currentAssigneeId);
   const [isSaving, setIsSaving] = useState(false);
 
   // Determine selectable users
@@ -25,36 +27,31 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
 
     return users.filter(user => {
       // Exclude current assignee
-      // wait, the prompt says "vyjma aktualniho", but the modal should probably let you leave it as is, or we can filter it out:
-      if (user.id === deal.ownerId) return false;
+      if (user.id === currentAssigneeId) return false;
       if (!user.isActive) return false;
 
-      // Must have permission for the stage
-      // Admin/CSO can be assigned anything? Actually "s opravnenim pracovat nad danym pripadem v prislusnem stavu"
-      // Wait, canViewStage(user, deal.stage) works for Hunter/Closer/Farmer but also returns true for Admin/CSO.
       const hasStagePerm = canViewStage(user, deal.stage);
       if (!hasStagePerm) return false;
 
       if (isGlobal) {
         return true;
       } else {
-        // Manager only sees people they manage
         return subIds.includes(user.id);
       }
     });
 
-  }, [users, currentUser, deal.ownerId, deal.stage]);
+  }, [users, currentUser, currentAssigneeId, deal.stage]);
 
   const handleSave = async () => {
     if (!currentUser) return;
-    if (selectedUser === (deal.ownerId || '')) {
+    if (selectedUser === currentAssigneeId) {
       onClose();
       return;
     }
     
     setIsSaving(true);
     try {
-      await updateDeal(deal.id, { ownerId: selectedUser === '' ? null : selectedUser }, currentUser.id);
+      await updateDeal(deal.id, { [currentAssigneeField]: selectedUser === '' ? null : selectedUser }, currentUser.id);
       onClose();
     } catch (err) {
       console.error(err);
@@ -63,13 +60,13 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     }
   };
 
-  const showUnassignOption = (deal.stage === 'lead_opportunity' || deal.stage === 'lost') && deal.ownerId;
+  const showUnassignOption = (deal.stage === 'lead_opportunity' || deal.stage === 'lost') && currentAssigneeId;
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-900/50 flex flex-col items-center justify-center p-4">
       <div className="bg-white max-w-md w-full rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h2 className="text-lg font-semibold text-gray-800">Změna řešitele</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Změna řešitele ({currentAssigneeField.replace('Id', '')})</h2>
           <button 
             onClick={onClose}
             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -134,7 +131,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
           </button>
           <button 
             type="button"
-            disabled={selectedUser === (deal.ownerId || '') || isSaving}
+            disabled={selectedUser === currentAssigneeId || isSaving}
             onClick={handleSave}
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >

@@ -19,6 +19,21 @@ const AVATAR_COLORS = [
   'bg-teal-500',
 ];
 
+export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
+  const currentStage = stage || deal.stage;
+  if (currentStage === 'lead_opportunity') return deal.hunterId;
+  if (currentStage === 'discovery_proposal') return deal.closerId;
+  if (currentStage === 'contracting' || currentStage === 'farming') return deal.farmerId;
+  return deal.hunterId || deal.closerId || deal.farmerId;
+};
+
+export const getAssigneeField = (stage: Stage) => {
+  if (stage === 'lead_opportunity') return 'hunterId';
+  if (stage === 'discovery_proposal') return 'closerId';
+  if (stage === 'contracting' || stage === 'farming') return 'farmerId';
+  return 'hunterId';
+};
+
 export function KanbanBoard() {
   const { t } = useTranslation();
   const state = useStore();
@@ -54,10 +69,27 @@ export function KanbanBoard() {
     if (dealId && currentUser) {
       const deal = state.deals.find(d => d.id === dealId);
       if (!deal) return;
-      if (!deal.ownerId && stage !== 'lead_opportunity' && stage !== 'lost') {
-        alert('Příležitost bez řešitele lze přesunout pouze do stavů Lead & Opportunity nebo Lost.');
-        return;
+      
+      const order = ['lead_opportunity', 'discovery_proposal', 'contracting', 'farming', 'lost'];
+      const currentIdx = order.indexOf(deal.stage);
+      const targetIdx = order.indexOf(stage);
+      const isForwardMove = targetIdx > currentIdx && stage !== 'lost';
+
+      if (isForwardMove) {
+        if (deal.stage === 'lead_opportunity' && !deal.hunterId) {
+          alert('Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.');
+          return;
+        }
+        if (deal.stage === 'discovery_proposal' && !deal.closerId) {
+          alert('Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.');
+          return;
+        }
+        if (deal.stage === 'contracting' && !deal.farmerId) {
+          alert('Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.');
+          return;
+        }
       }
+      
       updateDealStage(dealId, stage, currentUser.id);
     }
   };
@@ -92,7 +124,8 @@ export function KanbanBoard() {
   }, [users]);
 
   const canTakeDeal = (deal: Deal) => {
-    if (!currentUser || deal.ownerId) return false;
+    const curId = getCurrentAssigneeId(deal);
+    if (!currentUser || curId) return false;
     if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
     return canViewStage(currentUser, deal.stage);
   };
@@ -101,8 +134,9 @@ export function KanbanBoard() {
     if (!currentUser) return false;
     if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
     
-    if (deal.ownerId) {
-       const owner = users.find(u => u.id === deal.ownerId);
+    const curId = getCurrentAssigneeId(deal);
+    if (curId) {
+       const owner = users.find(u => u.id === curId);
        if (owner && owner.managerId === currentUser.id) return true;
     } else {
        // If empty, manager can assign if they manage someone who can work on this deal's stage??
@@ -153,7 +187,8 @@ export function KanbanBoard() {
                   const company = companies.find(c => c.id === deal.companyId);
                   if (!company) return null;
 
-                  const ownerInfo = deal.ownerId ? userInitialsAndColors[deal.ownerId] : null;
+                  const curId = getCurrentAssigneeId(deal);
+                  const ownerInfo = curId ? userInitialsAndColors[curId] : null;
 
                   return (
                     <div 
@@ -203,7 +238,7 @@ export function KanbanBoard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                state.updateDeal(deal.id, { ownerId: currentUser!.id }, currentUser!.id);
+                                state.updateDeal(deal.id, { [getAssigneeField(deal.stage)]: currentUser!.id }, currentUser!.id);
                               }}
                               className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
                             >

@@ -39,13 +39,15 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
 
   return state.deals.filter(deal => {
     // Basic rule: user owns it or subordinate owns it
-    return visibleUserIds.includes(deal.ownerId);
+    return visibleUserIds.includes(deal.hunterId!) || 
+           visibleUserIds.includes(deal.closerId!) || 
+           visibleUserIds.includes(deal.farmerId!);
   }).filter(deal => {
     // Plus stage visibility rule
     // A manager can see deals of their subordinate even in stages the manager wouldn't normally see?
     // "s jejich příležitosti totožné akce" -> can do identical actions. 
     // Yes, if it's subordinate's deal, they can see it and act on it.
-    if (subIds.includes(deal.ownerId)) return true;
+    if (subIds.includes(deal.hunterId!) || subIds.includes(deal.closerId!) || subIds.includes(deal.farmerId!)) return true;
     
     // For their own deals, they only see their allowed stages
     return canViewStage(user, deal.stage) || deal.stage === 'lost';

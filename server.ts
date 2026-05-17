@@ -114,6 +114,12 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN lostPermanently BOOLEAN;",
         "ALTER TABLE deals ADD COLUMN lostBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN lostAt DATETIME;",
+        "ALTER TABLE deals ADD COLUMN hunterId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN closerId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN farmerId VARCHAR(50);",
+        "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
+        "UPDATE deals SET closerId = ownerId WHERE stage = 'discovery_proposal' AND ownerId IS NOT NULL;",
+        "UPDATE deals SET farmerId = ownerId WHERE (stage = 'contracting' OR stage = 'farming') AND ownerId IS NOT NULL;",
         "ALTER TABLE activities ADD COLUMN transcript TEXT;"
       ];
       for (const m of migrations) {

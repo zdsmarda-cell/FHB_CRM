@@ -15,7 +15,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
   const { addCompanyAndDeal, currentUser, companies, users } = useStore();
   const [icoError, setIcoError] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [ownerId, setOwnerId] = useState<string>('');
+  const [hunterId, setHunterId] = useState<string>('');
 
   const selectableUsers = useMemo(() => {
     if (!currentUser) return [];
@@ -74,7 +74,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     }
 
     try {
-      await addCompanyAndDeal(formData, currentUser.id, ownerId || null);
+      await addCompanyAndDeal(formData, currentUser.id, hunterId || null);
       onClose();
     } catch (err: any) {
       if (err.message === 'icoExists') {
@@ -161,8 +161,8 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Přidělený řešitel / Assignee</label>
-              <select value={ownerId} onChange={e => setOwnerId(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hunter (Řešitel Lead)</label>
+              <select value={hunterId} onChange={e => setHunterId(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
                 <option value="">bez řešitele</option>
                 {selectableUsers.map(u => (
                   <option key={u.id} value={u.id}>{u.name}</option>

@@ -38,8 +38,12 @@ export function DealDetailsView() {
   const subordinateIds = getSubordinateIds(users, currentUser.id);
   const canEdit = currentUser.role === 'administrator' || 
                   currentUser.role === 'cso' || 
-                  deal.ownerId === currentUser.id || 
-                  subordinateIds.includes(deal.ownerId);
+                  deal.hunterId === currentUser.id || 
+                  deal.closerId === currentUser.id || 
+                  deal.farmerId === currentUser.id || 
+                  (deal.hunterId && subordinateIds.includes(deal.hunterId)) ||
+                  (deal.closerId && subordinateIds.includes(deal.closerId)) ||
+                  (deal.farmerId && subordinateIds.includes(deal.farmerId));
 
   const logs = auditLogs
     .filter(log => log.dealId === deal.id || log.companyId === company.id)

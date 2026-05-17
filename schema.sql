@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS deals (
   estimatedValue DECIMAL(10,2),
   successProbability INT,
   createdBy VARCHAR(50),
-  ownerId VARCHAR(50),
+  hunterId VARCHAR(50),
+  closerId VARCHAR(50),
+  farmerId VARCHAR(50),
   createdAt DATETIME,
   updatedAt DATETIME
 );
