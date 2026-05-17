@@ -80,7 +80,7 @@ export interface EcommercePlatform {
 export interface PricingOffer {
   id: string;
   filename: string;
-  fileData?: string; // e.g. base64 or URL
+  url?: string;
   dateSent: string;
   createdBy: string;
 }

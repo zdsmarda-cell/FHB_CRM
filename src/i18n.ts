@@ -119,6 +119,7 @@ const resources = {
           addedBy: 'Added by',
           noOffers: 'No pricing offers added yet.',
           enterValidInteger: 'Please enter a valid integer greater than zero.',
+          enterValidNumber: 'Please enter a valid number greater than zero.',
           notSelected: 'Not selected',
           title: 'Attributes'
         }
@@ -247,6 +248,7 @@ const resources = {
           addedBy: 'Přidal',
           noOffers: 'Zatím nebyly přidány žádné cenové nabídky.',
           enterValidInteger: 'Zadejte prosím platné celé číslo větší než nula.',
+          enterValidNumber: 'Zadejte prosím platné číslo větší než nula.',
           notSelected: 'Nevybráno',
           title: 'Atributy'
         }

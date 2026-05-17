@@ -121,8 +121,10 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN ecommercePlatformId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN estimatedMonthlyParcels INT;",
         "ALTER TABLE deals ADD COLUMN deliveryCountries JSON;",
-        "ALTER TABLE deals ADD COLUMN averageItemsPerOrder INT;",
-        "ALTER TABLE deals ADD COLUMN averageParcelWeight INT;",
+        "ALTER TABLE deals ADD COLUMN averageItemsPerOrder DECIMAL(10,2);",
+        "ALTER TABLE deals ADD COLUMN averageParcelWeight DECIMAL(10,2);",
+        "ALTER TABLE deals MODIFY COLUMN averageItemsPerOrder DECIMAL(10,2);",
+        "ALTER TABLE deals MODIFY COLUMN averageParcelWeight DECIMAL(10,2);",
         "ALTER TABLE deals ADD COLUMN averageParcelVolume INT;",
         "ALTER TABLE deals ADD COLUMN pricingOffers JSON;",
         "ALTER TABLE lead_sources ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
@@ -584,6 +586,38 @@ async function startServer() {
       res.json({ emails: emailResults });
     } catch (err: any) {
       console.error('Email syntax error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const multer = (await import('multer')).default;
+  
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+      const ico = req.body.ico || 'unknown_ico';
+      const dir = path.join(process.cwd(), 'uploads', ico);
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      const prefix = req.body.documentPrefix || 'document';
+      const ext = path.extname(file.originalname);
+      cb(null, `${prefix}${ext}`);
+    }
+  });
+  const upload = multer({ storage });
+
+  // Serve static uploads
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
+  app.post('/api/upload', authMiddleware, upload.single('file'), (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      res.json({ success: true, fileUrl: `/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
+    } catch (err: any) {
+      console.error('Upload error:', err);
       res.status(500).json({ error: err.message });
     }
   });

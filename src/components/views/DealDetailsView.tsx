@@ -409,13 +409,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     setIsEditing(false);
   };
 
-  const validateInt = (val: string, field: string) => {
+  const validateDecimal = (val: string, field: string, allowDecimal = true) => {
     if (!val) {
       setErrors(prev => ({ ...prev, [field]: false }));
       return true;
     }
     const num = Number(val);
-    const valid = Number.isInteger(num) && num > 0;
+    const valid = !isNaN(num) && num > 0 && (allowDecimal || Number.isInteger(num));
     setErrors(prev => ({ ...prev, [field]: !valid }));
     return valid;
   };
@@ -448,9 +448,9 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       }
     }
     
-    const validItems = validateInt(itemsStr, 'items');
-    const validWeight = validateInt(weightStr, 'weight');
-    const validVolume = validateInt(volumeStr, 'volume');
+    const validItems = validateDecimal(itemsStr, 'items');
+    const validWeight = validateDecimal(weightStr, 'weight');
+    const validVolume = validateDecimal(volumeStr, 'volume', false);
 
     if (!validItems || !validWeight || !validVolume) return;
 
@@ -482,35 +482,61 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentUser) return;
     
-    const newOffer: PricingOffer = {
-      id: uuidv4(),
-      filename: file.name,
-      dateSent: new Date().toISOString(),
-      createdBy: currentUser.id
-    };
-
-    let nextStage = deal.stage;
+    const { companies } = useStore.getState();
+    const company = companies.find((c: any) => c.id === deal.companyId);
+    const ico = company?.companyId || 'unknown_ico';
     
-    const canAdvance = deal.stage === 'discovery_proposal' &&
-      deal.closerId &&
-      deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
-      deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
-      deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
-      deal.averageParcelVolume && deal.averageParcelVolume > 0;
+    const ext = file.name.substring(file.name.lastIndexOf('.'));
+    const documentPrefix = `offer_${(deal.pricingOffers?.length || 0) + 1}`;
+    
+    const formDataBody = new FormData();
+    formDataBody.append('file', file);
+    formDataBody.append('ico', ico);
+    formDataBody.append('documentPrefix', documentPrefix);
 
-    if (canAdvance) {
-      nextStage = 'contracting';
-      alert(t('common.advancingToContracting', 'Příležitost byla automaticky posunuta do fáze Contracting.'));
+    try {
+      const token = localStorage.getItem('token');
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formDataBody
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+      
+      const newOffer: PricingOffer = {
+        id: uuidv4(),
+        filename: `${documentPrefix}${ext}`,
+        dateSent: new Date().toISOString(),
+        createdBy: currentUser.id,
+        url: uploadData.fileUrl
+      };
+
+      let nextStage = deal.stage;
+      const canAdvance = deal.stage === 'discovery_proposal' &&
+        deal.closerId &&
+        deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+        deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+        deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+        deal.averageParcelVolume && deal.averageParcelVolume > 0;
+
+      if (canAdvance) {
+        nextStage = 'contracting';
+        alert(t('common.advancingToContracting', 'Příležitost byla automaticky posunuta do fáze Contracting.'));
+      }
+
+      await updateDeal(deal.id, {
+        pricingOffers: [...(deal.pricingOffers || []), newOffer],
+        stage: nextStage
+      }, currentUser.id);
+    } catch (err) {
+      console.error('File upload err:', err);
+      // alert('File upload failed.');
     }
-
-    updateDeal(deal.id, {
-      pricingOffers: [...(deal.pricingOffers || []), newOffer],
-      stage: nextStage
-    }, currentUser.id);
   };
 
   const lsName = leadSources.find(s => s.id === deal.leadSourceId)?.name || '-';
@@ -618,7 +644,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   onChange={e => {
                     const val = e.target.value;
                     setItemsStr(val);
-                    validateInt(val, 'items');
+                    validateDecimal(val, 'items');
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.items ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
@@ -633,7 +659,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   onChange={e => {
                     const val = e.target.value;
                     setWeightStr(val);
-                    validateInt(val, 'weight');
+                    validateDecimal(val, 'weight');
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.weight ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
@@ -648,7 +674,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                   onChange={e => {
                     const val = e.target.value;
                     setVolumeStr(val);
-                    validateInt(val, 'volume');
+                    validateDecimal(val, 'volume', false);
                   }}
                   className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (errors.volume ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
                 />
@@ -743,7 +769,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                         </p>
                       </div>
                     </div>
-                    <button className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</button>
+                    <a href={offer.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</a>
                   </div>
                 );
               })}
@@ -892,13 +918,39 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
         if (!ctx) return;
         
         ctx.drawImage(img, 0, 0, width, height);
-        const webpDataUrl = canvas.toDataURL('image/webp', 0.8);
         
-        setNewContact(prev => ({
-          ...prev,
-          photoUrl: imgUrl,
-          photoWebpUrl: webpDataUrl
-        }));
+        canvas.toBlob(async (blob) => {
+          if (!blob) return;
+          const ico = company.companyId || 'unknown_ico';
+          const safeName = (newContact.name || 'new').replace(/[^a-zA-Z0-9]/g, '');
+          const prefix = `contact_${safeName}`;
+          let ext = file.name.substring(file.name.lastIndexOf('.'));
+          if (!ext || ext.length > 5) ext = '.png';
+          
+          const fd = new FormData();
+          fd.append('file', blob, `${prefix}${ext}`);
+          fd.append('ico', ico);
+          fd.append('documentPrefix', prefix);
+          
+          try {
+            const token = localStorage.getItem('token');
+            const res = await fetch('/api/upload', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: fd
+            });
+            const dat = await res.json();
+            if (!res.ok) throw new Error(dat.error);
+            
+            setNewContact(prev => ({
+              ...prev,
+              photoUrl: dat.fileUrl,
+              photoWebpUrl: dat.fileUrl
+            }));
+          } catch(err) {
+            console.error('Image upload err:', err);
+          }
+        }, file.type || 'image/png', 0.8);
       };
       img.src = imgUrl;
     };
