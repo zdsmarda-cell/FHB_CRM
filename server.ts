@@ -617,9 +617,42 @@ async function startServer() {
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
+      
+      // Verify file actually exists
+      if (!fs.existsSync(req.file.path)) {
+        return res.status(500).json({ error: 'File was processed but could not be saved to disk. Check directory permissions.' });
+      }
+      
       res.json({ success: true, fileUrl: `/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
     } catch (err: any) {
       console.error('Upload error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete('/api/upload', authMiddleware, (req, res) => {
+    try {
+      const fileUrl = req.query.url as string;
+      if (!fileUrl || !fileUrl.startsWith('/uploads/')) {
+        return res.status(400).json({ error: 'Invalid url' });
+      }
+
+      // decode URI component in case filename has spaces, etc.
+      const decodedUrl = decodeURIComponent(fileUrl);
+      const filePath = path.join(uploadDir, decodedUrl.replace('/uploads/', ''));
+      
+      // verify path is inside uploadDir
+      const resolvedPath = path.resolve(filePath);
+      if (!resolvedPath.startsWith(uploadDir)) {
+        return res.status(403).json({ error: 'Forbiden path' });
+      }
+
+      if (fs.existsSync(resolvedPath)) {
+        fs.unlinkSync(resolvedPath);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete file error:', err);
       res.status(500).json({ error: err.message });
     }
   });

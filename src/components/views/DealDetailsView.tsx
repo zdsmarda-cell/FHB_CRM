@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -369,6 +369,33 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   
   const showCloserAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
 
+  const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
+  const isVedouci = Boolean(deal.hunterId && subordinateIds.includes(deal.hunterId)) ||
+                    Boolean(deal.closerId && subordinateIds.includes(deal.closerId)) ||
+                    Boolean(deal.farmerId && subordinateIds.includes(deal.farmerId));
+  const canDeleteOffer = currentUser?.role === 'administrator' || 
+                         currentUser?.role === 'cso' || 
+                         isVedouci;
+
+  const handleDeleteOffer = async (offer: PricingOffer) => {
+    if (!window.confirm(t('deal.attributes.deleteOfferConfirm', 'Opravdu chcete smazat tento soubor?'))) return;
+    try {
+      if (offer.url) {
+        const token = localStorage.getItem('jwt_token');
+        await fetch(`/api/upload?url=${encodeURIComponent(offer.url)}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+      }
+      
+      const newOffers = deal.pricingOffers?.filter(o => o.id !== offer.id) || [];
+      await updateDeal(deal.id, { pricingOffers: newOffers }, currentUser!.id);
+      
+    } catch (err) {
+      console.error('Delete offer err:', err);
+    }
+  };
+
   const [formData, setFormData] = useState<Partial<Deal>>({
     leadSourceId: deal.leadSourceId,
     ecommercePlatformId: deal.ecommercePlatformId,
@@ -494,9 +521,9 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     const documentPrefix = `offer_${(deal.pricingOffers?.length || 0) + 1}`;
     
     const formDataBody = new FormData();
-    formDataBody.append('file', file);
     formDataBody.append('ico', ico);
     formDataBody.append('documentPrefix', documentPrefix);
+    formDataBody.append('file', file);
 
     try {
       const token = localStorage.getItem('jwt_token');
@@ -769,7 +796,18 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                         </p>
                       </div>
                     </div>
-                    <a href={offer.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</a>
+                    <div className="flex items-center gap-3">
+                      <a href={offer.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline">{t('deal.attributes.download')}</a>
+                      {canDeleteOffer && (
+                        <button 
+                          onClick={() => handleDeleteOffer(offer)}
+                          className="text-gray-400 hover:text-red-600 transition-colors"
+                          title={t('common.delete', 'Smazat')}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -928,9 +966,9 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
           if (!ext || ext.length > 5) ext = '.png';
           
           const fd = new FormData();
-          fd.append('file', blob, `${prefix}${ext}`);
           fd.append('ico', ico);
           fd.append('documentPrefix', prefix);
+          fd.append('file', blob, `${prefix}${ext}`);
           
           try {
             const token = localStorage.getItem('jwt_token');
