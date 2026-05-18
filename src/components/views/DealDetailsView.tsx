@@ -185,7 +185,7 @@ export function DealDetailsView() {
                 </div>
               )
             })}
-            {logs.length === 0 && <p className="text-sm text-gray-500">No history available.</p>}
+            {logs.length === 0 && <p className="text-sm text-gray-500">{t('deal.attributes.noHistory', 'No history available.')}</p>}
           </div>
           
           {totalHistoryPages > 1 && (

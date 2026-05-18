@@ -78,17 +78,17 @@ export const useStore = create<StoreState>((set, get) => {
         const res = await apiFetch('/api/state');
         if (res.ok) {
           const data = await res.json();
-          set({
+          set((state) => ({
             users: data.users || [],
             companies: data.companies || [],
             deals: data.deals || [],
             leadSources: data.leadSources || [],
             ecommercePlatforms: data.ecommercePlatforms || [],
             itIntegrations: data.itIntegrations || [],
-            auditLogs: data.auditLogs || [],
-            activities: data.activities || [],
+            auditLogs: data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : state.auditLogs,
+            activities: data.activities && data.activities.length > 0 ? data.activities : state.activities,
             currentUser: data.me || null // keep matching data.me
-          });
+          }));
         }
       } catch (err) {
         console.warn('DB state not available', err);
