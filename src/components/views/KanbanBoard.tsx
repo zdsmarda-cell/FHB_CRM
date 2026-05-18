@@ -107,10 +107,7 @@ export function KanbanBoard() {
           }
         }
         if (deal.stage === 'onboarding') {
-          if (!deal.farmerId) {
-            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingFarmer') });
-            return;
-          }
+          // No requirements to move to farming.
         }
       }
       

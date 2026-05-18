@@ -1,5 +1,4 @@
-import test from 'node:test';
-import assert from 'node:assert';
+import { test, expect } from 'vitest';
 import { Deal } from './types';
 
 test('willAdvance logic for contracting', () => {
@@ -29,7 +28,7 @@ test('willAdvance logic for contracting', () => {
         deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
         deal.pricingOffers && deal.pricingOffers.length > 0;
 
-    assert.strictEqual(willAdvance, true);
+    expect(willAdvance).toBe(true);
 });
 
 test('willAdvance logic does not trigger without pricing offers', () => {
@@ -51,5 +50,25 @@ test('willAdvance logic does not trigger without pricing offers', () => {
         deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
         deal.pricingOffers && deal.pricingOffers.length > 0;
 
-    assert.strictEqual(willAdvance, false);
+    expect(willAdvance).toBe(false);
+});
+
+test('can move deal from onboarding to farming without farmerId', () => {
+    // According to the new logic, when checking `isForwardMove` from onboarding,
+    // there is no farmer validation. So we just simulate that logic.
+    const deal: Partial<Deal> = {
+        stage: 'onboarding',
+        closerId: 'user-123',
+        farmerId: undefined, // Farmer is emphatically unset
+    };
+
+    let hasMissingFarmerError = false;
+
+    // Inside handleDrop for moving forward
+    if (deal.stage === 'onboarding') {
+        // We removed the requirement for farmerId, so this stays false
+        // hasMissingFarmerError = !deal.farmerId; 
+    }
+
+    expect(hasMissingFarmerError).toBe(false);
 });

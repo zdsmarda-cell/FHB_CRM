@@ -13,7 +13,7 @@ interface Props {
 export function ChangeAssigneeModal({ deal, onClose }: Props) {
   const { t } = useTranslation();
   const { users, currentUser, updateDeal } = useStore();
-  const currentAssigneeField = deal.stage === 'lead_opportunity' ? 'hunterId' : (deal.stage === 'discovery_proposal' ? 'closerId' : 'farmerId');
+  const currentAssigneeField = deal.stage === 'lead_opportunity' ? 'hunterId' : (deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding' ? 'closerId' : 'farmerId');
   const currentAssigneeId = deal[currentAssigneeField] || '';
   const [selectedUser, setSelectedUser] = useState<string>(currentAssigneeId);
   const [isSaving, setIsSaving] = useState(false);
