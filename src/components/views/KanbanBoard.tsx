@@ -24,15 +24,15 @@ const AVATAR_COLORS = [
 export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
   const currentStage = stage || deal.stage;
   if (currentStage === 'lead_opportunity') return deal.hunterId;
-  if (currentStage === 'discovery_proposal' || currentStage === 'onboarding') return deal.closerId;
-  if (currentStage === 'contracting' || currentStage === 'farming') return deal.farmerId;
+  if (currentStage === 'discovery_proposal' || currentStage === 'contracting' || currentStage === 'onboarding') return deal.closerId;
+  if (currentStage === 'farming') return deal.farmerId;
   return deal.hunterId || deal.closerId || deal.farmerId;
 };
 
 export const getAssigneeField = (stage: Stage) => {
   if (stage === 'lead_opportunity') return 'hunterId';
-  if (stage === 'discovery_proposal' || stage === 'onboarding') return 'closerId';
-  if (stage === 'contracting' || stage === 'farming') return 'farmerId';
+  if (stage === 'discovery_proposal' || stage === 'contracting' || stage === 'onboarding') return 'closerId';
+  if (stage === 'farming') return 'farmerId';
   return 'hunterId';
 };
 
@@ -100,9 +100,17 @@ export function KanbanBoard() {
             return;
           }
         }
-        if (deal.stage === 'contracting' && !deal.farmerId) {
-          setAlertInfo({ isOpen: true, message: t('errors.kanban.missingFarmer') });
-          return;
+        if (deal.stage === 'contracting') {
+          if (!deal.closerId) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingCloser') });
+            return;
+          }
+        }
+        if (deal.stage === 'onboarding') {
+          if (!deal.farmerId) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingFarmer') });
+            return;
+          }
         }
       }
       

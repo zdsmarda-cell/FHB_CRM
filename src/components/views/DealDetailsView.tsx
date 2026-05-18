@@ -376,7 +376,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   });
 
   const showCloserAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
-  const showFarmingAttributes = ['farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
+  const showFarmingAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
 
   const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
   const isVedouci = Boolean(deal.hunterId && subordinateIds.includes(deal.hunterId)) ||
@@ -497,7 +497,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     deal.pricingOffers && deal.pricingOffers.length > 0;
 
   const willAdvanceToOnboarding = deal.stage === 'contracting' &&
-    deal.farmerId &&
+    deal.closerId &&
     formData.contractSignedDate &&
     formData.pricingUploadedDate &&
     formData.itIntegrationId &&

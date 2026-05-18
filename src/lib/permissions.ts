@@ -25,8 +25,8 @@ export function canViewStage(user: User | null, stage: Stage): boolean {
   
   switch (user.role) {
     case 'hunter': return stage === 'lead_opportunity';
-    case 'closer': return stage === 'discovery_proposal' || stage === 'onboarding';
-    case 'farmer': return stage === 'contracting' || stage === 'farming';
+    case 'closer': return stage === 'discovery_proposal' || stage === 'contracting' || stage === 'onboarding';
+    case 'farmer': return stage === 'farming';
     default: return false;
   }
 }

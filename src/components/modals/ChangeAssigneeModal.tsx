@@ -60,7 +60,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     deal.pricingOffers && deal.pricingOffers.length > 0;
 
   const willAdvanceToOnboarding = deal.stage === 'contracting' &&
-    currentAssigneeField === 'farmerId' &&
+    currentAssigneeField === 'closerId' &&
     selectedUser !== '' &&
     deal.contractSignedDate &&
     deal.pricingUploadedDate &&
