@@ -16,6 +16,7 @@ const resources = {
         lead_opportunity: 'Lead & Opportunity',
         discovery_proposal: 'Discovery & Proposal',
         contracting: 'Contracting',
+        onboarding: 'Onboarding',
         farming: 'Farming',
         lost: 'Lost'
       },
@@ -145,6 +146,7 @@ const resources = {
         lead_opportunity: 'Lead & Oportunita',
         discovery_proposal: 'Discovery & Ponuka',
         contracting: 'Contracting',
+        onboarding: 'Onboarding',
         farming: 'Farming',
         lost: 'Lost'
       },

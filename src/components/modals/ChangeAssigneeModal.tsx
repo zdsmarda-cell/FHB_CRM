@@ -59,7 +59,15 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
     deal.pricingOffers && deal.pricingOffers.length > 0;
 
-  const willAdvance = willAdvanceToDiscovery || willAdvanceToContracting;
+  const willAdvanceToOnboarding = deal.stage === 'contracting' &&
+    currentAssigneeField === 'farmerId' &&
+    selectedUser !== '' &&
+    deal.contractSignedDate &&
+    deal.pricingUploadedDate &&
+    deal.itIntegrationId &&
+    deal.firstStockingDate;
+
+  const willAdvance = willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding;
 
   const handleSave = async () => {
     if (!currentUser) return;
@@ -77,6 +85,8 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
         updates.stage = 'discovery_proposal';
       } else if (willAdvanceToContracting) {
         updates.stage = 'contracting';
+      } else if (willAdvanceToOnboarding) {
+        updates.stage = 'onboarding';
       }
 
       await updateDeal(deal.id, updates, currentUser.id);
@@ -112,7 +122,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    Přiřazením bude příležitost automaticky posunuta do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : t('stages.contracting', 'Contracting')}</strong>.
+                    Přiřazením bude příležitost automaticky posunuta do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : willAdvanceToContracting ? t('stages.contracting', 'Contracting') : t('stages.onboarding', 'Onboarding')}</strong>.
                   </p>
                 </div>
               </div>

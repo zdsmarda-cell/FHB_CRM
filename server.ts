@@ -132,7 +132,12 @@ async function startServer() {
         "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
         "UPDATE deals SET closerId = ownerId WHERE stage = 'discovery_proposal' AND ownerId IS NOT NULL;",
         "UPDATE deals SET farmerId = ownerId WHERE (stage = 'contracting' OR stage = 'farming') AND ownerId IS NOT NULL;",
-        "ALTER TABLE activities ADD COLUMN transcript TEXT;"
+        "ALTER TABLE activities ADD COLUMN transcript TEXT;",
+        "ALTER TABLE deals ADD COLUMN contractSignedDate DATETIME;",
+        "ALTER TABLE deals ADD COLUMN pricingUploadedDate DATETIME;",
+        "ALTER TABLE deals ADD COLUMN itIntegrationId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN firstStockingDate DATETIME;",
+        "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);"
       ];
       for (const m of migrations) {
         try {
@@ -705,6 +710,7 @@ async function startServer() {
       const [deals] = await pool.query('SELECT * FROM deals');
       const [leadSources] = await pool.query('SELECT * FROM lead_sources');
       const [ecommercePlatforms] = await pool.query('SELECT * FROM ecommerce_platforms');
+      const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -730,6 +736,7 @@ async function startServer() {
         deals: parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers']),
         leadSources: parseJsonFields(leadSources as any[], []),
         ecommercePlatforms: parseJsonFields(ecommercePlatforms as any[], []),
+        itIntegrations: parseJsonFields(itIntegrations as any[], []),
         auditLogs: [],
         activities: []
       });
@@ -788,13 +795,21 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing table or id' });
       }
       
-      const allowedTables = ['lead_sources', 'ecommerce_platforms'];
+      const allowedTables = ['lead_sources', 'ecommerce_platforms', 'it_integrations'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
       }
 
       // Check if there are any deals referencing the entity
-      const fkColumn = table === 'lead_sources' ? 'leadSourceId' : 'ecommercePlatformId';
+      let fkColumn = '';
+      if (table === 'lead_sources') {
+        fkColumn = 'leadSourceId';
+      } else if (table === 'ecommerce_platforms') {
+        fkColumn = 'ecommercePlatformId';
+      } else if (table === 'it_integrations') {
+        fkColumn = 'itIntegrationId';
+      }
+
       const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
       const count = (rows as any[])[0].count;
 

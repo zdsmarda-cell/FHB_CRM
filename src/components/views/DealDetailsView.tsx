@@ -365,7 +365,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
 
 function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
   const { t } = useTranslation();
-  const { leadSources, ecommercePlatforms, updateDeal, currentUser, users } = useStore();
+  const { leadSources, ecommercePlatforms, itIntegrations, updateDeal, currentUser, users } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -376,6 +376,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   });
 
   const showCloserAttributes = ['closer', 'farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
+  const showFarmingAttributes = ['farmer', 'cso', 'administrator'].includes(currentUser?.role || '');
 
   const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
   const isVedouci = Boolean(deal.hunterId && subordinateIds.includes(deal.hunterId)) ||
@@ -425,7 +426,11 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     deliveryCountries: deal.deliveryCountries || [],
     averageItemsPerOrder: deal.averageItemsPerOrder,
     averageParcelWeight: deal.averageParcelWeight,
-    averageParcelVolume: deal.averageParcelVolume
+    averageParcelVolume: deal.averageParcelVolume,
+    contractSignedDate: deal.contractSignedDate,
+    pricingUploadedDate: deal.pricingUploadedDate,
+    itIntegrationId: deal.itIntegrationId,
+    firstStockingDate: deal.firstStockingDate
   });
   
   const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
@@ -443,7 +448,11 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       deliveryCountries: deal.deliveryCountries || [],
       averageItemsPerOrder: deal.averageItemsPerOrder,
       averageParcelWeight: deal.averageParcelWeight,
-      averageParcelVolume: deal.averageParcelVolume
+      averageParcelVolume: deal.averageParcelVolume,
+      contractSignedDate: deal.contractSignedDate,
+      pricingUploadedDate: deal.pricingUploadedDate,
+      itIntegrationId: deal.itIntegrationId,
+      firstStockingDate: deal.firstStockingDate
     });
     setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
     setParcelsError(false);
@@ -487,6 +496,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     volumeStr && !errors.volume && Number(volumeStr) > 0 &&
     deal.pricingOffers && deal.pricingOffers.length > 0;
 
+  const willAdvanceToOnboarding = deal.stage === 'contracting' &&
+    deal.farmerId &&
+    formData.contractSignedDate &&
+    formData.pricingUploadedDate &&
+    formData.itIntegrationId &&
+    formData.firstStockingDate;
+
   const handleSave = () => {
     if (!currentUser) return;
     
@@ -509,6 +525,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       nextStage = 'discovery_proposal';
     } else if (willAdvanceToContracting) {
       nextStage = 'contracting';
+    } else if (willAdvanceToOnboarding) {
+      nextStage = 'onboarding';
+      setAppAlert({
+        isOpen: true,
+        title: t('common.success', 'Úspěch'),
+        message: 'Příležitost byla automaticky posunuta do fáze Onboarding.'
+      });
     }
 
     updateDeal(deal.id, {
@@ -613,7 +636,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
       {isEditing ? (
         <div className="space-y-4 text-sm mt-3">
-          {(willAdvanceToDiscovery || willAdvanceToContracting) && (
+          {(willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding) && (
             <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -621,7 +644,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : t('stages.contracting', 'Contracting')}</strong>.
+                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : willAdvanceToContracting ? t('stages.contracting', 'Contracting') : t('stages.onboarding', 'Onboarding')}</strong>.
                   </p>
                 </div>
               </div>
@@ -740,6 +763,51 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               </div>
             </>
           )}
+
+          {showFarmingAttributes && (
+            <>
+              <div>
+                <label className="block text-gray-500 mb-1">Datum podepsání smlouvy</label>
+                <input 
+                  type="date"
+                  value={formData.contractSignedDate ? formData.contractSignedDate.substring(0,10) : ''} 
+                  onChange={e => setFormData({ ...formData, contractSignedDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Datum nahrání ceníku do systému</label>
+                <input 
+                  type="date"
+                  value={formData.pricingUploadedDate ? formData.pricingUploadedDate.substring(0,10) : ''} 
+                  onChange={e => setFormData({ ...formData, pricingUploadedDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Požadavek na IT integraci</label>
+                <select
+                  value={formData.itIntegrationId || ''}
+                  onChange={e => setFormData({ ...formData, itIntegrationId: e.target.value || null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm bg-white"
+                >
+                  <option value="">Nevybráno</option>
+                  {itIntegrations.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Datum 1. naskladnění</label>
+                <input 
+                  type="date"
+                  value={formData.firstStockingDate ? formData.firstStockingDate.substring(0,10) : ''} 
+                  onChange={e => setFormData({ ...formData, firstStockingDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+            </>
+          )}
           
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={handleCancel} className="px-3 py-1.5 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-gray-50">{t('common.cancel')}</button>
@@ -787,6 +855,27 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               <div>
                 <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.averageVolume')}</span>
                 <span className="text-gray-900 font-medium">{deal.averageParcelVolume || '-'}</span>
+              </div>
+            </>
+          )}
+
+          {showFarmingAttributes && (
+            <>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum podepsání smlouvy</span>
+                <span className="text-gray-900 font-medium">{deal.contractSignedDate ? format(parseISO(deal.contractSignedDate), 'dd.MM.yyyy') : '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum nahrání ceníku do systému</span>
+                <span className="text-gray-900 font-medium">{deal.pricingUploadedDate ? format(parseISO(deal.pricingUploadedDate), 'dd.MM.yyyy') : '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Požadavek na IT integraci</span>
+                <span className="text-gray-900 font-medium">{itIntegrations.find(i => i.id === deal.itIntegrationId)?.name || '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum 1. naskladnění</span>
+                <span className="text-gray-900 font-medium">{deal.firstStockingDate ? format(parseISO(deal.firstStockingDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
             </>
           )}

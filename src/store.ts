@@ -36,6 +36,7 @@ export const useStore = create<StoreState>((set, get) => {
           deals: data.deals || [],
           leadSources: data.leadSources || [],
           ecommercePlatforms: data.ecommercePlatforms || [],
+          itIntegrations: data.itIntegrations || [],
           auditLogs: data.auditLogs || [],
           activities: data.activities || [],
           currentUser: data.me || null
@@ -83,6 +84,7 @@ export const useStore = create<StoreState>((set, get) => {
             deals: data.deals || [],
             leadSources: data.leadSources || [],
             ecommercePlatforms: data.ecommercePlatforms || [],
+            itIntegrations: data.itIntegrations || [],
             auditLogs: data.auditLogs || [],
             activities: data.activities || [],
             currentUser: data.me || null // keep matching data.me
@@ -118,6 +120,7 @@ export const useStore = create<StoreState>((set, get) => {
     deals: [],
     leadSources: [],
     ecommercePlatforms: [],
+    itIntegrations: [],
     auditLogs: [],
     activities: [],
     currentUser: null,
@@ -180,6 +183,36 @@ export const useStore = create<StoreState>((set, get) => {
       });
       set(state => ({
         ecommercePlatforms: state.ecommercePlatforms.filter(s => s.id !== id)
+      }));
+    },
+    addITIntegration: async (name) => {
+      const newIntegration = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ it_integrations: [newIntegration] });
+      set(state => ({ itIntegrations: [...state.itIntegrations, newIntegration] }));
+    },
+    updateITIntegration: async (id, updates) => {
+      const state = get();
+      const existing = state.itIntegrations.find(p => p.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ it_integrations: [updated] });
+      set(state => ({
+        itIntegrations: state.itIntegrations.map(s => s.id === id ? updated : s)
+      }));
+    },
+    deleteITIntegration: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'it_integrations', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
+      });
+      set(state => ({
+        itIntegrations: state.itIntegrations.filter(s => s.id !== id)
       }));
     },
 

@@ -74,6 +74,7 @@ export function AdminPanel() {
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [newLeadSource, setNewLeadSource] = useState('');
   const [newEcommercePlatform, setNewEcommercePlatform] = useState('');
+  const [newItIntegration, setNewItIntegration] = useState('');
 
   React.useEffect(() => {
     store.refreshState();
@@ -264,6 +265,47 @@ export function AdminPanel() {
               ))}
               {store.ecommercePlatforms.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">Zatím žádné e-commerce platformy.</li>
+              )}
+            </ul>
+          </div>
+
+          {/* IT Integrations */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Požadavek na IT integraci</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newItIntegration}
+                onChange={e => setNewItIntegration(e.target.value)}
+                placeholder="Nová IT integrace"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newItIntegration.trim()) {
+                    store.addITIntegration(newItIntegration.trim());
+                    setNewItIntegration('');
+                  }
+                }}
+                disabled={!newItIntegration.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                Přidat
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.itIntegrations.map(s => (
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateITIntegration(s.id, { name })}
+                  onToggleActive={() => store.updateITIntegration(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteITIntegration(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.deals.some(d => d.itIntegrationId === s.id)}
+                />
+              ))}
+              {store.itIntegrations.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">Zatím žádné IT integrace.</li>
               )}
             </ul>
           </div>

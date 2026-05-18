@@ -24,14 +24,14 @@ const AVATAR_COLORS = [
 export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
   const currentStage = stage || deal.stage;
   if (currentStage === 'lead_opportunity') return deal.hunterId;
-  if (currentStage === 'discovery_proposal') return deal.closerId;
+  if (currentStage === 'discovery_proposal' || currentStage === 'onboarding') return deal.closerId;
   if (currentStage === 'contracting' || currentStage === 'farming') return deal.farmerId;
   return deal.hunterId || deal.closerId || deal.farmerId;
 };
 
 export const getAssigneeField = (stage: Stage) => {
   if (stage === 'lead_opportunity') return 'hunterId';
-  if (stage === 'discovery_proposal') return 'closerId';
+  if (stage === 'discovery_proposal' || stage === 'onboarding') return 'closerId';
   if (stage === 'contracting' || stage === 'farming') return 'farmerId';
   return 'hunterId';
 };
@@ -74,7 +74,7 @@ export function KanbanBoard() {
       const deal = state.deals.find(d => d.id === dealId);
       if (!deal) return;
       
-      const order = ['lead_opportunity', 'discovery_proposal', 'contracting', 'farming', 'lost'];
+      const order = ['lead_opportunity', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
       const currentIdx = order.indexOf(deal.stage);
       const targetIdx = order.indexOf(stage);
       const isForwardMove = targetIdx > currentIdx && stage !== 'lost';
@@ -252,22 +252,40 @@ export function KanbanBoard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const willAdvance = 
+                                const willAdvanceToDiscovery = 
                                   deal.stage === 'lead_opportunity' &&
                                   deal.leadSourceId &&
                                   deal.ecommercePlatformId &&
                                   deal.estimatedMonthlyParcels &&
                                   deal.estimatedMonthlyParcels > 0;
                                   
-                                if (willAdvance) {
-                                  if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${t('stages.discovery_proposal')}. Chcete pokračovat?`)) {
+                                const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
+                                  deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+                                  deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+                                  deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+                                  deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
+                                  deal.pricingOffers && deal.pricingOffers.length > 0;
+
+                                const willAdvanceToOnboarding = deal.stage === 'contracting' &&
+                                  deal.contractSignedDate &&
+                                  deal.pricingUploadedDate &&
+                                  deal.itIntegrationId &&
+                                  deal.firstStockingDate;
+                                  
+                                const willAdvanceInfo = willAdvanceToDiscovery ? { stage: 'discovery_proposal', name: t('stages.discovery_proposal') }
+                                  : willAdvanceToContracting ? { stage: 'contracting', name: t('stages.contracting') }
+                                  : willAdvanceToOnboarding ? { stage: 'onboarding', name: t('stages.onboarding') }
+                                  : null;
+
+                                if (willAdvanceInfo) {
+                                  if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${willAdvanceInfo.name}. Chcete pokračovat?`)) {
                                     return;
                                   }
                                 }
                                 
                                 const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
-                                if (willAdvance) {
-                                  updates.stage = 'discovery_proposal';
+                                if (willAdvanceInfo) {
+                                  updates.stage = willAdvanceInfo.stage as Stage;
                                 }
                                 state.updateDeal(deal.id, updates, currentUser!.id);
                               }}

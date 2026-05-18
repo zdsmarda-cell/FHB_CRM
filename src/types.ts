@@ -1,6 +1,6 @@
 export type Role = 'hunter' | 'closer' | 'farmer' | 'cso' | 'administrator';
 
-export type Stage = 'lead_opportunity' | 'discovery_proposal' | 'contracting' | 'farming' | 'lost';
+export type Stage = 'lead_opportunity' | 'discovery_proposal' | 'contracting' | 'onboarding' | 'farming' | 'lost';
 
 export type Region = 'SK_CZ' | 'CEE' | 'DACH' | 'EUROPE' | 'WORLD';
 
@@ -77,6 +77,12 @@ export interface EcommercePlatform {
   isActive?: boolean;
 }
 
+export interface ITIntegration {
+  id: string;
+  name: string;
+  isActive?: boolean;
+}
+
 export interface PricingOffer {
   id: string;
   filename: string;
@@ -101,6 +107,10 @@ export interface Deal {
   averageParcelWeight?: number;
   averageParcelVolume?: number;
   pricingOffers?: PricingOffer[];
+  contractSignedDate?: string | null;
+  pricingUploadedDate?: string | null;
+  itIntegrationId?: string | null;
+  firstStockingDate?: string | null;
   createdAt: string;
   updatedAt: string;
   postponedUntil?: string;
@@ -134,6 +144,7 @@ export interface StoreState {
   currentUser: User | null;
   leadSources: LeadSource[];
   ecommercePlatforms: EcommercePlatform[];
+  itIntegrations: ITIntegration[];
   
   // Actions
   refreshState: () => Promise<void>;
@@ -143,6 +154,9 @@ export interface StoreState {
   updateEcommercePlatform: (id: string, updates: Partial<EcommercePlatform>) => Promise<void>;
   addEcommercePlatform: (name: string) => Promise<void>;
   deleteEcommercePlatform: (id: string) => Promise<void>;
+  updateITIntegration: (id: string, updates: Partial<ITIntegration>) => Promise<void>;
+  addITIntegration: (name: string) => Promise<void>;
+  deleteITIntegration: (id: string) => Promise<void>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;

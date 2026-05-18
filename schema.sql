@@ -55,6 +55,10 @@ CREATE TABLE IF NOT EXISTS deals (
   averageParcelWeight DECIMAL(10,2),
   averageParcelVolume INT,
   pricingOffers JSON,
+  contractSignedDate DATETIME,
+  pricingUploadedDate DATETIME,
+  itIntegrationId VARCHAR(50),
+  firstStockingDate DATETIME,
   createdAt DATETIME,
   updatedAt DATETIME
 );
@@ -66,6 +70,12 @@ CREATE TABLE IF NOT EXISTS lead_sources (
 );
 
 CREATE TABLE IF NOT EXISTS ecommerce_platforms (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  isActive BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS it_integrations (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(255) NOT NULL,
   isActive BOOLEAN DEFAULT TRUE

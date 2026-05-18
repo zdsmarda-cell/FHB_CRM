@@ -4,6 +4,7 @@ export const STAGES: Stage[] = [
   'lead_opportunity',
   'discovery_proposal',
   'contracting',
+  'onboarding',
   'farming',
   'lost'
 ];
@@ -24,7 +25,7 @@ export function canViewStage(user: User | null, stage: Stage): boolean {
   
   switch (user.role) {
     case 'hunter': return stage === 'lead_opportunity';
-    case 'closer': return stage === 'discovery_proposal';
+    case 'closer': return stage === 'discovery_proposal' || stage === 'onboarding';
     case 'farmer': return stage === 'contracting' || stage === 'farming';
     default: return false;
   }
