@@ -4,7 +4,7 @@ import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../
 import { Stage, User, Deal } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Building2, Calendar, Ban, UserPlus, Users } from 'lucide-react';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
 import { LostDealModal } from '../modals/LostDealModal';
@@ -59,8 +59,56 @@ export function KanbanBoard() {
     stage === 'lost'
   );
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollIntervalRef = useRef<number | null>(null);
+
+  const startAutoScroll = (direction: 'left' | 'right') => {
+    if (scrollIntervalRef.current) return;
+    scrollIntervalRef.current = window.setInterval(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollBy({ left: direction === 'right' ? 10 : -10 });
+      }
+    }, 16);
+  };
+
+  const stopAutoScroll = () => {
+    if (scrollIntervalRef.current) {
+      window.clearInterval(scrollIntervalRef.current);
+      scrollIntervalRef.current = null;
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, dealId: string) => {
     e.dataTransfer.setData('text/plain', dealId);
+  };
+
+  const handleDragEnd = () => {
+    stopAutoScroll();
+  };
+
+  const handleContainerDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!scrollContainerRef.current) return;
+    
+    // Calculate distance from edges to trigger auto-scroll
+    const container = scrollContainerRef.current;
+    const rect = container.getBoundingClientRect();
+    const edgeThreshold = 100; // pixels from edge
+    
+    const distanceToLeft = e.clientX - rect.left;
+    const distanceToRight = rect.right - e.clientX;
+    
+    // Only scroll if we are not at the very edge of the scroll properties
+    const canScrollLeft = container.scrollLeft > 0;
+    const canScrollRight = container.scrollLeft < container.scrollWidth - container.clientWidth;
+
+    if (distanceToLeft < edgeThreshold && canScrollLeft) {
+      startAutoScroll('left');
+    } else if (distanceToRight < edgeThreshold && canScrollRight) {
+      startAutoScroll('right');
+    } else {
+      stopAutoScroll();
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -69,6 +117,7 @@ export function KanbanBoard() {
 
   const handleDrop = (e: React.DragEvent, stage: Stage) => {
     e.preventDefault();
+    stopAutoScroll();
     const dealId = e.dataTransfer.getData('text/plain');
     if (dealId && currentUser) {
       const deal = state.deals.find(d => d.id === dealId);
@@ -181,7 +230,12 @@ export function KanbanBoard() {
         </button>
       </div>
 
-      <div className="flex gap-6 overflow-x-auto pb-4 flex-1 items-start">
+      <div 
+        ref={scrollContainerRef}
+        onDragOver={handleContainerDragOver}
+        onDragLeave={stopAutoScroll}
+        className="flex gap-6 overflow-x-auto pb-4 flex-1 items-start"
+      >
         {visibleStages.map(stage => {
           const stageDeals = visibleDeals.filter(d => d.stage === stage);
           
@@ -214,6 +268,7 @@ export function KanbanBoard() {
                       key={deal.id}
                       draggable
                       onDragStart={(e) => handleDragStart(e, deal.id)}
+                      onDragEnd={handleDragEnd}
                       onClick={() => navigate(`/deal/${deal.id}`)}
                       className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
                     >
