@@ -156,7 +156,10 @@ export function KanbanBoard() {
           }
         }
         if (deal.stage === 'onboarding') {
-          // No requirements to move to farming.
+          if (!deal.itIntegrationCompletedDate || !deal.firstStockingDateActual || !deal.integrationTestingCompletedDate) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingOnboardingAttributes', 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.') });
+            return;
+          }
         }
       }
       

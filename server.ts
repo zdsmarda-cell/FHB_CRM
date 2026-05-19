@@ -137,6 +137,9 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN pricingUploadedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN itIntegrationId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN firstStockingDate DATETIME;",
+        "ALTER TABLE deals ADD COLUMN itIntegrationCompletedDate DATETIME;",
+        "ALTER TABLE deals ADD COLUMN firstStockingDateActual DATETIME;",
+        "ALTER TABLE deals ADD COLUMN integrationTestingCompletedDate DATETIME;",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);"
       ];
       for (const m of migrations) {

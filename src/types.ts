@@ -110,7 +110,10 @@ export interface Deal {
   contractSignedDate?: string | null;
   pricingUploadedDate?: string | null;
   itIntegrationId?: string | null;
-  firstStockingDate?: string | null;
+  firstStockingDate?: string | null; // Expected first stocking date
+  itIntegrationCompletedDate?: string | null; // IT integrace dokončena a otestována
+  firstStockingDateActual?: string | null; // První naskladnění
+  integrationTestingCompletedDate?: string | null; // Odladění integrace na testovacích objednávkách
   createdAt: string;
   updatedAt: string;
   postponedUntil?: string;

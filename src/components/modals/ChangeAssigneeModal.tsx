@@ -67,7 +67,12 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     deal.itIntegrationId &&
     deal.firstStockingDate;
 
-  const willAdvance = willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding;
+  const willAdvanceToFarming = deal.stage === 'onboarding' &&
+    deal.itIntegrationCompletedDate &&
+    deal.firstStockingDateActual &&
+    deal.integrationTestingCompletedDate;
+
+  const willAdvance = willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding || willAdvanceToFarming;
 
   const handleSave = async () => {
     if (!currentUser) return;
@@ -87,6 +92,8 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
         updates.stage = 'contracting';
       } else if (willAdvanceToOnboarding) {
         updates.stage = 'onboarding';
+      } else if (willAdvanceToFarming) {
+        updates.stage = 'farming';
       }
 
       await updateDeal(deal.id, updates, currentUser.id);

@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS deals (
   pricingUploadedDate DATETIME,
   itIntegrationId VARCHAR(50),
   firstStockingDate DATETIME,
+  itIntegrationCompletedDate DATETIME,
+  firstStockingDateActual DATETIME,
+  integrationTestingCompletedDate DATETIME,
   createdAt DATETIME,
   updatedAt DATETIME
 );

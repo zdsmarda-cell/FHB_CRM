@@ -83,7 +83,8 @@ const resources = {
           missingAttributes: 'First you must fill in the attributes (Lead source, E-commerce platform, Estimated monthly parcels > 0) before moving to the next stage.',
           missingCloser: 'First you must assign a closer before moving to the next stage.',
           missingCloserAttributes: 'First you must fill in the product attributes (Delivery countries, items, weight, volume) and add a pricing offer before moving to the next stage.',
-          missingFarmer: 'First you must assign a farmer before moving to the next stage.'
+          missingFarmer: 'First you must assign a farmer before moving to the next stage.',
+          missingOnboardingAttributes: 'First you must fill in the IT integration data and 1st stocking date before moving to the Farming stage.'
         }
       },
       common: {
@@ -214,7 +215,8 @@ const resources = {
           missingAttributes: 'Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet balíků větší jak 0) než můžete posunout do dalšího stavu.',
           missingCloser: 'Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.',
           missingCloserAttributes: 'Prvně musíte vyplnit atributy produktu (země doručení, počet ks, hmotnost, objem balíku) a přidat cenovou nabídku, než můžete posunout do dalšího stavu.',
-          missingFarmer: 'Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.'
+          missingFarmer: 'Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.',
+          missingOnboardingAttributes: 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.'
         }
       },
       common: {

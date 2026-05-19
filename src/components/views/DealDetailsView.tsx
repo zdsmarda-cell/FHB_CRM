@@ -430,7 +430,10 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     contractSignedDate: deal.contractSignedDate,
     pricingUploadedDate: deal.pricingUploadedDate,
     itIntegrationId: deal.itIntegrationId,
-    firstStockingDate: deal.firstStockingDate
+    firstStockingDate: deal.firstStockingDate,
+    itIntegrationCompletedDate: deal.itIntegrationCompletedDate,
+    firstStockingDateActual: deal.firstStockingDateActual,
+    integrationTestingCompletedDate: deal.integrationTestingCompletedDate
   });
   
   const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
@@ -452,7 +455,10 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       contractSignedDate: deal.contractSignedDate,
       pricingUploadedDate: deal.pricingUploadedDate,
       itIntegrationId: deal.itIntegrationId,
-      firstStockingDate: deal.firstStockingDate
+      firstStockingDate: deal.firstStockingDate,
+      itIntegrationCompletedDate: deal.itIntegrationCompletedDate,
+      firstStockingDateActual: deal.firstStockingDateActual,
+      integrationTestingCompletedDate: deal.integrationTestingCompletedDate
     });
     setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
     setParcelsError(false);
@@ -503,6 +509,11 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     formData.itIntegrationId &&
     formData.firstStockingDate;
 
+  const willAdvanceToFarming = deal.stage === 'onboarding' &&
+    formData.itIntegrationCompletedDate &&
+    formData.firstStockingDateActual &&
+    formData.integrationTestingCompletedDate;
+
   const handleSave = () => {
     if (!currentUser) return;
     
@@ -531,6 +542,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
         isOpen: true,
         title: t('common.success', 'Úspěch'),
         message: 'Příležitost byla automaticky posunuta do fáze Onboarding.'
+      });
+    } else if (willAdvanceToFarming) {
+      nextStage = 'farming';
+      setAppAlert({
+        isOpen: true,
+        title: t('common.success', 'Úspěch'),
+        message: 'Příležitost byla automaticky posunuta do fáze Farming.'
       });
     }
 
@@ -636,7 +654,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
       {isEditing ? (
         <div className="space-y-4 text-sm mt-3">
-          {(willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding) && (
+          {(willAdvanceToDiscovery || willAdvanceToContracting || willAdvanceToOnboarding || willAdvanceToFarming) && (
             <div className="mb-4 bg-blue-50 border-l-4 border-blue-400 p-3">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -644,7 +662,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-blue-700">
-                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : willAdvanceToContracting ? t('stages.contracting', 'Contracting') : t('stages.onboarding', 'Onboarding')}</strong>.
+                    Uložením těchto hodnot dojde k automatickému posunu příležitosti do fáze <strong>{willAdvanceToDiscovery ? t('stages.discovery_proposal') : willAdvanceToContracting ? t('stages.contracting', 'Contracting') : willAdvanceToOnboarding ? t('stages.onboarding', 'Onboarding') : t('stages.farming', 'Farming')}</strong>.
                   </p>
                 </div>
               </div>
@@ -798,11 +816,44 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 </select>
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Datum 1. naskladnění</label>
+                <label className="block text-gray-500 mb-1">Datum očekávaného 1. naskladnění</label>
                 <input 
                   type="date"
                   value={formData.firstStockingDate ? formData.firstStockingDate.substring(0,10) : ''} 
                   onChange={e => setFormData({ ...formData, firstStockingDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">IT integrace dokončena a otestována</label>
+                {currentUser?.role === 'administrator' ? (
+                  <input 
+                    type="date"
+                    value={formData.itIntegrationCompletedDate ? formData.itIntegrationCompletedDate.substring(0,10) : ''} 
+                    onChange={e => setFormData({ ...formData, itIntegrationCompletedDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                  />
+                ) : (
+                  <div className="w-full px-3 py-2 border border-gray-200 bg-gray-50 rounded text-gray-700">
+                    {formData.itIntegrationCompletedDate ? format(parseISO(formData.itIntegrationCompletedDate), 'dd.MM.yyyy') : '-'}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Odladění integrace na testovacích objednávkách</label>
+                <input 
+                  type="date"
+                  value={formData.integrationTestingCompletedDate ? formData.integrationTestingCompletedDate.substring(0,10) : ''} 
+                  onChange={e => setFormData({ ...formData, integrationTestingCompletedDate: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-500 mb-1">Datum 1. naskladnění</label>
+                <input 
+                  type="date"
+                  value={formData.firstStockingDateActual ? formData.firstStockingDateActual.substring(0,10) : ''} 
+                  onChange={e => setFormData({ ...formData, firstStockingDateActual: e.target.value ? new Date(e.target.value).toISOString() : null })}
                   className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
                 />
               </div>
@@ -874,8 +925,20 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 <span className="text-gray-900 font-medium">{itIntegrations.find(i => i.id === deal.itIntegrationId)?.name || '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum 1. naskladnění</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum očekávaného 1. naskladnění</span>
                 <span className="text-gray-900 font-medium">{deal.firstStockingDate ? format(parseISO(deal.firstStockingDate), 'dd.MM.yyyy') : '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">IT integrace dokončena a otestována</span>
+                <span className="text-gray-900 font-medium">{deal.itIntegrationCompletedDate ? format(parseISO(deal.itIntegrationCompletedDate), 'dd.MM.yyyy') : '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odladění integrace na testovacích objednávkách</span>
+                <span className="text-gray-900 font-medium">{deal.integrationTestingCompletedDate ? format(parseISO(deal.integrationTestingCompletedDate), 'dd.MM.yyyy') : '-'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum 1. naskladnění</span>
+                <span className="text-gray-900 font-medium">{deal.firstStockingDateActual ? format(parseISO(deal.firstStockingDateActual), 'dd.MM.yyyy') : '-'}</span>
               </div>
             </>
           )}
