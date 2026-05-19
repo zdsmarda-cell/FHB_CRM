@@ -118,17 +118,17 @@ export function EmailLogsTable() {
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider border-b border-gray-200">
             <tr>
-              <th className="px-6 py-4 font-medium">Datum a čas</th>
-              <th className="px-6 py-4 font-medium">Příjemce</th>
-              <th className="px-6 py-4 font-medium">Předmět</th>
-              <th className="px-6 py-4 font-medium">Stav</th>
+              <th className="px-6 py-4 font-medium">{t('admin.tableDateAndTime')}</th>
+              <th className="px-6 py-4 font-medium">{t('admin.tableRecipient')}</th>
+              <th className="px-6 py-4 font-medium">{t('admin.tableSubject')}</th>
+              <th className="px-6 py-4 font-medium">{t('admin.tableStatus')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Načítání...</td></tr>
+              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">{t('admin.loading')}</td></tr>
             ) : logs.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">Žádné záznamy</td></tr>
+              <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-500">{t('admin.noRecords')}</td></tr>
             ) : logs.map((log) => (
               <tr key={log.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-4 text-gray-900">

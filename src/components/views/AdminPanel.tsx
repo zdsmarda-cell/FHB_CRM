@@ -190,13 +190,13 @@ export function AdminPanel() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Lead Sources */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Zdroje leadů</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.leadSourcesTitle')}</h3>
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
                 value={newLeadSource}
                 onChange={e => setNewLeadSource(e.target.value)}
-                placeholder="Nový zdroj leadu"
+                placeholder={t('admin.newLeadSource')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               />
               <button 
@@ -209,7 +209,7 @@ export function AdminPanel() {
                 disabled={!newLeadSource.trim()}
                 className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
               >
-                Přidat
+                {t('common.add')}
               </button>
             </div>
             <ul className="divide-y divide-gray-100">
@@ -224,20 +224,20 @@ export function AdminPanel() {
                 />
               ))}
               {store.leadSources.length === 0 && (
-                <li className="py-3 text-sm text-gray-500">Zatím žádné zdroje leadů.</li>
+                <li className="py-3 text-sm text-gray-500">{t('admin.noLeadSources')}</li>
               )}
             </ul>
           </div>
           
           {/* Ecommerce Platforms */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">E-commerce platformy</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.ecommercePlatformsTitle')}</h3>
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
                 value={newEcommercePlatform}
                 onChange={e => setNewEcommercePlatform(e.target.value)}
-                placeholder="Nová e-commerce platforma"
+                placeholder={t('admin.newEcommercePlatform')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               />
               <button 
@@ -250,7 +250,7 @@ export function AdminPanel() {
                 disabled={!newEcommercePlatform.trim()}
                 className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
               >
-                Přidat
+                {t('common.add')}
               </button>
             </div>
             <ul className="divide-y divide-gray-100">
@@ -265,20 +265,20 @@ export function AdminPanel() {
                 />
               ))}
               {store.ecommercePlatforms.length === 0 && (
-                <li className="py-3 text-sm text-gray-500">Zatím žádné e-commerce platformy.</li>
+                <li className="py-3 text-sm text-gray-500">{t('admin.noEcommercePlatforms')}</li>
               )}
             </ul>
           </div>
 
           {/* IT Integrations */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Požadavek na IT integraci</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.itIntegrationsTitle')}</h3>
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
                 value={newItIntegration}
                 onChange={e => setNewItIntegration(e.target.value)}
-                placeholder="Nová IT integrace"
+                placeholder={t('admin.newItIntegration')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               />
               <button 
@@ -291,7 +291,7 @@ export function AdminPanel() {
                 disabled={!newItIntegration.trim()}
                 className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
               >
-                Přidat
+                {t('common.add')}
               </button>
             </div>
             <ul className="divide-y divide-gray-100">
@@ -306,20 +306,20 @@ export function AdminPanel() {
                 />
               ))}
               {store.itIntegrations.length === 0 && (
-                <li className="py-3 text-sm text-gray-500">Zatím žádné IT integrace.</li>
+                <li className="py-3 text-sm text-gray-500">{t('admin.noItIntegrations')}</li>
               )}
             </ul>
           </div>
           
           {/* Lost Reasons */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Důvody ztráty</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.lostReasonsTitle')}</h3>
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
                 value={newLostReason}
                 onChange={e => setNewLostReason(e.target.value)}
-                placeholder="Nový důvod ztráty"
+                placeholder={t('admin.newLostReason')}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               />
               <button 
@@ -332,7 +332,7 @@ export function AdminPanel() {
                 disabled={!newLostReason.trim()}
                 className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
               >
-                Přidat
+                {t('common.add')}
               </button>
             </div>
             <ul className="divide-y divide-gray-100">
@@ -347,7 +347,7 @@ export function AdminPanel() {
                 />
               ))}
               {store.lostReasons.length === 0 && (
-                <li className="py-3 text-sm text-gray-500">Zatím žádné důvody ztráty.</li>
+                <li className="py-3 text-sm text-gray-500">{t('admin.noLostReasons')}</li>
               )}
             </ul>
           </div>

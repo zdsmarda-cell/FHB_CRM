@@ -790,7 +790,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           {showFarmingAttributes && (
             <>
               <div>
-                <label className="block text-gray-500 mb-1">Datum podepsání smlouvy</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.contractSignedDate')}</label>
                 <input 
                   type="date"
                   value={formData.contractSignedDate ? formData.contractSignedDate.substring(0,10) : ''} 
@@ -799,7 +799,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 />
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Datum nahrání ceníku do systému</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.pricingUploadedDate')}</label>
                 <input 
                   type="date"
                   value={formData.pricingUploadedDate ? formData.pricingUploadedDate.substring(0,10) : ''} 
@@ -808,20 +808,20 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 />
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Požadavek na IT integraci</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.itIntegrationRequirement')}</label>
                 <select
                   value={formData.itIntegrationId || ''}
                   onChange={e => setFormData({ ...formData, itIntegrationId: e.target.value || null })}
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm bg-white"
                 >
-                  <option value="">Nevybráno</option>
+                  <option value="">{t('deal.attributes.notSelected')}</option>
                   {itIntegrations.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Datum očekávaného 1. naskladnění</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.expectedFirstStockingDate')}</label>
                 <input 
                   type="date"
                   value={formData.firstStockingDate ? formData.firstStockingDate.substring(0,10) : ''} 
@@ -830,7 +830,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 />
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">IT integrace dokončena a otestována</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.itIntegrationCompletedDate')}</label>
                 {currentUser?.role === 'administrator' ? (
                   <input 
                     type="date"
@@ -845,7 +845,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 )}
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Odladění integrace na testovacích objednávkách</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.integrationTestingCompletedDate')}</label>
                 <input 
                   type="date"
                   value={formData.integrationTestingCompletedDate ? formData.integrationTestingCompletedDate.substring(0,10) : ''} 
@@ -854,7 +854,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                 />
               </div>
               <div>
-                <label className="block text-gray-500 mb-1">Datum 1. naskladnění</label>
+                <label className="block text-gray-500 mb-1">{t('deal.attributes.firstStockingDateActual')}</label>
                 <input 
                   type="date"
                   value={formData.firstStockingDateActual ? formData.firstStockingDateActual.substring(0,10) : ''} 
@@ -918,31 +918,31 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           {showFarmingAttributes && (
             <>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum podepsání smlouvy</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.contractSignedDate')}</span>
                 <span className="text-gray-900 font-medium">{deal.contractSignedDate ? format(parseISO(deal.contractSignedDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum nahrání ceníku do systému</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.pricingUploadedDate')}</span>
                 <span className="text-gray-900 font-medium">{deal.pricingUploadedDate ? format(parseISO(deal.pricingUploadedDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Požadavek na IT integraci</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.itIntegrationRequirement')}</span>
                 <span className="text-gray-900 font-medium">{itIntegrations.find(i => i.id === deal.itIntegrationId)?.name || '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum očekávaného 1. naskladnění</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.expectedFirstStockingDate')}</span>
                 <span className="text-gray-900 font-medium">{deal.firstStockingDate ? format(parseISO(deal.firstStockingDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">IT integrace dokončena a otestována</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.itIntegrationCompletedDate')}</span>
                 <span className="text-gray-900 font-medium">{deal.itIntegrationCompletedDate ? format(parseISO(deal.itIntegrationCompletedDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odladění integrace na testovacích objednávkách</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.integrationTestingCompletedDate')}</span>
                 <span className="text-gray-900 font-medium">{deal.integrationTestingCompletedDate ? format(parseISO(deal.integrationTestingCompletedDate), 'dd.MM.yyyy') : '-'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Datum 1. naskladnění</span>
+                <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.firstStockingDateActual')}</span>
                 <span className="text-gray-900 font-medium">{deal.firstStockingDateActual ? format(parseISO(deal.firstStockingDateActual), 'dd.MM.yyyy') : '-'}</span>
               </div>
             </>

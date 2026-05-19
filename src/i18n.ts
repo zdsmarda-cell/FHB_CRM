@@ -68,7 +68,25 @@ const resources = {
         inactive: 'Inactive',
         name: 'Full Name',
         role: 'Role',
-        manager: 'Manager'
+        manager: 'Manager',
+        leadSourcesTitle: 'Lead Sources',
+        newLeadSource: 'New lead source',
+        noLeadSources: 'No lead sources yet.',
+        ecommercePlatformsTitle: 'E-commerce Platforms',
+        newEcommercePlatform: 'New e-commerce platform',
+        noEcommercePlatforms: 'No e-commerce platforms yet.',
+        itIntegrationsTitle: 'IT Integration Requirements',
+        newItIntegration: 'New IT integration',
+        noItIntegrations: 'No IT integrations yet.',
+        lostReasonsTitle: 'Loss Reasons',
+        newLostReason: 'New loss reason',
+        noLostReasons: 'No loss reasons yet.',
+        tableDateAndTime: 'Date & Time',
+        tableRecipient: 'Recipient',
+        tableSubject: 'Subject',
+        tableStatus: 'Status',
+        loading: 'Loading...',
+        noRecords: 'No records found'
       },
       errors: {
         emailExists: 'This email already exists in the system.',
@@ -126,7 +144,22 @@ const resources = {
           enterValidInteger: 'Please enter a valid integer greater than zero.',
           enterValidNumber: 'Please enter a valid number greater than zero.',
           notSelected: 'Not selected',
-          title: 'Attributes'
+          title: 'Attributes',
+          contractSignedDate: 'Contract signed date',
+          pricingUploadedDate: 'Pricing uploaded date',
+          itIntegrationRequirement: 'IT integration requirement',
+          expectedFirstStockingDate: 'Expected 1st stocking date',
+          itIntegrationCompletedDate: 'IT integration completed and tested',
+          integrationTestingCompletedDate: 'Integration debugging on test orders',
+          firstStockingDateActual: 'Actual 1st stocking date'
+        },
+        loss: {
+          title: 'Reason for Loss',
+          description: 'Please enter the reason why this deal was moved to Lost. The reason is required.',
+          reasonLabel: 'Loss Reason *',
+          noteLabel: 'Note (optional)',
+          confirm: 'Confirm Loss',
+          saving: 'Saving...'
         }
       },
       validation: {
@@ -202,7 +235,25 @@ const resources = {
         inactive: 'Neaktivní',
         name: 'Celé Jméno',
         role: 'Role',
-        manager: 'Vedoucí'
+        manager: 'Vedoucí',
+        leadSourcesTitle: 'Zdroje leadů',
+        newLeadSource: 'Nový zdroj leadu',
+        noLeadSources: 'Zatím žádné zdroje leadů.',
+        ecommercePlatformsTitle: 'E-commerce platformy',
+        newEcommercePlatform: 'Nová e-commerce platforma',
+        noEcommercePlatforms: 'Zatím žádné e-commerce platformy.',
+        itIntegrationsTitle: 'Požadavek na IT integraci',
+        newItIntegration: 'Nová IT integrace',
+        noItIntegrations: 'Zatím žádné IT integrace.',
+        lostReasonsTitle: 'Důvody ztráty',
+        newLostReason: 'Nový důvod ztráty',
+        noLostReasons: 'Zatím žádné důvody ztráty.',
+        tableDateAndTime: 'Datum a čas',
+        tableRecipient: 'Příjemce',
+        tableSubject: 'Předmět',
+        tableStatus: 'Stav',
+        loading: 'Načítání...',
+        noRecords: 'Žádné záznamy'
       },
       errors: {
         emailExists: 'Zadaný email již v systému existuje.',
@@ -260,7 +311,22 @@ const resources = {
           enterValidInteger: 'Zadejte prosím platné celé číslo větší než nula.',
           enterValidNumber: 'Zadejte prosím platné číslo větší než nula.',
           notSelected: 'Nevybráno',
-          title: 'Atributy'
+          title: 'Atributy',
+          contractSignedDate: 'Datum podepsání smlouvy',
+          pricingUploadedDate: 'Datum nahrání ceníku do systému',
+          itIntegrationRequirement: 'Požadavek na IT integraci',
+          expectedFirstStockingDate: 'Datum očekávaného 1. naskladnění',
+          itIntegrationCompletedDate: 'IT integrace dokončena a otestována',
+          integrationTestingCompletedDate: 'Odladění integrace na testovacích objednávkách',
+          firstStockingDateActual: 'Datum 1. naskladnění'
+        },
+        loss: {
+          title: 'Důvod ztráty',
+          description: 'Prosím, zadejte důvod, proč byla tato příležitost přesunuta do Lost. Kódový důvod je povinný.',
+          reasonLabel: 'Důvod ztráty *',
+          noteLabel: 'Poznámka (volitelné)',
+          confirm: 'Potvrdit ztrátu',
+          saving: 'Ukládám...'
         }
       },
       validation: {
