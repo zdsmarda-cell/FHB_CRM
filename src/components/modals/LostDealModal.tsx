@@ -10,17 +10,19 @@ interface Props {
 
 export function LostDealModal({ dealId, onClose }: Props) {
   const { t } = useTranslation();
-  const { updateDeal, currentUser } = useStore();
+  const { updateDeal, currentUser, lostReasons } = useStore();
   const [lostReason, setLostReason] = useState('');
+  const [lostReasonId, setLostReasonId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
-    if (!currentUser || !lostReason.trim()) return;
+    if (!currentUser || !lostReasonId) return;
     setIsSaving(true);
     try {
       await updateDeal(dealId, {
         stage: 'lost',
         lostPermanently: true,
+        lostReasonId,
         lostReason: lostReason.trim(),
         lostBy: currentUser.id,
         lostAt: new Date().toISOString(),
@@ -51,14 +53,25 @@ export function LostDealModal({ dealId, onClose }: Props) {
         
         <div className="p-4 space-y-4">
           <p className="text-sm text-gray-600">
-            Prosím, zadejte důvod, proč byla tato příležitost přesunuta do Lost. Důvod je povinný. / Please enter the reason why this deal was moved to Lost. The reason is required.
+            Prosím, zadejte důvod, proč byla tato příležitost přesunuta do Lost. Kódový důvod je povinný. / Please enter the reason why this deal was moved to Lost. The reason is required.
           </p>
           <div>
-            <label className="block text-sm font-medium text-red-800 mb-1">Reason *</label>
+            <label className="block text-sm font-medium text-red-800 mb-1">Důvod ztráty / Loss Reason *</label>
+            <select
+              value={lostReasonId}
+              onChange={e => setLostReasonId(e.target.value)}
+              className="w-full px-3 py-2 border border-red-300 rounded text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white shadow-sm mb-4"
+            >
+              <option value="">Nevybráno / Not selected</option>
+              {lostReasons.filter(r => r.isActive).map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Poznámka / Note (volitelné / optional)</label>
             <textarea 
               value={lostReason}
               onChange={e => setLostReason(e.target.value)}
-              className="w-full px-3 py-2 border border-red-300 rounded text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white shadow-sm"
+              className="w-full px-3 py-2 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white shadow-sm"
               rows={3}
             />
           </div>
@@ -74,7 +87,7 @@ export function LostDealModal({ dealId, onClose }: Props) {
           </button>
           <button 
             type="button"
-            disabled={!lostReason.trim() || isSaving}
+            disabled={!lostReasonId || isSaving}
             onClick={handleSave}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >

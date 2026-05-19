@@ -83,6 +83,12 @@ export interface ITIntegration {
   isActive?: boolean;
 }
 
+export interface LostReason {
+  id: string;
+  name: string;
+  isActive?: boolean;
+}
+
 export interface PricingOffer {
   id: string;
   filename: string;
@@ -122,6 +128,7 @@ export interface Deal {
   postponedAt?: string;
   lostPermanently?: boolean;
   lostReason?: string;
+  lostReasonId?: string;
   lostBy?: string;
   lostAt?: string;
 }
@@ -148,7 +155,11 @@ export interface StoreState {
   leadSources: LeadSource[];
   ecommercePlatforms: EcommercePlatform[];
   itIntegrations: ITIntegration[];
+  lostReasons: LostReason[];
   
+  kanbanUserFilter: string | null;
+  setKanbanUserFilter: (userId: string | null) => void;
+
   // Actions
   refreshState: () => Promise<void>;
   updateLeadSource: (id: string, updates: Partial<LeadSource>) => Promise<void>;
@@ -160,6 +171,9 @@ export interface StoreState {
   updateITIntegration: (id: string, updates: Partial<ITIntegration>) => Promise<void>;
   addITIntegration: (name: string) => Promise<void>;
   deleteITIntegration: (id: string) => Promise<void>;
+  updateLostReason: (id: string, updates: Partial<LostReason>) => Promise<void>;
+  addLostReason: (name: string) => Promise<void>;
+  deleteLostReason: (id: string) => Promise<void>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;

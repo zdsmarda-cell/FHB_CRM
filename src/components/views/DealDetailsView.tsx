@@ -1470,7 +1470,7 @@ function ContactForm({
 }
 
 function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
-  const { updateDeal, currentUser, users } = useStore();
+  const { updateDeal, currentUser, users, lostReasons } = useStore();
   const [showPostpone, setShowPostpone] = useState(false);
   const [showLost, setShowLost] = useState(false);
   
@@ -1478,6 +1478,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const [postponeReason, setPostponeReason] = useState('');
   
   const [lostReason, setLostReason] = useState('');
+  const [lostReasonId, setLostReasonId] = useState('');
 
   if (!currentUser) return null;
 
@@ -1504,10 +1505,11 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   };
 
   const handleLost = () => {
-    if (!lostReason) return;
+    if (!lostReasonId) return;
     updateDeal(deal.id, {
       stage: 'lost',
       lostPermanently: true,
+      lostReasonId: lostReasonId,
       lostReason: lostReason,
       lostBy: currentUser.id,
       lostAt: new Date().toISOString(),
@@ -1523,6 +1525,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     updateDeal(deal.id, {
       stage: 'lead_opportunity',
       lostPermanently: false,
+      lostReasonId: undefined,
       lostReason: undefined,
       lostBy: undefined,
       lostAt: undefined
@@ -1564,7 +1567,8 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               <Ban className="w-5 h-5 text-red-500 mt-0.5 shadow-sm" />
               <div>
                 <h4 className="font-medium text-red-900">Do Not Contact (Lost Permanently)</h4>
-                <p className="text-sm text-red-700 mt-1 bg-white/50 p-2 rounded -mx-2">{deal.lostReason}</p>
+                <p className="text-sm text-red-800 font-medium mt-1">{lostReasons.find(r => r.id === deal.lostReasonId)?.name || 'Neznámý důvod'}</p>
+                {deal.lostReason && <p className="text-sm text-red-700 mt-1 bg-white/50 p-2 rounded -mx-2">{deal.lostReason}</p>}
                 <p className="text-xs text-red-600 mt-2">
                   Marked by {users.find(u => u.id === deal.lostBy)?.name} on {deal.lostAt && format(parseISO(deal.lostAt), 'MMM d, yyyy')}
                 </p>
@@ -1633,17 +1637,28 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
             <div className="p-4 border border-red-200 rounded-lg bg-red-50 space-y-3">
               <h4 className="font-medium text-red-900">Mark as Lost Permanently (Do Not Contact)</h4>
               <div>
-                <label className="block text-xs font-medium text-red-800 mb-1">Reason *</label>
+                <label className="block text-xs font-medium text-red-800 mb-1">Důvod ztráty / Reason *</label>
+                <select
+                  value={lostReasonId}
+                  onChange={e => setLostReasonId(e.target.value)}
+                  className="w-full px-3 py-2 border border-red-300 rounded text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white shadow-sm mb-3"
+                >
+                  <option value="">Nevybráno</option>
+                  {lostReasons.filter(r => r.isActive).map(r => (
+                    <option key={r.id} value={r.id}>{r.name}</option>
+                  ))}
+                </select>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Poznámka / Note (volitelné)</label>
                 <textarea 
                   value={lostReason}
                   onChange={e => setLostReason(e.target.value)}
-                  className="w-full px-3 py-2 border border-red-300 rounded text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 bg-white shadow-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white shadow-sm"
                   rows={2}
                 />
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button onClick={() => setShowLost(false)} className="px-3 py-1.5 border border-red-200 bg-white text-sm font-medium text-red-700 hover:bg-red-50 rounded">Cancel</button>
-                <button onClick={handleLost} disabled={!lostReason} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded shadow-sm">Confirm Loss</button>
+                <button onClick={handleLost} disabled={!lostReasonId} className="px-3 py-1.5 text-sm font-medium text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded shadow-sm">Confirm Loss</button>
               </div>
             </div>
           )}

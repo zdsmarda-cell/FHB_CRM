@@ -75,6 +75,7 @@ export function AdminPanel() {
   const [newLeadSource, setNewLeadSource] = useState('');
   const [newEcommercePlatform, setNewEcommercePlatform] = useState('');
   const [newItIntegration, setNewItIntegration] = useState('');
+  const [newLostReason, setNewLostReason] = useState('');
 
   React.useEffect(() => {
     store.refreshState();
@@ -306,6 +307,47 @@ export function AdminPanel() {
               ))}
               {store.itIntegrations.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">Zatím žádné IT integrace.</li>
+              )}
+            </ul>
+          </div>
+          
+          {/* Lost Reasons */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Důvody ztráty</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newLostReason}
+                onChange={e => setNewLostReason(e.target.value)}
+                placeholder="Nový důvod ztráty"
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newLostReason.trim()) {
+                    store.addLostReason(newLostReason.trim());
+                    setNewLostReason('');
+                  }
+                }}
+                disabled={!newLostReason.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                Přidat
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.lostReasons.map(s => (
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateLostReason(s.id, { name })}
+                  onToggleActive={() => store.updateLostReason(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteLostReason(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.deals.some(d => d.lostReasonId === s.id)}
+                />
+              ))}
+              {store.lostReasons.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">Zatím žádné důvody ztráty.</li>
               )}
             </ul>
           </div>

@@ -50,7 +50,17 @@ export function KanbanBoard() {
     state.refreshState();
   }, []);
 
-  const visibleDeals = getDealsForUser(state, currentUser);
+  const visibleDeals = useMemo(() => {
+    let deals = getDealsForUser(state, currentUser);
+    if (state.kanbanUserFilter) {
+      deals = deals.filter(d => 
+        d.hunterId === state.kanbanUserFilter || 
+        d.closerId === state.kanbanUserFilter || 
+        d.farmerId === state.kanbanUserFilter
+      );
+    }
+    return deals;
+  }, [state, currentUser]);
 
   const visibleStages = STAGES.filter(stage => 
     currentUser?.role === 'administrator' || 

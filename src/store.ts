@@ -37,6 +37,7 @@ export const useStore = create<StoreState>((set, get) => {
           leadSources: data.leadSources || [],
           ecommercePlatforms: data.ecommercePlatforms || [],
           itIntegrations: data.itIntegrations || [],
+          lostReasons: data.lostReasons || [],
           auditLogs: data.auditLogs || [],
           activities: data.activities || [],
           currentUser: data.me || null
@@ -85,6 +86,7 @@ export const useStore = create<StoreState>((set, get) => {
             leadSources: data.leadSources || [],
             ecommercePlatforms: data.ecommercePlatforms || [],
             itIntegrations: data.itIntegrations || [],
+            lostReasons: data.lostReasons || [],
             auditLogs: data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : state.auditLogs,
             activities: data.activities && data.activities.length > 0 ? data.activities : state.activities,
             currentUser: data.me || null // keep matching data.me
@@ -121,9 +123,13 @@ export const useStore = create<StoreState>((set, get) => {
     leadSources: [],
     ecommercePlatforms: [],
     itIntegrations: [],
+    lostReasons: [],
     auditLogs: [],
     activities: [],
     currentUser: null,
+    
+    kanbanUserFilter: null,
+    setKanbanUserFilter: (userId) => set({ kanbanUserFilter: userId }),
 
     addLeadSource: async (name) => {
       const newSource = { id: uuidv4(), name, isActive: true };
@@ -213,6 +219,36 @@ export const useStore = create<StoreState>((set, get) => {
       });
       set(state => ({
         itIntegrations: state.itIntegrations.filter(s => s.id !== id)
+      }));
+    },
+    addLostReason: async (name) => {
+      const newReason = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ lost_reasons: [newReason] });
+      set(state => ({ lostReasons: [...state.lostReasons, newReason] }));
+    },
+    updateLostReason: async (id, updates) => {
+      const state = get();
+      const existing = state.lostReasons.find(p => p.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ lost_reasons: [updated] });
+      set(state => ({
+        lostReasons: state.lostReasons.map(s => s.id === id ? updated : s)
+      }));
+    },
+    deleteLostReason: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'lost_reasons', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
+      });
+      set(state => ({
+        lostReasons: state.lostReasons.filter(s => s.id !== id)
       }));
     },
 
