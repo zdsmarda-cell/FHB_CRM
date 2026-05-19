@@ -22,6 +22,27 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
   return res;
 };
 
+export const formatAuditValue = (state: StoreState, field: string, val: any): string => {
+  if (val === null || val === undefined || val === '') return String(val);
+  let name = '';
+  if (['hunterId', 'closerId', 'farmerId', 'ownerId', 'postponedBy', 'lostBy', 'doNotContactBy', 'createdBy'].includes(field)) {
+    name = state.users.find(u => u.id === val)?.name || '';
+  } else if (field === 'leadSourceId') {
+    name = state.leadSources.find(s => s.id === val)?.name || '';
+  } else if (field === 'ecommercePlatformId') {
+    name = state.ecommercePlatforms.find(s => s.id === val)?.name || '';
+  } else if (field === 'itIntegrationId') {
+    name = state.itIntegrations.find(s => s.id === val)?.name || '';
+  } else if (field === 'lostReasonId') {
+    name = state.lostReasons.find(s => s.id === val)?.name || '';
+  }
+
+  if (name) {
+    return `${name} (ID: ${val})`;
+  }
+  return String(val);
+};
+
 export const useStore = create<StoreState>((set, get) => {
   // Try loading initial state from DB after a small delay
   setTimeout(async () => {
@@ -390,8 +411,8 @@ export const useStore = create<StoreState>((set, get) => {
           id: uuidv4(),
           companyId: id,
           field,
-          oldValue: String(oldVal),
-          newValue: String(newVal),
+          oldValue: formatAuditValue(state, field, oldVal),
+          newValue: formatAuditValue(state, field, newVal),
           changedBy: userId,
           timestamp: new Date().toISOString()
         });
@@ -479,8 +500,8 @@ export const useStore = create<StoreState>((set, get) => {
             id: uuidv4(),
             dealId: dealId,
             field,
-            oldValue: String(oldVal),
-            newValue: String(newVal),
+            oldValue: formatAuditValue(state, field, oldVal),
+            newValue: formatAuditValue(state, field, newVal),
             changedBy: userId,
             timestamp: new Date().toISOString()
           });

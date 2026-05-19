@@ -44,7 +44,15 @@ export function KanbanBoard() {
   const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
   const [lostDealId, setLostDealId] = useState<string | null>(null);
   const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string; }>({ isOpen: false, message: '' });
+  const [zoomLevel, setZoomLevel] = useState(() => {
+    const saved = localStorage.getItem('kanban_zoom');
+    return saved ? parseFloat(saved) : 1;
+  });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    localStorage.setItem('kanban_zoom', zoomLevel.toString());
+  }, [zoomLevel]);
 
   useEffect(() => {
     state.refreshState();
@@ -234,7 +242,14 @@ export function KanbanBoard() {
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">{t('menu.board')}</h2>
+        <div className="flex items-center gap-6">
+          <h2 className="text-2xl font-bold text-gray-800">{t('menu.board')}</h2>
+          <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm">
+            <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">-</button>
+            <span className="text-xs font-medium w-10 text-center text-gray-700">{Math.round(zoomLevel * 100)}%</span>
+            <button onClick={() => setZoomLevel(z => Math.min(1.5, z + 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">+</button>
+          </div>
+        </div>
         <button 
           onClick={() => setIsFormOpen(true)}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
@@ -247,9 +262,13 @@ export function KanbanBoard() {
         ref={scrollContainerRef}
         onDragOver={handleContainerDragOver}
         onDragLeave={stopAutoScroll}
-        className="flex gap-6 overflow-x-auto pb-4 flex-1 items-start"
+        className="overflow-x-auto pb-4 flex-1"
       >
-        {visibleStages.map(stage => {
+        <div 
+          className="flex gap-6 items-start h-full"
+          style={{ zoom: zoomLevel } as any}
+        >
+          {visibleStages.map(stage => {
           const stageDeals = visibleDeals.filter(d => d.stage === stage);
           
           return (
@@ -395,6 +414,7 @@ export function KanbanBoard() {
             </div>
           )
         })}
+        </div>
       </div>
 
       {isFormOpen && (

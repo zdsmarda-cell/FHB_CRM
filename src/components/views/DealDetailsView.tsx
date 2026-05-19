@@ -174,8 +174,13 @@ export function DealDetailsView() {
                   <p className="text-sm text-gray-800">
                     Changed <span className="font-medium">{log.field}</span>
                   </p>
-                  <div className="mt-1 bg-gray-50 p-2 rounded text-xs text-gray-600 border border-gray-200">
-                    {log.oldValue && <span className="line-through mr-1 opacity-70 break-words">{log.oldValue}</span>}
+                  <div className="mt-1 bg-gray-50 p-2 rounded text-xs text-gray-600 border border-gray-200 flex items-center flex-wrap gap-1">
+                    {log.oldValue && log.oldValue !== 'undefined' && (
+                      <>
+                        <span className="line-through opacity-70 break-words">{log.oldValue}</span>
+                        <span className="text-gray-400 font-medium">{'->'}</span>
+                      </>
+                    )}
                     <span className="font-medium text-indigo-700 break-words">{log.newValue}</span>
                   </div>
                   <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
