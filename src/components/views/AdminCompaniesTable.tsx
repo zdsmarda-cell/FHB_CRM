@@ -64,7 +64,7 @@ export function AdminCompaniesTable() {
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Hledat podle jména nebo IČO..."
+            placeholder={t('admin.searchCompanyPlaceholder')}
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
@@ -77,14 +77,14 @@ export function AdminCompaniesTable() {
             className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium transition-colors ${selectedCountries.length > 0 ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}
           >
             <Filter className="w-4 h-4" />
-            Země {selectedCountries.length > 0 && `(${selectedCountries.length})`}
+            {t('fields.country')} {selectedCountries.length > 0 && `(${selectedCountries.length})`}
           </button>
           
           {showCountryFilter && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowCountryFilter(false)} />
               <div className="absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-20 p-2 max-h-64 overflow-y-auto">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Filtrovat podle země</div>
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">{t('admin.filterByCountry')}</div>
                 {COUNTRIES.map(country => (
                   <label key={country} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded cursor-pointer">
                     <input
@@ -110,7 +110,7 @@ export function AdminCompaniesTable() {
               <th className="px-6 py-4 font-medium">{t('fields.ico')}</th>
               <th className="px-6 py-4 font-medium">{t('fields.country')}</th>
               <th className="px-6 py-4 font-medium">{t('fields.segment')}</th>
-              <th className="px-6 py-4 font-medium">{t('admin.status')} (Viditelnost)</th>
+              <th className="px-6 py-4 font-medium">{t('admin.status')} ({t('admin.visibility')})</th>
               <th className="px-6 py-4 font-medium text-right"></th>
             </tr>
           </thead>
@@ -134,9 +134,9 @@ export function AdminCompaniesTable() {
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border ${company.isVisible !== false ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
                     >
                       {company.isVisible !== false ? (
-                        <><Eye className="w-3.5 h-3.5" /> Viditelná</>
+                        <><Eye className="w-3.5 h-3.5" /> {t('admin.visible')}</>
                       ) : (
-                        <><EyeOff className="w-3.5 h-3.5" /> Skrytá</>
+                        <><EyeOff className="w-3.5 h-3.5" /> {t('admin.hidden')}</>
                       )}
                     </button>
                   </td>
@@ -163,15 +163,15 @@ export function AdminCompaniesTable() {
             disabled={currentPage === 1}
             className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
           >
-            Předchozí
+            {t('admin.previous')}
           </button>
-          <span className="text-sm text-gray-600">Stránka {currentPage} z {totalPages}</span>
+          <span className="text-sm text-gray-600">{t('admin.pageOf', { current: currentPage, total: totalPages })}</span>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
           >
-            Další
+            {t('admin.next')}
           </button>
         </div>
       )}
@@ -184,8 +184,8 @@ export function AdminCompaniesTable() {
             setEditingCompany(null);
             setAlertInfo({ 
               isOpen: true, 
-              title: 'Změny byly uloženy', 
-              message: 'Změny u společnosti byly úspěšně zapsány.' 
+              title: t('admin.companyUpdatedTitle'), 
+              message: t('admin.companyUpdatedMessage') 
             });
           }}
         />
