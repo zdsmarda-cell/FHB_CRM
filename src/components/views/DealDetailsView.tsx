@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -2003,6 +2003,9 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState('');
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [editDescription, setEditDescription] = useState('');
   
   const documents = deal.documents || [];
 
@@ -2045,6 +2048,7 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
       await updateDeal(deal.id, { documents: newDocs }, currentUser.id);
       
       setDescription('');
+      setSelectedFileName('');
       setIsModalOpen(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
@@ -2089,6 +2093,18 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
     await updateDeal(deal.id, { documents: newDocs }, currentUser.id);
   };
 
+  const handleEditStart = (doc: DealDocument) => {
+    setEditingDocId(doc.id);
+    setEditDescription(doc.description);
+  };
+
+  const handleEditSave = async (docId: string) => {
+    if (!editDescription.trim()) return;
+    const newDocs = documents.map(d => d.id === docId ? { ...d, description: editDescription } : d);
+    await updateDeal(deal.id, { documents: newDocs }, currentUser.id);
+    setEditingDocId(null);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2">
@@ -2119,7 +2135,25 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
             return (
               <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
                 <div className="flex-1 min-w-0 pr-4">
-                  <p className="text-sm font-medium text-gray-900 truncate" title={doc.description}>{doc.description}</p>
+                  {editingDocId === doc.id ? (
+                    <div className="flex items-center gap-2 mb-1">
+                      <input
+                        type="text"
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="flex-1 px-2 py-1 border border-indigo-300 rounded text-sm focus:outline-none focus:border-indigo-500"
+                        autoFocus
+                      />
+                      <button onClick={() => handleEditSave(doc.id)} className="p-1 text-green-600 hover:bg-green-50 rounded" title={t('common.save', 'Uložit')}>
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => setEditingDocId(null)} className="p-1 text-gray-500 hover:bg-gray-100 rounded" title={t('common.cancel', 'Zrušit')}>
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium text-gray-900 truncate" title={doc.description}>{doc.description}</p>
+                  )}
                   <div className="flex items-center gap-3 mt-1">
                     {doc.url ? (
                       <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
@@ -2143,13 +2177,22 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
                   </div>
                 </div>
                 {isAuthorized && (
-                  <button 
-                    onClick={() => handleDelete(doc.id)}
-                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                    title={t('common.delete', 'Smazat')}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleEditStart(doc)}
+                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                      title={t('common.edit', 'Upravit')}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(doc.id)}
+                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                      title={t('common.delete', 'Smazat')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             );
@@ -2179,8 +2222,24 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
                 <input 
                   type="file" 
                   ref={fileInputRef} 
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" 
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) setSelectedFileName(e.target.files[0].name);
+                    else setSelectedFileName('');
+                  }}
                 />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded font-medium text-sm hover:bg-indigo-100 transition-colors"
+                  >
+                    {t('common.chooseFile', 'Vybrat soubor')}
+                  </button>
+                  <span className="text-sm text-gray-500 truncate max-w-[200px]" title={selectedFileName || t('common.noFileChosen', 'Nevybrán žádný soubor')}>
+                    {selectedFileName || t('common.noFileChosen', 'Nevybrán žádný soubor')}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -2197,11 +2256,11 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
               </button>
               <button
                 onClick={() => {
-                  if (fileInputRef.current?.files?.length && description.trim()) {
+                  if (selectedFileName && description.trim()) {
                      handleFileUpload({ target: fileInputRef.current } as any);
                   }
                 }}
-                disabled={!description.trim() || isUploading}
+                disabled={!selectedFileName || !description.trim() || isUploading}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
               >
                 {isUploading ? (
