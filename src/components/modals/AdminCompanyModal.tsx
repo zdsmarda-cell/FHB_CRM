@@ -9,14 +9,19 @@ import { v4 as uuidv4 } from 'uuid';
 interface AdminCompanyModalProps {
   company: Company;
   onClose: () => void;
+  onSaveSuccess: () => void;
 }
 
-export function AdminCompanyModal({ company, onClose }: AdminCompanyModalProps) {
+export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminCompanyModalProps) {
   const { t } = useTranslation();
-  const { updateCompany, currentUser } = useStore();
+  const { updateCompany, currentUser, companies } = useStore();
   const [formData, setFormData] = useState<Company>(company);
   const [activeTab, setActiveTab] = useState<'info' | 'contacts'>('info');
   const [isSaving, setIsSaving] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [icoError, setIcoError] = useState('');
+  const [contactSubmitAttempted, setContactSubmitAttempted] = useState(false);
+  const [contactError, setContactError] = useState('');
   
   // Contact state
   const [contacts, setContacts] = useState<Contact[]>(company.contacts || []);
@@ -34,19 +39,58 @@ export function AdminCompanyModal({ company, onClose }: AdminCompanyModalProps) 
   const handleSaveInfo = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!currentUser) return;
+    
+    setSubmitAttempted(true);
+    setIcoError('');
+    
+    if (!formData.companyId || !formData.name || !formData.address || !formData.email) {
+      return;
+    }
+
+    if (companies.some(c => c.companyId === formData.companyId && c.id !== company.id)) {
+        setIcoError(t('errors.icoExists'));
+        return;
+    }
+
     setIsSaving(true);
     try {
       await updateCompany(company.id, formData, currentUser.id);
-      // don't close, just stop saving
-    } catch (e) {
-      console.error(e);
+      onSaveSuccess();
+    } catch (err: any) {
+      console.error(err);
+      if (err.message === 'icoExists') {
+        setIcoError(t('errors.icoExists'));
+      } else if (err.message && err.message.includes('Unknown column')) {
+        setIcoError(t('errors.dbColumnError'));
+      } else {
+        setIcoError(err.message || t('errors.generalError'));
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleAddContact = () => {
-    if (!newContactName) return;
+    setContactSubmitAttempted(true);
+    setContactError('');
+
+    if (!newContactName.trim() || (!newContactEmail.trim() && !newContactPhone.trim())) {
+      setContactError(t('errors.emailOrPhoneRequired'));
+      return;
+    }
+
+    if (newContactEmail.trim()) {
+      const emailExists = companies.some(c => 
+        c.contacts.some(contact => 
+          contact.email?.toLowerCase() === newContactEmail.trim().toLowerCase()
+        )
+      );
+      if (emailExists) {
+        setContactError(t('errors.contactEmailExists'));
+        return;
+      }
+    }
+
     const newContact: Contact = {
       id: uuidv4(),
       name: newContactName,
@@ -100,18 +144,22 @@ export function AdminCompanyModal({ company, onClose }: AdminCompanyModalProps) 
             <form id="company-form" onSubmit={handleSaveInfo} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')}</label>
-                  <input type="text" value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')} *</label>
+                  <input type="text" value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.companyId ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : (icoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')}`} />
+                  {submitAttempted && !formData.companyId && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+                  {icoError && <p className="mt-1 text-sm text-red-600">{icoError}</p>}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.companyName')}</label>
-                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.companyName')} *</label>
+                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.name ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                  {submitAttempted && !formData.name && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.address')}</label>
-                <input type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.address')} *</label>
+                <input type="text" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.address ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                {submitAttempted && !formData.address && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
               </div>
 
               <div className="grid grid-cols-3 gap-4">
@@ -142,8 +190,9 @@ export function AdminCompanyModal({ company, onClose }: AdminCompanyModalProps) 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')}</label>
-                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')} *</label>
+                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                  {submitAttempted && !formData.email && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.phone')}</label>
@@ -186,30 +235,33 @@ export function AdminCompanyModal({ company, onClose }: AdminCompanyModalProps) 
 
           {activeTab === 'contacts' && (
             <div className="space-y-4">
-              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col sm:flex-row gap-3 items-end">
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Jméno *</label>
-                  <input type="text" value={newContactName} onChange={e => setNewContactName(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 outline-none" />
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex flex-col sm:flex-row gap-3 items-end">
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Jméno *</label>
+                    <input type="text" value={newContactName} onChange={e => setNewContactName(e.target.value)} className={`w-full px-3 py-2 text-sm border rounded focus:ring-1 outline-none ${contactSubmitAttempted && !newContactName.trim() ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                  </div>
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pozice</label>
+                    <input type="text" value={newContactPosition} onChange={e => setNewContactPosition(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                  </div>
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                    <input type="email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} className={`w-full px-3 py-2 text-sm border rounded focus:ring-1 outline-none ${contactSubmitAttempted && !newContactEmail.trim() && !newContactPhone.trim() ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                  </div>
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Telefon</label>
+                    <input type="tel" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} className={`w-full px-3 py-2 text-sm border rounded focus:ring-1 outline-none ${contactSubmitAttempted && !newContactEmail.trim() && !newContactPhone.trim() ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
+                  </div>
+                  <button 
+                    onClick={handleAddContact}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded font-medium text-sm hover:bg-indigo-700 w-full sm:w-auto"
+                  >
+                    Přidat
+                  </button>
                 </div>
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Pozice</label>
-                  <input type="text" value={newContactPosition} onChange={e => setNewContactPosition(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 outline-none" />
-                </div>
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                  <input type="email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 outline-none" />
-                </div>
-                <div className="flex-1 w-full">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Telefon</label>
-                  <input type="tel" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 outline-none" />
-                </div>
-                <button 
-                  onClick={handleAddContact}
-                  disabled={!newContactName.trim()}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded font-medium text-sm disabled:opacity-50 hover:bg-indigo-700 w-full sm:w-auto"
-                >
-                  Přidat
-                </button>
+                {contactError && <p className="mt-2 text-sm text-red-600">{contactError}</p>}
+                {contactSubmitAttempted && !newContactName.trim() && <p className="mt-2 text-sm text-red-600">{t('errors.requiredField')}</p>}
               </div>
 
               <ul className="divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">

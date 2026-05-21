@@ -4,6 +4,7 @@ import { useStore } from '../../store';
 import { Company } from '../../types';
 import { Edit2, Eye, EyeOff } from 'lucide-react';
 import { AdminCompanyModal } from '../modals/AdminCompanyModal';
+import { AlertModal } from '../modals/AlertModal';
 
 export function AdminCompaniesTable() {
   const { t } = useTranslation();
@@ -13,8 +14,11 @@ export function AdminCompaniesTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
+  
+  const [alertInfo, setAlertInfo] = useState({ isOpen: false, title: '', message: '' });
 
   const totalPages = Math.ceil(companies.length / itemsPerPage);
+
   
   const currentCompanies = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -102,8 +106,23 @@ export function AdminCompaniesTable() {
         <AdminCompanyModal
           company={editingCompany}
           onClose={() => setEditingCompany(null)}
+          onSaveSuccess={() => {
+            setEditingCompany(null);
+            setAlertInfo({ 
+              isOpen: true, 
+              title: 'Změny byly uloženy', 
+              message: 'Změny u společnosti byly úspěšně zapsány.' 
+            });
+          }}
         />
       )}
+
+      <AlertModal 
+        isOpen={alertInfo.isOpen}
+        onClose={() => setAlertInfo({ ...alertInfo, isOpen: false })}
+        title={alertInfo.title}
+        message={alertInfo.message}
+      />
     </div>
   );
 }
