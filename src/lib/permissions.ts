@@ -51,6 +51,11 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
       if (deal.stage === 'lead_opportunity' && !deal.hunterId) return true;
       if ((deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding') && !deal.closerId) return true;
       if (deal.stage === 'farming' && !deal.farmerId) return true;
+      if (deal.stage === 'lost') {
+        if (user.role === 'hunter' && !deal.hunterId) return true;
+        if (user.role === 'closer' && !deal.closerId) return true;
+        if (user.role === 'farmer' && !deal.farmerId) return true;
+      }
     }
 
     return false;

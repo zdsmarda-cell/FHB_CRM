@@ -230,15 +230,15 @@ export function DealDetailsView() {
                     disabled={historyPage === 1}
                     className="text-sm text-indigo-600 font-medium disabled:opacity-50"
                   >
-                    Previous
+                    {t('common.prev', 'Previous')}
                   </button>
-                  <span className="text-xs text-gray-500">Page {historyPage} of {totalHistoryPages}</span>
+                  <span className="text-xs text-gray-500">{t('common.pageOf', { current: historyPage, total: totalHistoryPages, defaultValue: `Page ${historyPage} of ${totalHistoryPages}` })}</span>
                   <button 
                     onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
                     disabled={historyPage === totalHistoryPages}
                     className="text-sm text-indigo-600 font-medium disabled:opacity-50"
                   >
-                    Next
+                    {t('common.next', 'Next')}
                   </button>
                 </div>
               )}

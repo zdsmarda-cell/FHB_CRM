@@ -157,32 +157,32 @@ export function EmailLogsTable() {
         </table>
         
         {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-            <div className="text-sm text-gray-500">
-              Celkem {total} záznamů
-            </div>
-            <div className="flex gap-2">
-              <button 
-                disabled={page <= 1}
-                onClick={() => setPage(p => p - 1)}
-                className="p-1 rounded bg-white border border-gray-300 disabled:opacity-50 text-gray-600 hover:bg-gray-50"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-              <span className="px-4 py-1 text-sm font-medium text-gray-700">
-                {page} / {totalPages}
-              </span>
-              <button 
-                disabled={page >= totalPages}
-                onClick={() => setPage(p => p + 1)}
-                className="p-1 rounded bg-white border border-gray-300 disabled:opacity-50 text-gray-600 hover:bg-gray-50"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+          <div className="text-sm text-gray-500">
+            {t('common.showing', 'Zobrazeno')} <span className="font-medium">{logs.length > 0 ? (page - 1) * limit + 1 : 0}</span> {t('common.to', 'až')} <span className="font-medium">{Math.min(page * limit, total)}</span> {t('common.of', 'z')} <span className="font-medium">{total}</span> {t('common.results', 'záznamů')}
           </div>
-        )}
+          <div className="flex gap-2">
+            <button 
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              className="p-1 rounded bg-white border border-gray-300 disabled:opacity-50 text-gray-600 hover:bg-gray-50 flex items-center text-sm px-2"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              {t('common.prev', 'Previous')}
+            </button>
+            <span className="px-4 py-1 text-sm font-medium text-gray-700">
+              {page} / {totalPages || 1}
+            </span>
+            <button 
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              className="p-1 rounded bg-white border border-gray-300 disabled:opacity-50 text-gray-600 hover:bg-gray-50 flex items-center text-sm px-2"
+            >
+              {t('common.next', 'Next')}
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

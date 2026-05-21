@@ -161,6 +161,14 @@ const resources = {
         activeOnly: 'Active only',
         showAll: 'Show all',
         search: 'Search...',
+        showing: 'Showing',
+        unknownUser: 'Unknown user',
+        to: 'to',
+        of: 'of',
+        results: 'results',
+        prev: 'Previous',
+        next: 'Next',
+        pageOf: 'Page {{current}} of {{total}}',
         advancingToContracting: 'The deal was automatically moved to the Contracting stage.'
       },
       deal: {
@@ -365,6 +373,14 @@ const resources = {
         activeOnly: 'Pouze aktivní',
         showAll: 'Zobrazit všechny',
         search: 'Hledat...',
+        showing: 'Zobrazeno',
+        unknownUser: 'Neznámý uživatel',
+        to: 'až',
+        of: 'z',
+        results: 'záznamů',
+        prev: 'Předchozí',
+        next: 'Další',
+        pageOf: 'Stránka {{current}} z {{total}}',
         advancingToContracting: 'Příležitost byla automaticky posunuta do fáze Contracting.'
       },
       deal: {

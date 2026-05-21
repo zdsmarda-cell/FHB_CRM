@@ -130,7 +130,7 @@ export function LoginLogsTable() {
                     <div className="flex justify-center mb-2">
                        <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
-                    {t('common.loading', 'Načítání...')}
+                    {t('admin.loading', 'Načítání...')}
                   </td>
                 </tr>
               ) : logs.length === 0 ? (

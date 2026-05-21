@@ -163,15 +163,15 @@ export function AdminCompaniesTable() {
             disabled={currentPage === 1}
             className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
           >
-            {t('admin.previous')}
+            {t('common.prev', 'Previous')}
           </button>
-          <span className="text-sm text-gray-600">{t('admin.pageOf', { current: currentPage, total: totalPages })}</span>
+          <span className="text-sm text-gray-600">{t('common.pageOf', { current: currentPage, total: totalPages, defaultValue: `Page ${currentPage} of ${totalPages}` })}</span>
           <button
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages}
             className="px-3 py-1 border border-gray-300 rounded text-sm text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-white"
           >
-            {t('admin.next')}
+            {t('common.next', 'Next')}
           </button>
         </div>
       )}
