@@ -31,7 +31,8 @@ function MainLayout() {
       const currentStore = useStore.getState();
       if (currentStore.currentUser && data.clientId !== CLIENT_ID) {
         currentStore.refreshState();
-        const userName = data.userName || 'Nějaký uživatel';
+        const changedUser = currentStore.users.find(u => u.id === data.userId);
+        const userName = changedUser?.name || data.userName || 'Nějaký uživatel';
         setNotification({ 
           message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
           id: Date.now()
@@ -55,7 +56,8 @@ function MainLayout() {
             if (data.clientId !== CLIENT_ID) {
               const currentStore = useStore.getState();
               currentStore.refreshState();
-              const userName = data.userName || 'Nějaký uživatel';
+              const changedUser = currentStore.users.find(u => u.id === data.userId);
+              const userName = changedUser?.name || data.userName || 'Nějaký uživatel';
               setNotification({ 
                 message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
                 id: Date.now()

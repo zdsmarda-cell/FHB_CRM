@@ -232,7 +232,7 @@ async function startServer() {
 
       // generate token
       const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
+        { id: user.id, email: user.email, role: user.role, name: user.name },
         JWT_SECRET,
         { expiresIn: '1h' } // 1 hour token
       );

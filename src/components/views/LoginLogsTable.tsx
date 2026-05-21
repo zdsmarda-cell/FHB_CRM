@@ -89,7 +89,7 @@ export function LoginLogsTable() {
                 setLimit(Number(e.target.value));
                 setPage(1);
               }}
-              className="w-full px-3 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+              className="w-24 px-3 py-1.5 border border-gray-300 rounded text-sm outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
             >
               <option value="10">10</option>
               <option value="20">20</option>
@@ -119,7 +119,7 @@ export function LoginLogsTable() {
                   {t('admin.ipAddress', 'IP Adresa')}
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  {t('admin.resolvedHost', 'Vyřešený Hostitel')}
+                  {t('admin.resolvedHost', 'Host')}
                 </th>
               </tr>
             </thead>
