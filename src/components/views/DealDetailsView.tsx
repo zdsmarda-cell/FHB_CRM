@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
 import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
-import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer } from '../../types';
+import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
 import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,6 +31,7 @@ export function DealDetailsView() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Company>>({});
   const [historyPage, setHistoryPage] = useState(1);
+  const [activeRightTab, setActiveRightTab] = useState<'activities' | 'documents' | 'history'>('activities');
   const historyPerPage = 5;
 
   if (!deal || !company || !currentUser) {
@@ -157,59 +158,90 @@ export function DealDetailsView() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-          <ActivitiesManager deal={deal} company={company} canEdit={canEdit} />
-
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mt-8 pt-6 border-t border-gray-100">
-            <Clock className="w-5 h-5 text-gray-400" />{t('common.history')}</h3>
-          
-          <div className="space-y-4">
-            {paginatedLogs.map(log => {
-              const user = users.find(u => u.id === log.changedBy);
-              return (
-                <div key={log.id} className="relative pl-4 border-l-2 border-indigo-100">
-                  <div className="absolute w-2 h-2 rounded-full bg-indigo-500 -left-[5px] top-1"></div>
-                  <p className="text-xs text-gray-500 mb-1">
-                    {format(parseISO(log.timestamp), 'MMM d, HH:mm')}
-                  </p>
-                  <p className="text-sm text-gray-800">
-                    Changed <span className="font-medium">{log.field}</span>
-                  </p>
-                  <div className="mt-1 bg-gray-50 p-2 rounded text-xs text-gray-600 border border-gray-200 flex items-center flex-wrap gap-1">
-                    {log.oldValue && log.oldValue !== 'undefined' && (
-                      <>
-                        <span className="line-through opacity-70 break-words">{log.oldValue}</span>
-                        <span className="text-gray-400 font-medium">{'->'}</span>
-                      </>
-                    )}
-                    <span className="font-medium text-indigo-700 break-words">{log.newValue}</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                    <UserIcon className="w-3 h-3" />
-                    {log.changedBy === 'System' ? 'System' : (user?.name || 'Unknown User')}
-                  </div>
-                </div>
-              )
-            })}
-            {logs.length === 0 && <p className="text-sm text-gray-500">{t('deal.attributes.noHistory', 'No history available.')}</p>}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setActiveRightTab('activities')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeRightTab === 'activities' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {t('common.activities')}
+            </button>
+            <button
+              onClick={() => setActiveRightTab('documents')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeRightTab === 'documents' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {t('common.documents', 'Dokumenty')}
+            </button>
+            <button
+              onClick={() => setActiveRightTab('history')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeRightTab === 'history' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {t('common.history')}
+            </button>
           </div>
-          
-          {totalHistoryPages > 1 && (
-            <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-              <button 
-                onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
-                disabled={historyPage === 1}
-                className="text-sm text-indigo-600 font-medium disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <span className="text-xs text-gray-500">Page {historyPage} of {totalHistoryPages}</span>
-              <button 
-                onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
-                disabled={historyPage === totalHistoryPages}
-                className="text-sm text-indigo-600 font-medium disabled:opacity-50"
-              >
-                Next
-              </button>
+
+          {activeRightTab === 'activities' && (
+            <ActivitiesManager deal={deal} company={company} canEdit={canEdit} />
+          )}
+
+          {activeRightTab === 'documents' && (
+            <DocumentsManager deal={deal} company={company} canEdit={canEdit} />
+          )}
+
+          {activeRightTab === 'history' && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-gray-400" />{t('common.history')}</h3>
+              
+              <div className="space-y-4">
+                {paginatedLogs.map(log => {
+                  const user = users.find(u => u.id === log.changedBy);
+                  return (
+                    <div key={log.id} className="relative pl-4 border-l-2 border-indigo-100">
+                      <div className="absolute w-2 h-2 rounded-full bg-indigo-500 -left-[5px] top-1"></div>
+                      <p className="text-xs text-gray-500 mb-1">
+                        {format(parseISO(log.timestamp), 'MMM d, HH:mm')}
+                      </p>
+                      <p className="text-sm text-gray-800">
+                        Changed <span className="font-medium">{log.field}</span>
+                      </p>
+                      <div className="mt-1 bg-gray-50 p-2 rounded text-xs text-gray-600 border border-gray-200 flex items-center flex-wrap gap-1">
+                        {log.oldValue && log.oldValue !== 'undefined' && (
+                          <>
+                            <span className="line-through opacity-70 break-words">{log.oldValue}</span>
+                            <span className="text-gray-400 font-medium">{'->'}</span>
+                          </>
+                        )}
+                        <span className="font-medium text-indigo-700 break-words">{log.newValue}</span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
+                        <UserIcon className="w-3 h-3" />
+                        {log.changedBy === 'System' ? 'System' : (user?.name || 'Unknown User')}
+                      </div>
+                    </div>
+                  )
+                })}
+                {logs.length === 0 && <p className="text-sm text-gray-500">{t('deal.attributes.noHistory', 'No history available.')}</p>}
+              </div>
+              
+              {totalHistoryPages > 1 && (
+                <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                  <button 
+                    onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                    disabled={historyPage === 1}
+                    className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-xs text-gray-500">Page {historyPage} of {totalHistoryPages}</span>
+                  <button 
+                    onClick={() => setHistoryPage(p => Math.min(totalHistoryPages, p + 1))}
+                    disabled={historyPage === totalHistoryPages}
+                    className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1956,6 +1988,184 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                     </div>
                   </div>
                 </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
+  const { t } = useTranslation();
+  const { updateDeal, currentUser, users } = useStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [description, setDescription] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  
+  const documents = deal.documents || [];
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser || !description.trim()) return;
+    
+    setIsUploading(true);
+    const ico = company.companyId || 'unknown_ico';
+    const ext = file.name.substring(file.name.lastIndexOf('.'));
+    const documentPrefix = `doc_${uuidv4().substring(0,8)}`;
+    
+    const formDataBody = new FormData();
+    formDataBody.append('ico', ico);
+    formDataBody.append('documentPrefix', documentPrefix);
+    formDataBody.append('file', file);
+
+    try {
+      const token = localStorage.getItem('jwt_token');
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formDataBody
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+      
+      const newDoc: DealDocument = {
+        id: uuidv4(),
+        description: description,
+        filename: `${documentPrefix}${ext}`,
+        url: uploadData.fileUrl,
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: currentUser.id
+      };
+
+      const newDocs = [...documents, newDoc];
+      await updateDeal(deal.id, { documents: newDocs }, currentUser.id);
+      
+      setDescription('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      console.error(err);
+      alert('Upload failed');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const ROLE_RANK: Record<string, number> = {
+    hunter: 1,
+    closer: 2,
+    farmer: 3,
+    cso: 4,
+    administrator: 5
+  };
+
+  const canEditOrDeleteDocument = (doc: DealDocument) => {
+    if (!currentUser) return false;
+    const uploader = users.find(u => u.id === doc.uploadedBy);
+    const uploaderRole = uploader?.role || 'hunter';
+    const uploaderRank = ROLE_RANK[uploaderRole] || 1;
+    const currentUserRank = ROLE_RANK[currentUser.role] || 1;
+
+    if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
+    if (uploader?.managerId === currentUser.id) return true; 
+
+    if (currentUserRank > uploaderRank) return true;
+
+    if (currentUserRank === uploaderRank) {
+      if (currentUser.role === 'hunter' && deal.hunterId === currentUser.id) return true;
+      if (currentUser.role === 'closer' && deal.closerId === currentUser.id) return true;
+      if (currentUser.role === 'farmer' && deal.farmerId === currentUser.id) return true;
+    }
+    return false;
+  };
+
+  const handleDelete = async (docId: string) => {
+    if (!confirm('Opravdu smazat?')) return;
+    const newDocs = documents.filter(d => d.id !== docId);
+    await updateDeal(deal.id, { documents: newDocs }, currentUser.id);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <Upload className="w-5 h-5 text-gray-400" />{t('common.documents', 'Dokumenty')}
+        </h3>
+      </div>
+      
+      {canEdit && (
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Popis dokumentu *</label>
+            <input 
+              type="text" 
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 outline-none text-sm"
+              placeholder="Zadejte popis dokumentu..."
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!description.trim() || isUploading}
+              className="px-4 py-2 bg-indigo-600 text-white rounded font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              {isUploading ? 'Nahrávání...' : 'Vybrat soubor a nahrát'}
+            </button>
+            {!description.trim() && <span className="text-xs text-red-500">Nejprve vyplňte popis</span>}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {documents.length === 0 ? (
+          <div className="text-center py-6 text-gray-500 text-sm border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+            Zatím nebyly nahrány žádné dokumenty.
+          </div>
+        ) : (
+          documents.map(doc => {
+            const user = users.find(u => u.id === doc.uploadedBy);
+            const isAuthorized = canEditOrDeleteDocument(doc);
+            
+            return (
+              <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg bg-white shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex-1 min-w-0 pr-4">
+                  <p className="text-sm font-medium text-gray-900 truncate" title={doc.description}>{doc.description}</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    {doc.url ? (
+                      <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                        <Upload className="w-3 h-3" />
+                        {doc.filename || 'Zobrazit'}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <Upload className="w-3 h-3" /> {doc.filename}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400">&bull;</span>
+                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                      <UserIcon className="w-3 h-3" />
+                      {user?.name || 'Neznámý'}
+                    </span>
+                    <span className="text-xs text-gray-400">&bull;</span>
+                    <span className="text-xs text-gray-500">
+                      {format(parseISO(doc.uploadedAt), 'd.M.yyyy HH:mm')}
+                    </span>
+                  </div>
+                </div>
+                {isAuthorized && (
+                  <button 
+                    onClick={() => handleDelete(doc.id)}
+                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                    title="Smazat"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             );
           })

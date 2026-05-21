@@ -98,6 +98,15 @@ export interface PricingOffer {
   createdBy: string;
 }
 
+export interface DealDocument {
+  id: string;
+  description: string;
+  filename: string;
+  url?: string;
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
 export interface Deal {
   id: string;
   companyId: string;
@@ -114,6 +123,7 @@ export interface Deal {
   averageParcelWeight?: number;
   averageParcelVolume?: number;
   pricingOffers?: PricingOffer[];
+  documents?: DealDocument[];
   contractSignedDate?: string | null;
   pricingUploadedDate?: string | null;
   itIntegrationId?: string | null;
