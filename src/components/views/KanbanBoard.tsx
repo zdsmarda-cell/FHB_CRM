@@ -26,13 +26,34 @@ export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
   if (currentStage === 'lead_opportunity') return deal.hunterId;
   if (currentStage === 'discovery_proposal' || currentStage === 'contracting' || currentStage === 'onboarding') return deal.closerId;
   if (currentStage === 'farming') return deal.farmerId;
+  if (currentStage === 'lost') {
+    const originalStage = deal.lostFromStage;
+    if (originalStage === 'farming') return deal.farmerId;
+    if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') return deal.closerId;
+    if (originalStage === 'lead_opportunity') return deal.hunterId;
+    
+    // Fallback if lostFromStage is missing for older deals
+    if (deal.farmerId !== null) return deal.farmerId;
+    if (deal.closerId !== null) return deal.closerId;
+    return deal.hunterId;
+  }
   return deal.hunterId || deal.closerId || deal.farmerId;
 };
 
-export const getAssigneeField = (stage: Stage) => {
+export const getAssigneeField = (stage: Stage, deal?: Deal) => {
   if (stage === 'lead_opportunity') return 'hunterId';
   if (stage === 'discovery_proposal' || stage === 'contracting' || stage === 'onboarding') return 'closerId';
   if (stage === 'farming') return 'farmerId';
+  if (stage === 'lost' && deal) {
+    const originalStage = deal.lostFromStage;
+    if (originalStage === 'farming') return 'farmerId';
+    if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') return 'closerId';
+    if (originalStage === 'lead_opportunity') return 'hunterId';
+
+    if (deal.farmerId !== null) return 'farmerId';
+    if (deal.closerId !== null) return 'closerId';
+    return 'hunterId';
+  }
   return 'hunterId';
 };
 
@@ -229,6 +250,14 @@ export function KanbanBoard() {
     const curId = getCurrentAssigneeId(deal);
     if (!currentUser || curId) return false;
     if (currentUser.role === 'administrator' || currentUser.role === 'cso') return true;
+
+    if (deal.stage === 'lost') {
+      const field = getAssigneeField(deal.stage, deal);
+      if (field === 'hunterId') return currentUser.role === 'hunter';
+      if (field === 'closerId') return currentUser.role === 'closer';
+      if (field === 'farmerId') return currentUser.role === 'farmer';
+    }
+
     return canViewStage(currentUser, deal.stage);
   };
 
@@ -362,7 +391,7 @@ export function KanbanBoard() {
                                         'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
                                         'X-Client-Id': localStorage.getItem('client_id') || ''
                                       },
-                                      body: JSON.stringify({ field: getAssigneeField(deal.stage), newUserId: currentUser!.id })
+                                      body: JSON.stringify({ field: getAssigneeField(deal.stage, deal), newUserId: currentUser!.id })
                                     });
                                     if (!checkRes.ok) {
                                       const errorData = await checkRes.json();
@@ -402,7 +431,7 @@ export function KanbanBoard() {
                                       }
                                     }
                                     
-                                    const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
+                                    const updates: Partial<Deal> = { [getAssigneeField(deal.stage, deal)]: currentUser!.id };
                                     if (willAdvanceInfo) {
                                       updates.stage = willAdvanceInfo.stage as Stage;
                                     }

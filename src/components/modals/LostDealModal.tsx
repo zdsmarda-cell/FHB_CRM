@@ -10,13 +10,15 @@ interface Props {
 
 export function LostDealModal({ dealId, onClose }: Props) {
   const { t } = useTranslation();
-  const { updateDeal, currentUser, lostReasons } = useStore();
+  const { updateDeal, currentUser, lostReasons, deals } = useStore();
   const [lostReason, setLostReason] = useState('');
   const [lostReasonId, setLostReasonId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
+  const deal = deals.find(d => d.id === dealId);
+
   const handleSave = async () => {
-    if (!currentUser || !lostReasonId) return;
+    if (!currentUser || !lostReasonId || !deal) return;
     setIsSaving(true);
     try {
       await updateDeal(dealId, {
@@ -26,6 +28,7 @@ export function LostDealModal({ dealId, onClose }: Props) {
         lostReason: lostReason.trim(),
         lostBy: currentUser.id,
         lostAt: new Date().toISOString(),
+        lostFromStage: deal.stage,
         postponedUntil: undefined,
         postponedReason: undefined,
         postponedBy: undefined,

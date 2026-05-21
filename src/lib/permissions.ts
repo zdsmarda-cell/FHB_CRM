@@ -52,9 +52,18 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
       if ((deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding') && !deal.closerId) return true;
       if (deal.stage === 'farming' && !deal.farmerId) return true;
       if (deal.stage === 'lost') {
-        if (user.role === 'hunter' && !deal.hunterId) return true;
-        if (user.role === 'closer' && !deal.closerId) return true;
-        if (user.role === 'farmer' && !deal.farmerId) return true;
+        let field = 'hunterId';
+        const originalStage = deal.lostFromStage;
+
+        if (originalStage === 'farming') field = 'farmerId';
+        else if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') field = 'closerId';
+        else if (originalStage === 'lead_opportunity') field = 'hunterId';
+        else if (deal.farmerId !== null) field = 'farmerId';
+        else if (deal.closerId !== null) field = 'closerId';
+
+        if (user.role === 'hunter' && field === 'hunterId' && !deal.hunterId) return true;
+        if (user.role === 'closer' && field === 'closerId' && !deal.closerId) return true;
+        if (user.role === 'farmer' && field === 'farmerId' && !deal.farmerId) return true;
       }
     }
 

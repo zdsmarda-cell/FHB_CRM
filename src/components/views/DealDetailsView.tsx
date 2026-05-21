@@ -1525,6 +1525,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       stage: 'lost',
       postponedUntil: postponeDate,
       postponedReason: postponeReason,
+      lostFromStage: deal.stage,
       postponedBy: currentUser.id,
       postponedAt: new Date().toISOString()
     }, currentUser.id);
@@ -1550,6 +1551,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       lostReason: lostReason,
       lostBy: currentUser.id,
       lostAt: new Date().toISOString(),
+      lostFromStage: deal.stage,
       postponedUntil: undefined,
       postponedReason: undefined,
       postponedBy: undefined,

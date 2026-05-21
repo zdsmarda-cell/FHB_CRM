@@ -4,6 +4,7 @@ import { User, Deal } from '../../types';
 import { useStore, CLIENT_ID } from '../../store';
 import { X, Check, AlertTriangle } from 'lucide-react';
 import { STAGES, canViewStage, getSubordinateIds } from '../../lib/permissions';
+import { getAssigneeField } from '../views/KanbanBoard';
 
 interface Props {
   deal: Deal;
@@ -13,7 +14,7 @@ interface Props {
 export function ChangeAssigneeModal({ deal, onClose }: Props) {
   const { t } = useTranslation();
   const { users, currentUser, updateDeal } = useStore();
-  const currentAssigneeField = deal.stage === 'lead_opportunity' ? 'hunterId' : (deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding' ? 'closerId' : 'farmerId');
+  const currentAssigneeField = getAssigneeField(deal.stage, deal);
   const currentAssigneeId = deal[currentAssigneeField] || '';
   const [selectedUser, setSelectedUser] = useState<string>(currentAssigneeId);
   const [isSaving, setIsSaving] = useState(false);
@@ -30,7 +31,12 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
       if (user.id === currentAssigneeId) return false;
       if (!user.isActive) return false;
 
-      const hasStagePerm = canViewStage(user, deal.stage);
+      let hasStagePerm = canViewStage(user, deal.stage);
+      if (deal.stage === 'lost') {
+        if (currentAssigneeField === 'hunterId') hasStagePerm = user.role === 'hunter' || user.role === 'administrator' || user.role === 'cso';
+        else if (currentAssigneeField === 'closerId') hasStagePerm = user.role === 'closer' || user.role === 'administrator' || user.role === 'cso';
+        else if (currentAssigneeField === 'farmerId') hasStagePerm = user.role === 'farmer' || user.role === 'administrator' || user.role === 'cso';
+      }
       if (!hasStagePerm) return false;
 
       if (isGlobal) {

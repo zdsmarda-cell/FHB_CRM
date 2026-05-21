@@ -142,6 +142,7 @@ export interface Deal {
   lostReasonId?: string;
   lostBy?: string;
   lostAt?: string;
+  lostFromStage?: Stage;
 }
 
 export interface AuditLog {
