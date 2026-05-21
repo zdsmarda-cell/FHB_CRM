@@ -31,7 +31,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
       if (isGlobal) {
         return true;
       } else {
-        return subIds.includes(user.id);
+        return subIds.includes(user.id) || user.id === currentUser.id;
       }
     });
 
@@ -79,6 +79,8 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     } catch (err: any) {
       if (err.message === 'icoExists') {
         setIcoError(t('errors.icoExists'));
+      } else if (err.message && err.message.includes('Unknown column')) {
+        setIcoError(t('errors.dbColumnError'));
       } else {
         setIcoError(err.message || t('errors.generalError'));
       }

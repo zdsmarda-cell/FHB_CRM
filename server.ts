@@ -141,6 +141,7 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN firstStockingDateActual DATETIME;",
         "ALTER TABLE deals ADD COLUMN integrationTestingCompletedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN lostReasonId VARCHAR(50);",
+        "ALTER TABLE companies ADD COLUMN phonePrefix VARCHAR(20);",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);"
       ];

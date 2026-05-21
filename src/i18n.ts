@@ -89,6 +89,7 @@ const resources = {
         noRecords: 'No records found'
       },
       errors: {
+        dbColumnError: 'Database structure error (missing column). Please contact the administrator.',
         emailExists: 'This email already exists in the system.',
         contactEmailExists: 'A contact with this email already exists.',
         icoExists: 'Company with this ID already exists.',
@@ -256,6 +257,7 @@ const resources = {
         noRecords: 'Žádné záznamy'
       },
       errors: {
+        dbColumnError: 'Chyba databázové struktury (chybějící sloupec). Kontaktujte prosím administrátora.',
         emailExists: 'Zadaný email již v systému existuje.',
         contactEmailExists: 'Kontakt s tímto emailem již existuje.',
         icoExists: 'Společnost s tímto IČO již existuje.',
