@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS deals (
   averageParcelWeight DECIMAL(10,2),
   averageParcelVolume INT,
   pricingOffers JSON,
+  documents JSON,
   contractSignedDate DATETIME,
   pricingUploadedDate DATETIME,
   itIntegrationId VARCHAR(50),
