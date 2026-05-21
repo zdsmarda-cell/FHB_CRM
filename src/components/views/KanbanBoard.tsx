@@ -351,42 +351,67 @@ export function KanbanBoard() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const willAdvanceToDiscovery = 
-                                  deal.stage === 'lead_opportunity' &&
-                                  deal.leadSourceId &&
-                                  deal.ecommercePlatformId &&
-                                  deal.estimatedMonthlyParcels &&
-                                  deal.estimatedMonthlyParcels > 0;
-                                  
-                                const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
-                                  deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
-                                  deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
-                                  deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
-                                  deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
-                                  deal.pricingOffers && deal.pricingOffers.length > 0;
-
-                                const willAdvanceToOnboarding = deal.stage === 'contracting' &&
-                                  deal.contractSignedDate &&
-                                  deal.pricingUploadedDate &&
-                                  deal.itIntegrationId &&
-                                  deal.firstStockingDate;
-                                  
-                                const willAdvanceInfo = willAdvanceToDiscovery ? { stage: 'discovery_proposal', name: t('stages.discovery_proposal') }
-                                  : willAdvanceToContracting ? { stage: 'contracting', name: t('stages.contracting') }
-                                  : willAdvanceToOnboarding ? { stage: 'onboarding', name: t('stages.onboarding') }
-                                  : null;
-
-                                if (willAdvanceInfo) {
-                                  if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${willAdvanceInfo.name}. Chcete pokračovat?`)) {
-                                    return;
-                                  }
-                                }
                                 
-                                const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
-                                if (willAdvanceInfo) {
-                                  updates.stage = willAdvanceInfo.stage as Stage;
-                                }
-                                state.updateDeal(deal.id, updates, currentUser!.id);
+                                // Ošetření případu, kdy někdo jiný příležitost převzal mezitím
+                                const checkAssign = async () => {
+                                  try {
+                                    const checkRes = await fetch(`/api/deals/${deal.id}/assign`, {
+                                      method: 'POST',
+                                      headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+                                        'X-Client-Id': localStorage.getItem('client_id') || ''
+                                      },
+                                      body: JSON.stringify({ field: getAssigneeField(deal.stage), newUserId: currentUser!.id })
+                                    });
+                                    if (!checkRes.ok) {
+                                      const errorData = await checkRes.json();
+                                      alert(errorData.error || 'Neznámá chyba při převzetí');
+                                      state.refreshState();
+                                      return;
+                                    }
+                                    
+                                    const willAdvanceToDiscovery = 
+                                      deal.stage === 'lead_opportunity' &&
+                                      deal.leadSourceId &&
+                                      deal.ecommercePlatformId &&
+                                      deal.estimatedMonthlyParcels &&
+                                      deal.estimatedMonthlyParcels > 0;
+                                      
+                                    const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
+                                      deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+                                      deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+                                      deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+                                      deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
+                                      deal.pricingOffers && deal.pricingOffers.length > 0;
+
+                                    const willAdvanceToOnboarding = deal.stage === 'contracting' &&
+                                      deal.contractSignedDate &&
+                                      deal.pricingUploadedDate &&
+                                      deal.itIntegrationId &&
+                                      deal.firstStockingDate;
+                                      
+                                    const willAdvanceInfo = willAdvanceToDiscovery ? { stage: 'discovery_proposal', name: t('stages.discovery_proposal') }
+                                      : willAdvanceToContracting ? { stage: 'contracting', name: t('stages.contracting') }
+                                      : willAdvanceToOnboarding ? { stage: 'onboarding', name: t('stages.onboarding') }
+                                      : null;
+
+                                    if (willAdvanceInfo) {
+                                      if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${willAdvanceInfo.name}. Chcete pokračovat?`)) {
+                                        return;
+                                      }
+                                    }
+                                    
+                                    const updates: Partial<Deal> = { [getAssigneeField(deal.stage)]: currentUser!.id };
+                                    if (willAdvanceInfo) {
+                                      updates.stage = willAdvanceInfo.stage as Stage;
+                                    }
+                                    state.updateDeal(deal.id, updates, currentUser!.id);
+                                  } catch (err) {
+                                    alert('Chyba komunikace se serverem.');
+                                  }
+                                };
+                                checkAssign();
                               }}
                               className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
                             >

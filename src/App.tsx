@@ -26,29 +26,55 @@ function MainLayout() {
     const store = useStore.getState();
     store.refreshState().then(() => store.checkPostponedDeals());
 
-    // Check periodically (every minute)
-    const interval = setInterval(() => {
-      store.refreshState().then(() => store.checkPostponedDeals());
-    }, 60000);
-
+    // Websocket handler
     const handleDataChanged = (data: any) => {
       const currentStore = useStore.getState();
-      if (currentStore.currentUser) {
-        if (data.clientId !== CLIENT_ID) {
-          currentStore.refreshState();
-          const userName = data.userName || 'Nějaký uživatel';
-          setNotification({ 
-            message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
-            id: Date.now()
-          });
-        }
+      if (currentStore.currentUser && data.clientId !== CLIENT_ID) {
+        currentStore.refreshState();
+        const userName = data.userName || 'Nějaký uživatel';
+        setNotification({ 
+          message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
+          id: Date.now()
+        });
       }
     };
 
     socket.on('data-changed', handleDataChanged);
 
+    // HTTP Polling fallback - every 5 seconds check the latest activity
+    let lastHandledTimestamp = Date.now();
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/latest-activity', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.timestamp && data.timestamp > lastHandledTimestamp) {
+            lastHandledTimestamp = data.timestamp;
+            if (data.clientId !== CLIENT_ID) {
+              const currentStore = useStore.getState();
+              currentStore.refreshState();
+              const userName = data.userName || 'Nějaký uživatel';
+              setNotification({ 
+                message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
+                id: Date.now()
+              });
+            }
+          }
+        }
+      } catch (err) {}
+    }, 5000);
+
+    // Periodic complete refresh (every minute)
+    const periodicRefresh = setInterval(() => {
+      const store = useStore.getState();
+      store.refreshState().then(() => store.checkPostponedDeals());
+    }, 60000);
+
     return () => {
-      clearInterval(interval);
+      clearInterval(pollInterval);
+      clearInterval(periodicRefresh);
       socket.off('data-changed', handleDataChanged);
     };
   }, []);

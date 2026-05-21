@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { User, Deal } from '../../types';
-import { useStore } from '../../store';
+import { useStore, CLIENT_ID } from '../../store';
 import { X, Check, AlertTriangle } from 'lucide-react';
 import { STAGES, canViewStage, getSubordinateIds } from '../../lib/permissions';
 
@@ -83,6 +83,24 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     
     setIsSaving(true);
     try {
+      const checkRes = await fetch(`/api/deals/${deal.id}/assign`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+          'X-Client-Id': CLIENT_ID
+        },
+        body: JSON.stringify({ field: currentAssigneeField, newUserId: selectedUser === '' ? null : selectedUser })
+      });
+      
+      if (!checkRes.ok) {
+        const errorData = await checkRes.json();
+        alert(errorData.error || 'Neznámá chyba při změně řešitele');
+        setIsSaving(false);
+        useStore.getState().refreshState();
+        return;
+      }
+
       const updates: Partial<Deal> = { [currentAssigneeField]: selectedUser === '' ? null : selectedUser };
       
       // Auto promote if all required fields are set

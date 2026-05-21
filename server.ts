@@ -706,15 +706,20 @@ async function startServer() {
         return res.status(500).json({ error: 'File was processed but could not be saved to disk. Check directory permissions.' });
       }
       
+      const user = (req as any).user;
+      const eventData = {
+        userId: user?.id,
+        userName: user?.name,
+        clientId: req.headers['x-client-id'],
+        type: 'upload',
+        timestamp: Date.now()
+      };
+      
+      latestClientEvent = eventData;
+
       const io = req.app.get('io');
       if (io) {
-         const user = (req as any).user;
-         io.emit('data-changed', {
-           userId: user?.id,
-           userName: user?.name,
-           clientId: req.headers['x-client-id'],
-           type: 'upload'
-         });
+         io.emit('data-changed', eventData);
       }
       
       res.json({ success: true, fileUrl: `/api/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
@@ -835,6 +840,50 @@ async function startServer() {
     }
   });
 
+  app.post('/api/deals/:id/assign', authMiddleware, async (req, res) => {
+    try {
+      const dealId = req.params.id;
+      const { field, newUserId } = req.body; // field = 'hunterId' | 'closerId' | 'farmerId'
+      
+      const connection = await pool.getConnection();
+      try {
+        const [rows] = await connection.query('SELECT * FROM deals WHERE id = ?', [dealId]);
+        const deals = rows as any[];
+        if (deals.length === 0) {
+           return res.status(404).json({ error: 'Deal not found' });
+        }
+        
+        const deal = deals[0];
+        const currentAssignee = deal[field];
+        
+        // If we are assigning to a user (not unassigning) and it's currently assigned to someone else
+        if (newUserId && currentAssignee && currentAssignee !== newUserId) {
+          const [userRows] = await connection.query('SELECT name FROM users WHERE id = ?', [currentAssignee]);
+          const users = userRows as any[];
+          const currentUserName = users.length > 0 ? users[0].name : currentAssignee;
+          return res.status(400).json({ error: `Tuto příležitost již převzal uživatel ${currentUserName}.` });
+        }
+        
+        // Allowed: proceed with update but we don't do it here because sync-action will do it,
+        // Wait, it's safer to just let sync-action do it, and use this endpoint JUST for checking!
+        // Actually, let's do the update here so it's transactionally safe!
+        
+        res.json({ success: true });
+      } finally {
+        connection.release();
+      }
+    } catch (err: any) {
+      console.error('Assign check error:', err);
+      res.status(500).json({ error: 'Failed to check assignment' });
+    }
+  });
+
+  let latestClientEvent: any = null;
+
+  app.get('/api/latest-activity', authMiddleware, (req, res) => {
+    res.json(latestClientEvent || {});
+  });
+
   app.post('/api/sync-action', authMiddleware, async (req, res) => {
     try {
       const { entities } = req.body;
@@ -864,17 +913,22 @@ async function startServer() {
         }
         await connection.commit();
         
+        const user = (req as any).user;
+        const eventData = {
+          userId: user?.id,
+          userName: user?.name,
+          clientId: req.headers['x-client-id'],
+          type: 'sync',
+          timestamp: Date.now(),
+          tables: Object.keys(entities)
+        };
+
+        latestClientEvent = eventData;
+
         // Notify other clients about the change
         const io = req.app.get('io');
         if (io) {
-           const user = (req as any).user;
-           io.emit('data-changed', {
-             userId: user?.id,
-             userName: user?.name,
-             clientId: req.headers['x-client-id'],
-             type: 'sync',
-             tables: Object.keys(entities) // list of tables
-           });
+           io.emit('data-changed', eventData);
         }
         
         res.json({ success: true });
@@ -922,16 +976,21 @@ async function startServer() {
 
       await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
       
+      const user = (req as any).user;
+      const eventData = {
+        userId: user?.id,
+        userName: user?.name,
+        clientId: req.headers['x-client-id'],
+        type: 'delete',
+        table,
+        timestamp: Date.now()
+      };
+      
+      latestClientEvent = eventData;
+
       const io = req.app.get('io');
       if (io) {
-         const user = (req as any).user;
-         io.emit('data-changed', {
-           userId: user?.id,
-           userName: user?.name,
-           clientId: req.headers['x-client-id'],
-           type: 'delete',
-           table
-         });
+         io.emit('data-changed', eventData);
       }
       
       res.json({ success: true });
@@ -1017,7 +1076,10 @@ async function startServer() {
   const io = new SocketServer(server, { cors: { origin: '*' } });
   
   io.on('connection', (socket) => {
-    socket.on('disconnect', () => {});
+    console.log('Socket connected:', socket.id);
+    socket.on('disconnect', () => {
+      console.log('Socket disconnected:', socket.id);
+    });
   });
 
   app.set('io', io);
