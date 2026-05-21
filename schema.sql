@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS companies (
   email VARCHAR(100),
   phone VARCHAR(50),
   phonePrefix VARCHAR(20),
+  isVisible BOOLEAN DEFAULT TRUE,
   urls JSON,
   contacts JSON
 );

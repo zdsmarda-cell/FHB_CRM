@@ -60,6 +60,13 @@ export function KanbanBoard() {
 
   const visibleDeals = useMemo(() => {
     let deals = getDealsForUser(state, currentUser);
+    
+    // Filter out deals where company is explicitly marked as not visible
+    deals = deals.filter(d => {
+      const company = state.companies.find(c => c.id === d.companyId);
+      return company ? company.isVisible !== false : true;
+    });
+
     if (state.kanbanUserFilter) {
       deals = deals.filter(d => 
         d.hunterId === state.kanbanUserFilter || 

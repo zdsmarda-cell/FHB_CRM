@@ -49,6 +49,7 @@ export interface Company {
   phonePrefix?: string;
   urls: string[]; // List of URLs
   contacts: Contact[];
+  isVisible?: boolean;
 }
 
 export type ActivityType = 'meeting' | 'call' | 'teams' | 'email';

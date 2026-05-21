@@ -86,7 +86,9 @@ const resources = {
         tableSubject: 'Subject',
         tableStatus: 'Status',
         loading: 'Loading...',
-        noRecords: 'No records found'
+        noRecords: 'No records found',
+        companies: 'Companies',
+        settings: 'Settings (Dictionaries)'
       },
       errors: {
         dbColumnError: 'Database structure error (missing column). Please contact the administrator.',
@@ -254,7 +256,9 @@ const resources = {
         tableSubject: 'Předmět',
         tableStatus: 'Stav',
         loading: 'Načítání...',
-        noRecords: 'Žádné záznamy'
+        noRecords: 'Žádné záznamy',
+        companies: 'Společnosti',
+        settings: 'Nastavení (Číselníky)'
       },
       errors: {
         dbColumnError: 'Chyba databázové struktury (chybějící sloupec). Kontaktujte prosím administrátora.',

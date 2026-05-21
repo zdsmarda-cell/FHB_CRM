@@ -142,6 +142,7 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN integrationTestingCompletedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN lostReasonId VARCHAR(50);",
         "ALTER TABLE companies ADD COLUMN phonePrefix VARCHAR(20);",
+        "ALTER TABLE companies ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);"
       ];
@@ -727,6 +728,7 @@ async function startServer() {
         });
         // boolean mapper
         if ('isActive' in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ('isVisible' in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
         // strip sensitive fields
         if ('passwordHash' in item) delete item.passwordHash;
         return item;

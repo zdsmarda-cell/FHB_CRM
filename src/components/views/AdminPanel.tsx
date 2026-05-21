@@ -5,6 +5,7 @@ import { Edit2, UserPlus, CheckCircle2, XCircle, Mail } from 'lucide-react';
 import { UserForm } from '../modals/UserForm';
 import { User } from '../../types';
 import { EmailLogsTable } from './EmailLogsTable';
+import { AdminCompaniesTable } from './AdminCompaniesTable';
 
 import { ConfirmModal } from '../modals/ConfirmModal';
 
@@ -67,9 +68,9 @@ const EditableAttributeItem: React.FC<{
 export function AdminPanel() {
   const { t } = useTranslation();
   const store = useStore();
-  const { users } = store;
+  const { users, currentUser } = store;
 
-  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'settings' | 'companies'>('users');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [newLeadSource, setNewLeadSource] = useState('');
@@ -113,6 +114,12 @@ export function AdminPanel() {
           className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors ${activeTab === 'users' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           {t('admin.users')}
+        </button>
+        <button
+          onClick={() => setActiveTab('companies')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'companies' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          {t('admin.companies')}
         </button>
         <button
           onClick={() => setActiveTab('emails')}
@@ -184,6 +191,8 @@ export function AdminPanel() {
           </tbody>
         </table>
       </div>
+      ) : activeTab === 'companies' ? (
+        <AdminCompaniesTable />
       ) : activeTab === 'emails' ? (
         <EmailLogsTable />
       ) : (
