@@ -40,9 +40,20 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
 
   return state.deals.filter(deal => {
     // Basic rule: user owns it or subordinate owns it
-    return visibleUserIds.includes(deal.hunterId!) || 
-           visibleUserIds.includes(deal.closerId!) || 
-           visibleUserIds.includes(deal.farmerId!);
+    if (visibleUserIds.includes(deal.hunterId!) || 
+        visibleUserIds.includes(deal.closerId!) || 
+        visibleUserIds.includes(deal.farmerId!)) {
+      return true;
+    }
+
+    // Unassigned rule: user can see deals in their allowed stages if there is no assignee for that stage
+    if (canViewStage(user, deal.stage)) {
+      if (deal.stage === 'lead_opportunity' && !deal.hunterId) return true;
+      if ((deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding') && !deal.closerId) return true;
+      if (deal.stage === 'farming' && !deal.farmerId) return true;
+    }
+
+    return false;
   }).filter(deal => {
     // Plus stage visibility rule
     // A manager can see deals of their subordinate even in stages the manager wouldn't normally see?

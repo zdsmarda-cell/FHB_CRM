@@ -37,7 +37,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
     }
   }, [userToEdit]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
     setError(null);
@@ -48,7 +48,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
 
     try {
       if (userToEdit) {
-        updateUser(userToEdit.id, {
+        await updateUser(userToEdit.id, {
           name: formData.name,
           email: formData.email,
           role: formData.role,
@@ -57,7 +57,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
           ...(formData.password ? { passwordHash: hashPassword(formData.password) } : {})
         });
       } else {
-        addUser({
+        await addUser({
           name: formData.name,
           email: formData.email,
           role: formData.role,

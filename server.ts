@@ -856,7 +856,8 @@ async function startServer() {
              });
              
              const placeholders = keys.map(() => '?').join(', ');
-             const sql = `REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
+             const updateStmts = keys.map(k => `${k} = VALUES(${k})`).join(', ');
+             const sql = `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateStmts}`;
              
              await connection.query(sql, values);
           }
