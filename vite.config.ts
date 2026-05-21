@@ -20,5 +20,16 @@ export default defineConfig(({mode}) => {
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'react-router-dom', 'lucide-react', 'date-fns', 'react-i18next', 'i18next'],
+            charting: ['recharts']
+          }
+        }
+      }
+    },
   };
 });
