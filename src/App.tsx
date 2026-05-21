@@ -1,21 +1,25 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KanbanBoard } from './components/views/KanbanBoard';
 import { AdminPanel } from './components/views/AdminPanel';
 import { DealDetailsView } from './components/views/DealDetailsView';
 import { Header } from './components/layout/Header';
-import { LayoutDashboard, Users } from 'lucide-react';
+import { LayoutDashboard, Users, Info } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSubordinateIds } from './lib/permissions';
 import { useStore } from './store';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Login } from './components/auth/Login';
 import { ResetPassword } from './components/auth/ResetPassword';
+import { io } from 'socket.io-client';
+
+const socket = io();
 
 function MainLayout() {
   const { t } = useTranslation();
   const { currentUser, checkPostponedDeals, kanbanUserFilter, setKanbanUserFilter, users } = useStore();
   const location = useLocation();
+  const [notification, setNotification] = useState<{ message: string, id: number } | null>(null);
 
   useEffect(() => {
     // Check initially when the app loads
@@ -27,8 +31,34 @@ function MainLayout() {
       store.refreshState().then(() => store.checkPostponedDeals());
     }, 60000);
 
-    return () => clearInterval(interval);
+    const handleDataChanged = (data: any) => {
+      const currentStore = useStore.getState();
+      if (currentStore.currentUser && data.userId && data.userId !== currentStore.currentUser.id) {
+        currentStore.refreshState();
+        const userName = data.userName || 'Nějaký uživatel';
+        setNotification({ 
+          message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
+          id: Date.now()
+        });
+      }
+    };
+
+    socket.on('data-changed', handleDataChanged);
+
+    return () => {
+      clearInterval(interval);
+      socket.off('data-changed', handleDataChanged);
+    };
   }, []);
+
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   if (!currentUser) {
     return <Navigate to="/login" replace />;
@@ -48,6 +78,14 @@ function MainLayout() {
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Header />
+      
+      {/* Toast Notification */}
+      {notification && (
+        <div className="fixed bottom-4 right-4 bg-indigo-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
+          <Info className="w-5 h-5 text-indigo-100" />
+          <span className="text-sm font-medium">{notification.message}</span>
+        </div>
+      )}
       
       {/* Main Navigation */}
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex gap-6 mt-0 items-center justify-between">

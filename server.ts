@@ -3,6 +3,8 @@ import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import http from "http";
+import { Server as SocketServer } from "socket.io";
 import { fileURLToPath } from "url";
 import { createServer as createViteServer } from "vite";
 import { google } from "googleapis";
@@ -642,6 +644,16 @@ async function startServer() {
         return res.status(500).json({ error: 'File was processed but could not be saved to disk. Check directory permissions.' });
       }
       
+      const io = req.app.get('io');
+      if (io) {
+         const user = (req as any).user;
+         io.emit('data-changed', {
+           userId: user?.id,
+           userName: user?.name,
+           type: 'upload'
+         });
+      }
+      
       res.json({ success: true, fileUrl: `/api/uploads/${req.body.ico || 'unknown_ico'}/${req.file.filename}` });
     } catch (err: any) {
       console.error('Upload error:', err);
@@ -787,6 +799,19 @@ async function startServer() {
           }
         }
         await connection.commit();
+        
+        // Notify other clients about the change
+        const io = req.app.get('io');
+        if (io) {
+           const user = (req as any).user;
+           io.emit('data-changed', {
+             userId: user?.id,
+             userName: user?.name,
+             type: 'sync',
+             tables: Object.keys(entities) // list of tables
+           });
+        }
+        
         res.json({ success: true });
       } catch (e) {
         await connection.rollback();
@@ -831,6 +856,18 @@ async function startServer() {
       }
 
       await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
+      
+      const io = req.app.get('io');
+      if (io) {
+         const user = (req as any).user;
+         io.emit('data-changed', {
+           userId: user?.id,
+           userName: user?.name,
+           type: 'delete',
+           table
+         });
+      }
+      
       res.json({ success: true });
     } catch (err: any) {
       console.error('Delete Error:', err);
@@ -870,6 +907,7 @@ async function startServer() {
   const sslKeyPath = process.env.SSL_KEY_PATH;
   const sslCertPath = process.env.SSL_CERT_PATH;
 
+  let server;
   if (sslKeyPath && sslCertPath) {
     try {
       console.log(`Starting HTTPS server with cert: ${sslCertPath} and key: ${sslKeyPath}`);
@@ -878,9 +916,9 @@ async function startServer() {
       const credentials = { key: privateKey, cert: certificate };
 
       const https = await import('https');
-      const httpsServer = https.createServer(credentials, app);
+      server = https.createServer(credentials, app);
 
-      httpsServer.listen(PORT, "0.0.0.0", () => {
+      server.listen(PORT, "0.0.0.0", () => {
         console.log(`HTTPS Server running on port ${PORT}`);
       });
 
@@ -903,10 +941,20 @@ async function startServer() {
     }
   } else {
     console.warn("WARNING: SSL_KEY_PATH and/or SSL_CERT_PATH not found in environment. Starting plain HTTP server.");
-    app.listen(PORT, "0.0.0.0", () => {
+    server = http.createServer(app);
+    server.listen(PORT, "0.0.0.0", () => {
       console.log(`HTTP Server running on http://localhost:${PORT}`);
     });
   }
+
+  // Setup Socket.IO
+  const io = new SocketServer(server, { cors: { origin: '*' } });
+  
+  io.on('connection', (socket) => {
+    socket.on('disconnect', () => {});
+  });
+
+  app.set('io', io);
 }
 
 startServer().catch(console.error);
