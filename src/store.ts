@@ -7,12 +7,15 @@ export const hashPassword = (password: string) => btoa(encodeURIComponent(passwo
 
 const DEFAULT_PASS = hashPassword('password123');
 
+export const CLIENT_ID = uuidv4();
+
 export const apiFetch = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem('jwt_token');
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
+  headers.set('X-Client-Id', CLIENT_ID);
   options.headers = headers;
   const res = await fetch(url, options);
   if (res.status === 401 && url !== '/api/auth/login') {

@@ -3,6 +3,7 @@ import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import dns from "dns";
 import http from "http";
 import { Server as SocketServer } from "socket.io";
 import { fileURLToPath } from "url";
@@ -147,7 +148,8 @@ async function startServer() {
         "ALTER TABLE companies ADD COLUMN phonePrefix VARCHAR(20);",
         "ALTER TABLE companies ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
-        "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);"
+        "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
+        "CREATE TABLE IF NOT EXISTS login_logs (id VARCHAR(50) PRIMARY KEY, userId VARCHAR(50) NOT NULL, timestamp DATETIME NOT NULL, ip VARCHAR(100), resolvedHost VARCHAR(255));"
       ];
       for (const m of migrations) {
         try {
@@ -234,6 +236,27 @@ async function startServer() {
         JWT_SECRET,
         { expiresIn: '1h' } // 1 hour token
       );
+
+      try {
+        const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+        let resolvedHost = '';
+        if (ip && ip !== '127.0.0.1' && ip !== '::1') {
+          try {
+            const hostnames = await dns.promises.reverse(ip);
+            if (hostnames && hostnames.length > 0) {
+              resolvedHost = hostnames[0];
+            }
+          } catch (dnsErr) {
+            // Ignore DNS resolution
+          }
+        }
+        await pool.query(
+          'INSERT INTO login_logs (id, userId, timestamp, ip, resolvedHost) VALUES (?, ?, ?, ?, ?)',
+          [uuidv4(), user.id, new Date(), ip, resolvedHost]
+        );
+      } catch (logErr) {
+        console.error('Failed to write login log:', logErr);
+      }
 
       res.json({ token, user });
     } catch (err: any) {
@@ -327,6 +350,45 @@ async function startServer() {
     } catch (err: any) {
       console.error('Password update error:', err);
       res.status(500).json({ error: 'Failed to update password' });
+    }
+  });
+
+  // GET Login Logs for Admin
+  app.get('/api/login_logs', authMiddleware, async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (user.role !== 'administrator' && user.role !== 'cso') {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      const { page = '1', limit = '10', userName } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = parseInt(limit as string);
+      const offset = (pageNum - 1) * limitNum;
+      
+      let query = 'SELECT l.*, u.name as userName FROM login_logs l LEFT JOIN users u ON l.userId = u.id WHERE 1=1';
+      let countQuery = 'SELECT COUNT(*) as total FROM login_logs l LEFT JOIN users u ON l.userId = u.id WHERE 1=1';
+      const params: any[] = [];
+
+      if (userName) {
+        query += ' AND u.name LIKE ?';
+        countQuery += ' AND u.name LIKE ?';
+        params.push(`%${userName}%`);
+      }
+      
+      query += ' ORDER BY l.timestamp DESC LIMIT ? OFFSET ?';
+      const resultParams = [...params, limitNum, offset];
+      
+      const [logsRows] = await pool.query(query, resultParams);
+      const [countRows] = await pool.query(countQuery, params);
+      
+      const logs = logsRows as any[];
+      const total = (countRows as any[])[0].total;
+      
+      res.json({ logs, total, page: pageNum, limit: limitNum });
+    } catch (err: any) {
+      console.error('Failed to fetch login logs:', err);
+      res.status(500).json({ error: 'Failed to fetch login logs' });
     }
   });
 
@@ -650,6 +712,7 @@ async function startServer() {
          io.emit('data-changed', {
            userId: user?.id,
            userName: user?.name,
+           clientId: req.headers['x-client-id'],
            type: 'upload'
          });
       }
@@ -807,6 +870,7 @@ async function startServer() {
            io.emit('data-changed', {
              userId: user?.id,
              userName: user?.name,
+             clientId: req.headers['x-client-id'],
              type: 'sync',
              tables: Object.keys(entities) // list of tables
            });
@@ -863,6 +927,7 @@ async function startServer() {
          io.emit('data-changed', {
            userId: user?.id,
            userName: user?.name,
+           clientId: req.headers['x-client-id'],
            type: 'delete',
            table
          });

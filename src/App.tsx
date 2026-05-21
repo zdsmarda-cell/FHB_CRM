@@ -7,7 +7,7 @@ import { Header } from './components/layout/Header';
 import { LayoutDashboard, Users, Info } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSubordinateIds } from './lib/permissions';
-import { useStore } from './store';
+import { useStore, CLIENT_ID } from './store';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Login } from './components/auth/Login';
 import { ResetPassword } from './components/auth/ResetPassword';
@@ -33,13 +33,15 @@ function MainLayout() {
 
     const handleDataChanged = (data: any) => {
       const currentStore = useStore.getState();
-      if (currentStore.currentUser && data.userId && data.userId !== currentStore.currentUser.id) {
-        currentStore.refreshState();
-        const userName = data.userName || 'Nějaký uživatel';
-        setNotification({ 
-          message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
-          id: Date.now()
-        });
+      if (currentStore.currentUser) {
+        if (data.clientId !== CLIENT_ID) {
+          currentStore.refreshState();
+          const userName = data.userName || 'Nějaký uživatel';
+          setNotification({ 
+            message: `Uživatel ${userName} právě upravil data. Zobrazení bylo aktualizováno.`,
+            id: Date.now()
+          });
+        }
       }
     };
 

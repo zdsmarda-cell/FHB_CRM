@@ -5,6 +5,7 @@ import { Edit2, UserPlus, CheckCircle2, XCircle, Mail } from 'lucide-react';
 import { UserForm } from '../modals/UserForm';
 import { User } from '../../types';
 import { EmailLogsTable } from './EmailLogsTable';
+import { LoginLogsTable } from './LoginLogsTable';
 import { AdminCompaniesTable } from './AdminCompaniesTable';
 
 import { ConfirmModal } from '../modals/ConfirmModal';
@@ -70,7 +71,7 @@ export function AdminPanel() {
   const store = useStore();
   const { users, currentUser } = store;
 
-  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'settings' | 'companies'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'logins' | 'settings' | 'companies'>('users');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [newLeadSource, setNewLeadSource] = useState('');
@@ -126,6 +127,12 @@ export function AdminPanel() {
           className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'emails' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           {t('admin.emailLogs')}
+        </button>
+        <button
+          onClick={() => setActiveTab('logins')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'logins' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          {t('admin.loginLogs', 'Přihlášení')}
         </button>
         <button
           onClick={() => setActiveTab('settings')}
@@ -195,6 +202,8 @@ export function AdminPanel() {
         <AdminCompaniesTable />
       ) : activeTab === 'emails' ? (
         <EmailLogsTable />
+      ) : activeTab === 'logins' ? (
+        <LoginLogsTable />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Lead Sources */}
