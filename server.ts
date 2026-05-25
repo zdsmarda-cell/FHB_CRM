@@ -149,6 +149,8 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN lostReasonId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN lostFromStage VARCHAR(50);",
         "ALTER TABLE activities ADD COLUMN externalEventId VARCHAR(255);",
+        "ALTER TABLE activities ADD COLUMN recordingLink VARCHAR(1000);",
+        "ALTER TABLE activities ADD COLUMN meetingSummary TEXT;",
         "ALTER TABLE companies ADD COLUMN phonePrefix VARCHAR(20);",
         "ALTER TABLE companies ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
@@ -1265,6 +1267,124 @@ async function startServer() {
   });
 
   app.set('io', io);
+
+  // Teams Activity Worker
+  const startTeamsActivityWorker = () => {
+    setInterval(async () => {
+      try {
+        console.log('[Worker] Running Teams Activity Worker to check summaries and recordings...');
+        // Only select records that are past
+        const [activities] = await pool.query(
+          "SELECT * FROM activities WHERE type = 'teams' AND externalEventId IS NOT NULL AND (recordingLink IS NULL OR meetingSummary IS NULL) AND date < NOW()"
+        );
+
+        if ((activities as any[]).length === 0) return;
+
+        for (const activity of (activities as any[])) {
+          try {
+            const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [activity.createdBy]);
+            if ((users as any[]).length === 0) continue;
+            
+            const user = (users as any[])[0];
+            let msIntegration = null;
+            if (user.msIntegration) {
+                try { msIntegration = JSON.parse(user.msIntegration); } catch(e) {}
+            }
+            if (!msIntegration?.connected || !msIntegration?.tokens) continue;
+
+            await callMsGraphWithRetry(msIntegration.tokens, user.id, pool, async (client) => {
+              // 1. Get event to find joinUrl
+              let eventUrl = '';
+              try {
+                const event = await client.api(`/me/events/${activity.externalEventId}`).select('onlineMeeting').get();
+                eventUrl = event.onlineMeeting?.joinUrl;
+              } catch (e: any) {
+                if (e.statusCode === 404) {
+                  // Event deleted
+                  return;
+                }
+              }
+
+              if (!eventUrl) return;
+
+              // 2. Get onlineMeeting detail by joinUrl
+              let meetingId = null;
+              try {
+                  const meetings = await client.api('/me/onlineMeetings').filter(`JoinWebUrl eq '${eventUrl}'`).get();
+                  if (meetings.value && meetings.value.length > 0) {
+                      meetingId = meetings.value[0].id;
+                  }
+              } catch (e) {
+                  console.error('[Worker] Failed to resolve online meeting. Make sure the OAuth user has OnlineMeetings.Read or equivalent application permissions.', e.message);
+              }
+              
+              if (!meetingId) return;
+
+              let newRecordingLink = activity.recordingLink;
+              let newMeetingSummary = activity.meetingSummary;
+
+              // 3. Check recordings
+              if (!newRecordingLink) {
+                  try {
+                      const recordings = await client.api(`/me/onlineMeetings/${meetingId}/recordings`).get();
+                      if (recordings.value && recordings.value.length > 0) {
+                          newRecordingLink = recordings.value[0].recordingContentUrl || recordings.value[0].webUrl;
+                      }
+                  } catch (e) {
+                      // Ignored
+                  }
+              }
+
+              // 4. Check transcripts for Summary
+              if (!newMeetingSummary) {
+                  try {
+                      const transcripts = await client.api(`/me/onlineMeetings/${meetingId}/transcripts`).get();
+                      if (transcripts.value && transcripts.value.length > 0) {
+                          const transcriptId = transcripts.value[0].id;
+                          try {
+                              const content = await client.api(`/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`).get();
+                              if (typeof content === 'string') {
+                                 const stripped = content.replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, '\n').substring(0, 5000);
+                                 newMeetingSummary = "Auto-fetched Transcript/Review:\n" + stripped;
+                              }
+                          } catch (e) {
+                             if (e.statusCode === 404) {
+                               // No content yet
+                             }
+                          }
+                      }
+                  } catch (e) {
+                      // Ignored
+                  }
+              }
+
+              // 5. Update DB and notify if changed
+              if (newRecordingLink !== activity.recordingLink || newMeetingSummary !== activity.meetingSummary) {
+                  await pool.query(
+                      "UPDATE activities SET recordingLink = ?, meetingSummary = ? WHERE id = ?",
+                      [newRecordingLink || null, newMeetingSummary || null, activity.id]
+                  );
+                  // Optionally emit websocket event
+                  const [updated] = await pool.query('SELECT * FROM activities WHERE id = ?', [activity.id]);
+                  if ((updated as any[]).length > 0) {
+                    const row = (updated as any[])[0];
+                    if (typeof row.participants === 'string') try { row.participants = JSON.parse(row.participants); } catch (e) {}
+                    row.isVisible = row.isVisible === 1 || row.isVisible === true;
+                    io.emit('db_changed', { type: 'activities', action: 'update', data: row });
+                  }
+              }
+            });
+          } catch (internalErr: any) {
+            console.error('[Worker] failed for activity', activity.id, internalErr.message);
+          }
+        }
+      } catch (err: any) {
+        console.error('[Worker] error', err.message);
+      }
+    }, 1000 * 60 * 60); // 1 hour
+  };
+
+  startTeamsActivityWorker();
 }
 
 startServer().catch(console.error);

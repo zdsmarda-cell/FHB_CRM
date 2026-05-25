@@ -67,6 +67,8 @@ export interface Activity {
   isVisible?: boolean;
   participants?: string[];
   externalEventId?: string;
+  recordingLink?: string;
+  meetingSummary?: string;
 }
 
 export interface LeadSource {
