@@ -575,11 +575,13 @@ async function startServer() {
 
         const eventRes = await calendar.events.insert({
           calendarId: 'primary',
+          sendUpdates: 'all',
           conferenceDataVersion: 1,
           requestBody: {
             summary: activityDetails.note || 'Meeting',
             start: { dateTime: startDateTime.toISOString() },
             end: { dateTime: endDateTime.toISOString() },
+            attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({ email })) : [],
             conferenceData: {
               createRequest: {
                 requestId: Math.random().toString(36).substring(7),
@@ -601,7 +603,11 @@ async function startServer() {
           start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
           end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
           isOnlineMeeting: true,
-          onlineMeetingProvider: 'teamsForBusiness'
+          onlineMeetingProvider: 'teamsForBusiness',
+          attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
+            emailAddress: { address: email },
+            type: 'required'
+          })) : []
         };
         const newEvent = await client.api('/me/events').post(event);
         meetingLink = newEvent.onlineMeeting?.joinUrl || '';
@@ -609,6 +615,44 @@ async function startServer() {
       res.json({ success: true, meetingLink });
     } catch (err: any) {
       console.error('Calendar error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/sync/fetch-calendar', authMiddleware, async (req, res) => {
+    const { provider, credentials } = req.body;
+    let events: any[] = [];
+    try {
+      if (provider === 'google' && credentials?.tokens) {
+        const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+        oAuth2Client.setCredentials(credentials.tokens);
+        const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
+        const resList = await calendar.events.list({
+          calendarId: 'primary',
+          timeMin: new Date().toISOString(),
+          maxResults: 20,
+          singleEvents: true,
+          orderBy: 'startTime'
+        });
+        events = (resList.data.items || []).map(item => ({
+          subject: item.summary,
+          date: item.start?.dateTime,
+          link: item.hangoutLink
+        }));
+      } else if (provider === 'microsoft' && credentials?.tokens) {
+        const client = GraphClient.init({
+          authProvider: (done) => done(null, credentials.tokens.access_token)
+        });
+        const resList = await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(20).get();
+        events = resList.value.map((item: any) => ({
+          subject: item.subject,
+          date: item.start?.dateTime,
+          link: item.onlineMeeting?.joinUrl
+        }));
+      }
+      res.json({ events });
+    } catch (err: any) {
+      console.error(err);
       res.status(500).json({ error: err.message });
     }
   });

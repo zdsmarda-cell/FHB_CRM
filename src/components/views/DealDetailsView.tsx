@@ -1709,7 +1709,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
 function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
   const { t } = useTranslation();
-  const { activities, addActivity, updateActivity, users, currentUser } = useStore();
+  const { activities, addActivity, updateActivity, users, currentUser, updateCompany } = useStore();
   const [isAdding, setIsAdding] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
@@ -1720,58 +1720,113 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [participants, setParticipants] = useState<string[]>([]);
   const [isVisible, setIsVisible] = useState(true);
 
+  const [activeTab, setActiveTab] = useState<'history' | 'calendar'>('history');
+
+  const now = new Date();
+  
   const dealActivities = activities
     .filter(a => a.dealId === deal.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const handleSyncEmails = async () => {
+  const historyActivities = dealActivities.filter(a => new Date(a.date) <= now || a.type === 'email');
+  const futureActivities = dealActivities.filter(a => new Date(a.date) > now && a.type !== 'email').sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  
+  const displayedActivities = activeTab === 'history' ? historyActivities : futureActivities;
+
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactEmail, setNewContactEmail] = useState('');
+  
+  useEffect(() => {
+    if (currentUser && (currentUser.googleIntegration?.connected || currentUser.msIntegration?.connected)) {
+      handleSyncBoth();
+    }
+  }, [currentUser?.id]); // auto sync on mount
+
+  const handleSyncBoth = async () => {
     if (!currentUser) return;
     setIsSyncingEmails(true);
     
     try {
       const provider = currentUser.googleIntegration?.connected ? 'google' : 'microsoft';
+      const credentials = provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration;
+      
       // Gather relevant emails (deal owner, contact emails)
       const relevantEmails = [
         ...company.contacts.map(c => c.email),
         company.email
       ].filter(Boolean);
 
-      const res = await apiFetch('/api/sync/emails', {
+      // Sync Emails
+      const resEmails = await apiFetch('/api/sync/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          credentials: provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration,
-          relevantEmails
-        })
+        body: JSON.stringify({ provider, credentials, relevantEmails })
       });
-      
-      if (res.ok) {
-        const data = await res.json();
-        // Assume backend returns new emails as Array<{ id, subject, body, date, from }>
+      if (resEmails.ok) {
+        const data = await resEmails.json();
         if (data.emails && data.emails.length > 0) {
           data.emails.forEach((email: any) => {
-            addActivity({
-              dealId: deal.id,
-              type: 'email',
-              date: email.date,
-              note: `Subject: ${email.subject}\nFrom: ${email.from}\n\n${email.body}`,
-              createdBy: currentUser.id,
-            });
+            // only add if subject/date doesn't already exist to avoid spamming
+            const exists = activities.some(a => a.type === 'email' && a.note.includes(email.subject));
+            if (!exists) {
+              addActivity({
+                dealId: deal.id,
+                type: 'email',
+                date: email.date || new Date().toISOString(),
+                note: `Subject: ${email.subject}\nFrom: ${email.from}\n\n${email.body}`,
+                createdBy: currentUser.id,
+                isVisible: true
+              });
+            }
           });
         }
       }
+
+      // Sync Calendar Coming events
+      const resCal = await apiFetch('/api/sync/fetch-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, credentials })
+      });
+      if (resCal.ok) {
+        const dataCal = await resCal.json();
+        if (dataCal.events) {
+          dataCal.events.forEach((ev: any) => {
+             // Try to update existing future meeting with same name/roughly same date
+             const existing = activities.find(a => 
+               a.type !== 'email' && a.dealId === deal.id && 
+               a.note === ev.subject && new Date(a.date) > new Date()
+             );
+             if (existing && ev.date) {
+               if (new Date(existing.date).getTime() !== new Date(ev.date).getTime() || existing.meetingLink !== ev.link) {
+                 updateActivity(existing.id, { date: ev.date, meetingLink: ev.link });
+                 // Notify the UI using our quick hack local alert
+                 console.log(`Updated Calendar event: ${ev.subject} from external calendar.`);
+               }
+             }
+          });
+        }
+      }
+
     } catch (err) {
-      console.error('Email sync failed', err);
+      console.error('Email/Cal sync failed', err);
     } finally {
       setIsSyncingEmails(false);
     }
   };
 
+  const [contactEmails, setContactEmails] = useState<string[]>([]);
+
   const handleSave = async () => {
     if (!currentUser || !note) return;
     
     let generatedMeetingLink = activityType === 'teams' ? meetingLink : undefined;
+
+    const attendees = [
+      currentUser.email,
+      ...participants.map(id => users.find(u => u.id === id)?.email).filter(Boolean),
+      ...contactEmails
+    ];
 
     // Call backend to sync if applicable
     if ((activityType === 'teams' || activityType === 'meeting') && (currentUser.msIntegration?.connected || currentUser.googleIntegration?.connected)) {
@@ -1786,7 +1841,8 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             activityDetails: {
               type: activityType,
               date: activityDate,
-              note
+              note,
+              attendees
             }
           })
         });
@@ -1807,7 +1863,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
          date: new Date(activityDate).toISOString(),
          note,
          meetingLink: generatedMeetingLink,
-         participants,
+         participants: [...participants, ...contactEmails], // Storing email or ID
          isVisible
        });
     } else {
@@ -1818,19 +1874,12 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
         note,
         createdBy: currentUser.id,
         meetingLink: generatedMeetingLink,
-        participants,
+        participants: [...participants, ...contactEmails], // Storing email or ID
         isVisible
       });
     }
     
-    setIsAdding(false);
-    setEditingActivityId(null);
-    setNote('');
-    setMeetingLink('');
-    setParticipants([]);
-    setIsVisible(true);
-    setActivityType('meeting');
-    setActivityDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+    handleCancelActivityForm();
   };
 
   const handleEditActivity = (activity: Activity) => {
@@ -1839,7 +1888,12 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     setActivityDate(format(parseISO(activity.date), "yyyy-MM-dd'T'HH:mm"));
     setNote(activity.note);
     setMeetingLink(activity.meetingLink || '');
-    setParticipants(activity.participants || []);
+    
+    const pUsers = (activity.participants || []).filter(p => users.some(u => u.id === p));
+    const pEmails = (activity.participants || []).filter(p => !users.some(u => u.id === p));
+    
+    setParticipants(pUsers);
+    setContactEmails(pEmails);
     setIsVisible(activity.isVisible ?? true);
     setIsAdding(true);
   };
@@ -1850,6 +1904,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     setNote('');
     setMeetingLink('');
     setParticipants([]);
+    setContactEmails([]);
     setIsVisible(true);
     setActivityType('meeting');
     setActivityDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
@@ -1888,13 +1943,30 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-gray-400" />{t('common.activities')}</h3>
+        <div className="flex items-center gap-6">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-gray-400" />{t('common.activities')}
+          </h3>
+          <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+            <button
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('history')}
+            >
+              History
+            </button>
+            <button
+              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              onClick={() => setActiveTab('calendar')}
+            >
+              Calendar (Future)
+            </button>
+          </div>
+        </div>
         <div className="flex gap-3">
           {(currentUser?.googleIntegration?.connected || currentUser?.msIntegration?.connected) && canEdit && (
             <button 
               type="button"
-              onClick={handleSyncEmails}
+              onClick={handleSyncBoth}
               disabled={isSyncingEmails}
               className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
             >
@@ -1957,27 +2029,80 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             
             <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">Participants</label>
-              <div className="flex flex-wrap gap-2 mb-1">
-                {users.map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
+              
+              <div className="mb-2">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Colleagues</span>
+                <div className="flex flex-wrap gap-2">
+                  {users.map(u => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() => {
+                        if (participants.includes(u.id)) {
+                          setParticipants(participants.filter(id => id !== u.id));
+                        } else {
+                          setParticipants([...participants, u.id]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full cursor-pointer transition-colors ${
+                        participants.includes(u.id) 
+                          ? 'bg-indigo-100 text-indigo-700 border-indigo-200' 
+                          : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                      } border`}
+                    >
+                      {u.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Company Contacts</span>
+                <div className="flex flex-wrap gap-2 items-center">
+                  {company.contacts.map((c, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={!c.email}
+                      onClick={() => {
+                        if (!c.email) return;
+                        if (contactEmails.includes(c.email)) {
+                          setContactEmails(contactEmails.filter(e => e !== c.email));
+                        } else {
+                          setContactEmails([...contactEmails, c.email]);
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full cursor-pointer transition-colors ${
+                        contactEmails.includes(c.email) 
+                          ? 'bg-emerald-100 text-emerald-700 border-emerald-200' 
+                          : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                      } border ${!c.email && 'opacity-50 cursor-not-allowed'}`}
+                    >
+                      {c.name} {c.email ? '' : '(No Email)'}
+                    </button>
+                  ))}
+                </div>
+                
+                {/* Inline Add Contact */}
+                <div className="mt-2 flex gap-2 w-full max-w-sm">
+                  <input type="text" placeholder="Name" value={newContactName} onChange={e => setNewContactName(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" />
+                  <input type="email" placeholder="Email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" />
+                  <button 
+                    type="button" 
+                    disabled={!newContactName || !newContactEmail}
                     onClick={() => {
-                      if (participants.includes(u.id)) {
-                        setParticipants(participants.filter(id => id !== u.id));
-                      } else {
-                        setParticipants([...participants, u.id]);
-                      }
+                      if (!newContactName || !newContactEmail) return;
+                      const newContact = { name: newContactName, email: newContactEmail, profileUrl: '' };
+                      updateCompany(company.id, { contacts: [...company.contacts, newContact] }, currentUser?.id || '');
+                      setContactEmails([...contactEmails, newContactEmail]);
+                      setNewContactName('');
+                      setNewContactEmail('');
                     }}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-full cursor-pointer transition-colors ${
-                      participants.includes(u.id) 
-                        ? 'bg-indigo-100 text-indigo-700 border-indigo-200' 
-                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
-                    } border`}
+                    className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-50"
                   >
-                    {u.name}
+                    Add
                   </button>
-                ))}
+                </div>
               </div>
             </div>
 
@@ -2015,18 +2140,19 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       )}
 
       <div className="space-y-4">
-        {dealActivities.length === 0 ? (
+        {displayedActivities.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-sm border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
-            No activities recorded yet.
+            {activeTab === 'history' ? 'No activities recorded yet.' : 'No upcoming activities.'}
           </div>
         ) : (
-          dealActivities.filter(activity => {
+          displayedActivities.filter(activity => {
             const isVisible = activity.isVisible ?? true;
             if (isVisible) return true;
             return currentUser?.role === 'administrator' || currentUser?.role === 'cso';
           }).map(activity => {
             const user = users.find(u => u.id === activity.createdBy);
             const isHidden = activity.isVisible === false;
+            const canEditActivity = (currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && activity.type !== 'email' && new Date(activity.date) > now;
             
             return (
               <div key={activity.id} className={`border rounded-xl p-4 shadow-sm transition-shadow relative ${isHidden ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:shadow-md'}`}>
@@ -2034,7 +2160,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                   <div className="text-xs text-gray-400">
                     {format(parseISO(activity.createdAt), 'MMM d, yyyy HH:mm')}
                   </div>
-                  {(currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && (
+                  {canEditActivity && (
                     <button onClick={() => handleEditActivity(activity)} className="text-gray-400 hover:text-indigo-600 transition-colors">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                     </button>
