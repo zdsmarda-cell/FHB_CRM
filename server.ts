@@ -1059,11 +1059,13 @@ async function startServer() {
         fkColumn = 'lostReasonId';
       }
 
-      const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
-      const count = (rows as any[])[0].count;
+      if (fkColumn) {
+        const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
+        const count = (rows as any[])[0].count;
 
-      if (count > 0) {
-        return res.status(400).json({ error: `Cannot delete because there are ${count} deals referencing this entity.` });
+        if (count > 0) {
+          return res.status(400).json({ error: `Cannot delete because there are ${count} deals referencing this entity.` });
+        }
       }
 
       await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
