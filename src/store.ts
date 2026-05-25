@@ -588,6 +588,22 @@ export const useStore = create<StoreState>((set, get) => {
     const activityToSync = updatedActivities.find(a => a.id === id);
     if (activityToSync) await syncToDb({ activities: [activityToSync] });
     set({ activities: updatedActivities });
+  },
+
+  deleteActivity: async (id) => {
+    await apiFetch('/api/delete-entity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ table: 'activities', id })
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete');
+      }
+    });
+    set(state => ({
+      activities: state.activities.filter(a => a.id !== id)
+    }));
   }
   };
 });

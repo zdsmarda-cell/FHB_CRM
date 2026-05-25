@@ -562,57 +562,93 @@ async function startServer() {
 
   // API endpoints for interacting with MS / Google APIs
   app.post('/api/sync/calendar', authMiddleware, async (req, res) => {
-    const { provider, credentials, activityDetails } = req.body;
+    const { provider, credentials, activityDetails, action = 'create' } = req.body;
     let meetingLink = '';
+    let externalEventId = activityDetails?.externalEventId || '';
     
     try {
       if (provider === 'google' && credentials?.tokens) {
         const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
         oAuth2Client.setCredentials(credentials.tokens);
         const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
-        const startDateTime = new Date(activityDetails.date);
-        const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1 hr default
+        
+        if (action === 'delete' && externalEventId) {
+          await calendar.events.delete({
+            calendarId: 'primary',
+            eventId: externalEventId,
+            sendUpdates: 'all'
+          });
+        } else {
+          const startDateTime = new Date(activityDetails.date);
+          const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000); // 1 hr default
 
-        const eventRes = await calendar.events.insert({
-          calendarId: 'primary',
-          sendUpdates: 'all',
-          conferenceDataVersion: 1,
-          requestBody: {
+          const reqBody: any = {
             summary: activityDetails.note || 'Meeting',
             start: { dateTime: startDateTime.toISOString() },
             end: { dateTime: endDateTime.toISOString() },
             attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({ email })) : [],
-            conferenceData: {
+          };
+
+          let eventRes;
+          if (action === 'update' && externalEventId) {
+            eventRes = await calendar.events.patch({
+              calendarId: 'primary',
+              eventId: externalEventId,
+              sendUpdates: 'all',
+              requestBody: reqBody
+            });
+          } else {
+            reqBody.conferenceData = {
               createRequest: {
                 requestId: Math.random().toString(36).substring(7),
                 conferenceSolutionKey: { type: 'hangoutsMeet' }
               }
-            }
+            };
+            eventRes = await calendar.events.insert({
+              calendarId: 'primary',
+              sendUpdates: 'all',
+              conferenceDataVersion: 1,
+              requestBody: reqBody
+            });
           }
-        });
-        meetingLink = eventRes.data.hangoutLink || '';
+          meetingLink = eventRes.data.hangoutLink || '';
+          externalEventId = eventRes.data.id || externalEventId;
+        }
+
       } else if (provider === 'microsoft' && credentials?.tokens) {
         const client = GraphClient.init({
           authProvider: (done) => done(null, credentials.tokens.access_token)
         });
-        const startDateTime = new Date(activityDetails.date);
-        const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
         
-        const event = {
-          subject: activityDetails.note || 'Meeting',
-          start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
-          end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
-          isOnlineMeeting: true,
-          onlineMeetingProvider: 'teamsForBusiness',
-          attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
-            emailAddress: { address: email },
-            type: 'required'
-          })) : []
-        };
-        const newEvent = await client.api('/me/events').post(event);
-        meetingLink = newEvent.onlineMeeting?.joinUrl || '';
+        if (action === 'delete' && externalEventId) {
+           await client.api(`/me/events/${externalEventId}`).delete();
+        } else {
+          const startDateTime = new Date(activityDetails.date);
+          const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
+          
+          const event: any = {
+            subject: activityDetails.note || 'Meeting',
+            start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
+            end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
+            attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
+              emailAddress: { address: email },
+              type: 'required'
+            })) : []
+          };
+
+          let newEvent;
+          if (action === 'update' && externalEventId) {
+            newEvent = await client.api(`/me/events/${externalEventId}`).patch(event);
+          } else {
+            event.isOnlineMeeting = true;
+            event.onlineMeetingProvider = 'teamsForBusiness';
+            newEvent = await client.api('/me/events').post(event);
+          }
+          meetingLink = newEvent.onlineMeeting?.joinUrl || '';
+          externalEventId = newEvent.id || externalEventId;
+        }
       }
-      res.json({ success: true, meetingLink });
+      res.json({ success: true, meetingLink, externalEventId });
     } catch (err: any) {
       console.error('Calendar error:', err);
       res.status(500).json({ error: err.message });
@@ -635,6 +671,7 @@ async function startServer() {
           orderBy: 'startTime'
         });
         events = (resList.data.items || []).map(item => ({
+          id: item.id,
           subject: item.summary,
           date: item.start?.dateTime,
           link: item.hangoutLink
@@ -645,6 +682,7 @@ async function startServer() {
         });
         const resList = await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(20).get();
         events = resList.value.map((item: any) => ({
+          id: item.id,
           subject: item.subject,
           date: item.start?.dateTime,
           link: item.onlineMeeting?.joinUrl
@@ -1003,7 +1041,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing table or id' });
       }
       
-      const allowedTables = ['lead_sources', 'ecommerce_platforms', 'it_integrations', 'lost_reasons'];
+      const allowedTables = ['lead_sources', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
       }

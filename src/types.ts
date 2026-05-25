@@ -66,6 +66,7 @@ export interface Activity {
   transcript?: string;
   isVisible?: boolean;
   participants?: string[];
+  externalEventId?: string;
 }
 
 export interface LeadSource {
@@ -204,4 +205,5 @@ export interface StoreState {
   updateUser: (id: string, user: Partial<User>) => Promise<void>;
   addActivity: (activity: Omit<Activity, 'id' | 'createdAt'>) => Promise<void>;
   updateActivity: (id: string, activity: Partial<Activity>) => Promise<void>;
+  deleteActivity: (id: string) => Promise<void>;
 }
