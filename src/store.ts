@@ -575,6 +575,14 @@ export const useStore = create<StoreState>((set, get) => {
     const newActivity = { ...activity, id: uuidv4(), createdAt: new Date().toISOString() };
     await syncToDb({ activities: [newActivity] });
     set((state) => ({ activities: [newActivity, ...state.activities] }));
+  },
+  
+  updateActivity: async (id, activityData) => {
+    const state = get();
+    const updatedActivities = state.activities.map(a => a.id === id ? { ...a, ...activityData } : a);
+    const activityToSync = updatedActivities.find(a => a.id === id);
+    if (activityToSync) await syncToDb({ activities: [activityToSync] });
+    set({ activities: updatedActivities });
   }
   };
 });

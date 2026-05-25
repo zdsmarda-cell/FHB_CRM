@@ -1709,13 +1709,16 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
 function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
   const { t } = useTranslation();
-  const { activities, addActivity, users, currentUser } = useStore();
+  const { activities, addActivity, updateActivity, users, currentUser } = useStore();
   const [isAdding, setIsAdding] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
   const [activityType, setActivityType] = useState<ActivityType>('meeting');
   const [activityDate, setActivityDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [note, setNote] = useState('');
   const [meetingLink, setMeetingLink] = useState('');
+  const [participants, setParticipants] = useState<string[]>([]);
+  const [isVisible, setIsVisible] = useState(true);
 
   const dealActivities = activities
     .filter(a => a.dealId === deal.id)
@@ -1798,18 +1801,56 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       }
     }
 
-    addActivity({
-      dealId: deal.id,
-      type: activityType,
-      date: new Date(activityDate).toISOString(),
-      note,
-      createdBy: currentUser.id,
-      meetingLink: generatedMeetingLink,
-    });
+    if (editingActivityId) {
+       updateActivity(editingActivityId, {
+         type: activityType,
+         date: new Date(activityDate).toISOString(),
+         note,
+         meetingLink: generatedMeetingLink,
+         participants,
+         isVisible
+       });
+    } else {
+      addActivity({
+        dealId: deal.id,
+        type: activityType,
+        date: new Date(activityDate).toISOString(),
+        note,
+        createdBy: currentUser.id,
+        meetingLink: generatedMeetingLink,
+        participants,
+        isVisible
+      });
+    }
     
     setIsAdding(false);
+    setEditingActivityId(null);
     setNote('');
     setMeetingLink('');
+    setParticipants([]);
+    setIsVisible(true);
+    setActivityType('meeting');
+    setActivityDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
+  };
+
+  const handleEditActivity = (activity: Activity) => {
+    setEditingActivityId(activity.id);
+    setActivityType(activity.type);
+    setActivityDate(format(parseISO(activity.date), "yyyy-MM-dd'T'HH:mm"));
+    setNote(activity.note);
+    setMeetingLink(activity.meetingLink || '');
+    setParticipants(activity.participants || []);
+    setIsVisible(activity.isVisible ?? true);
+    setIsAdding(true);
+  };
+  
+  const handleCancelActivityForm = () => {
+    setIsAdding(false);
+    setEditingActivityId(null);
+    setNote('');
+    setMeetingLink('');
+    setParticipants([]);
+    setIsVisible(true);
     setActivityType('meeting');
     setActivityDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   };
@@ -1915,6 +1956,32 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             )}
             
             <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Participants</label>
+              <div className="flex flex-wrap gap-2 mb-1">
+                {users.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => {
+                      if (participants.includes(u.id)) {
+                        setParticipants(participants.filter(id => id !== u.id));
+                      } else {
+                        setParticipants([...participants, u.id]);
+                      }
+                    }}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full cursor-pointer transition-colors ${
+                      participants.includes(u.id) 
+                        ? 'bg-indigo-100 text-indigo-700 border-indigo-200' 
+                        : 'bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200'
+                    } border`}
+                  >
+                    {u.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="col-span-2">
               <label className="block text-xs font-medium text-gray-700 mb-1">Notes / Description *</label>
               <textarea 
                 value={note}
@@ -1923,10 +1990,25 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none min-h-[100px]"
               />
             </div>
+            
+            {(currentUser?.role === 'administrator' || currentUser?.role === 'cso') && (
+              <div className="col-span-2 mt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox"
+                    checked={isVisible}
+                    onChange={(e) => setIsVisible(e.target.checked)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700 font-medium">Visible to everyone</span>
+                </label>
+                <p className="text-xs text-gray-500 ml-6 mt-0.5">If unchecked, this activity will only be visible to administrators and CSOs.</p>
+              </div>
+            )}
           </div>
           
           <div className="flex gap-2 justify-end pt-2">
-            <button onClick={() => setIsAdding(false)} className="px-4 py-2 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
+            <button onClick={handleCancelActivityForm} className="px-4 py-2 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
             <button onClick={handleSave} disabled={!note} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">Save Activity</button>
           </div>
         </div>
@@ -1938,22 +2020,36 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             No activities recorded yet.
           </div>
         ) : (
-          dealActivities.map(activity => {
+          dealActivities.filter(activity => {
+            const isVisible = activity.isVisible ?? true;
+            if (isVisible) return true;
+            return currentUser?.role === 'administrator' || currentUser?.role === 'cso';
+          }).map(activity => {
             const user = users.find(u => u.id === activity.createdBy);
+            const isHidden = activity.isVisible === false;
+            
             return (
-              <div key={activity.id} className="bg-white border text-gray-800 border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative">
-                <div className="absolute top-4 right-4 text-xs text-gray-400">
-                  {format(parseISO(activity.createdAt), 'MMM d, yyyy HH:mm')}
+              <div key={activity.id} className={`border rounded-xl p-4 shadow-sm transition-shadow relative ${isHidden ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:shadow-md'}`}>
+                <div className="absolute top-4 right-4 flex items-center gap-3">
+                  <div className="text-xs text-gray-400">
+                    {format(parseISO(activity.createdAt), 'MMM d, yyyy HH:mm')}
+                  </div>
+                  {(currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && (
+                    <button onClick={() => handleEditActivity(activity)} className="text-gray-400 hover:text-indigo-600 transition-colors">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                    </button>
+                  )}
                 </div>
                 
                 <div className="flex items-start gap-4">
-                  <div className={`p-2.5 rounded-lg border flex-shrink-0 ${getActivityColor(activity.type)}`}>
+                  <div className={`p-2.5 rounded-lg border flex-shrink-0 ${getActivityColor(activity.type)} ${isHidden ? 'opacity-60' : ''}`}>
                     {getActivityIcon(activity.type)}
                   </div>
                   
-                  <div className="flex-1 min-w-0 pr-24">
+                  <div className={`flex-1 min-w-0 pr-24 ${isHidden ? 'opacity-70' : ''}`}>
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold text-gray-900">{getActivityLabel(activity.type)}</span>
+                      {isHidden && <span className="text-[10px] uppercase font-bold tracking-wider text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Hidden</span>}
                       <span className="text-xs text-gray-500">
                         planned on <span className="font-medium text-gray-700">{format(parseISO(activity.date), 'MMM d, yyyy HH:mm')}</span>
                       </span>
@@ -1984,9 +2080,27 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                       </div>
                     )}
                     
-                    <div className="flex items-center gap-1.5 mt-3 text-xs text-gray-500">
-                      <UserIcon className="w-3.5 h-3.5" />
-                      Recorded by <span className="font-medium">{user?.name || 'Unknown User'}</span>
+                    <div className="flex items-center gap-4 mt-3 flex-wrap">
+                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <UserIcon className="w-3.5 h-3.5" />
+                        Recorded by <span className="font-medium">{user?.name || 'Unknown User'}</span>
+                      </div>
+                      
+                      {activity.participants && activity.participants.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 border-l border-gray-300 pl-4">
+                          <span className="font-medium">Shared with:</span>
+                          <div className="flex flex-wrap gap-1">
+                            {activity.participants.map(pid => {
+                              const puser = users.find(u => u.id === pid);
+                              return puser ? (
+                                <span key={pid} className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                  {puser.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

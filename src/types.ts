@@ -64,6 +64,8 @@ export interface Activity {
   createdAt: string;
   meetingLink?: string;
   transcript?: string;
+  isVisible?: boolean;
+  participants?: string[];
 }
 
 export interface LeadSource {
@@ -201,4 +203,5 @@ export interface StoreState {
   addUser: (user: Omit<User, 'id'>) => Promise<void>;
   updateUser: (id: string, user: Partial<User>) => Promise<void>;
   addActivity: (activity: Omit<Activity, 'id' | 'createdAt'>) => Promise<void>;
+  updateActivity: (id: string, activity: Partial<Activity>) => Promise<void>;
 }

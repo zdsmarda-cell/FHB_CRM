@@ -137,6 +137,8 @@ async function startServer() {
         "UPDATE deals SET closerId = ownerId WHERE (stage = 'discovery_proposal' OR stage = 'contracting' OR stage = 'onboarding') AND ownerId IS NOT NULL;",
         "UPDATE deals SET farmerId = ownerId WHERE stage = 'farming' AND ownerId IS NOT NULL;",
         "ALTER TABLE activities ADD COLUMN transcript TEXT;",
+        "ALTER TABLE activities ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE activities ADD COLUMN participants JSON;",
         "ALTER TABLE deals ADD COLUMN contractSignedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN pricingUploadedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN itIntegrationId VARCHAR(50);",
@@ -782,9 +784,15 @@ async function startServer() {
         return item;
       });
 
+      const parsedActivities = parseJsonFields(activities as any[], ['participants']);
+      // convert boolean
+      parsedActivities.forEach((act: any) => {
+        if ('isVisible' in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
+      });
+
       res.json({
         auditLogs: auditLogs,
-        activities: activities
+        activities: parsedActivities
       });
     } catch (err: any) {
       console.error('Deal details fetch error:', err);
