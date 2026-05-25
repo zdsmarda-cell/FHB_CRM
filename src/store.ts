@@ -150,6 +150,7 @@ export const useStore = create<StoreState>((set, get) => {
     lostReasons: [],
     auditLogs: [],
     activities: [],
+    notifications: [],
     currentUser: null,
     
     kanbanUserFilter: null,
@@ -603,6 +604,89 @@ export const useStore = create<StoreState>((set, get) => {
     });
     set(state => ({
       activities: state.activities.filter(a => a.id !== id)
+    }));
+  },
+  
+  syncGlobalCalendar: async () => {
+    const state = get();
+    if (!state.currentUser) return;
+    
+    let isConnected = false;
+    let provider = '';
+    let credentials = null;
+    
+    if (state.currentUser.googleIntegration?.connected) {
+      isConnected = true;
+      provider = 'google';
+      credentials = state.currentUser.googleIntegration;
+    } else if (state.currentUser.msIntegration?.connected) {
+      isConnected = true;
+      provider = 'microsoft';
+      credentials = state.currentUser.msIntegration;
+    }
+    
+    if (!isConnected) return;
+    
+    try {
+      const resCal = await apiFetch('/api/sync/fetch-calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, credentials })
+      });
+      
+      if (resCal.ok) {
+        const dataCal = await resCal.json();
+        if (dataCal.events) {
+          const externalEvIds = new Set(dataCal.events.map((e: any) => e.id));
+          
+          // Re-get state specifically for loop
+          const currentActivities = get().activities;
+
+          for (const ev of dataCal.events) {
+             const existing = currentActivities.find(a => a.type !== 'email' && a.externalEventId === ev.id);
+             if (existing && ev.date) {
+               if (new Date(existing.date).getTime() !== new Date(ev.date).getTime() || existing.meetingLink !== ev.link || existing.note !== ev.subject) {
+                 await get().updateActivity(existing.id, { date: ev.date, meetingLink: ev.link, note: ev.subject });
+               }
+             }
+          }
+
+          // Check for deleted
+          const localFutureExternal = currentActivities.filter(a => 
+            a.type !== 'email' && 
+            a.externalEventId && 
+            new Date(a.date || a.createdAt) > new Date()
+          );
+
+          for (const lAct of localFutureExternal) {
+            if (!externalEvIds.has(lAct.externalEventId)) {
+                await get().deleteActivity(lAct.id);
+                const i18n = (await import('./i18n')).default;
+                get().addNotification(i18n.t('settings.integrations.calendarDeleted', `Událost z kalendáře byla smazána: ${lAct.note}`), 'info');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to global sync calendar', e);
+    }
+  },
+
+  addNotification: (message, type = 'info') => {
+    const id = uuidv4();
+    set(state => ({
+      notifications: [...state.notifications, { id, message, type }]
+    }));
+    setTimeout(() => {
+      set(state => ({
+        notifications: state.notifications.filter(n => n.id !== id)
+      }));
+    }, 5000);
+  },
+
+  removeNotification: (id) => {
+    set(state => ({
+      notifications: state.notifications.filter(n => n.id !== id)
     }));
   }
   };

@@ -159,6 +159,12 @@ export interface AuditLog {
   timestamp: string;
 }
 
+export interface Notification {
+  id: string;
+  message: string;
+  type: 'success' | 'info' | 'error';
+}
+
 export interface StoreState {
   isInitialized: boolean;
   users: User[];
@@ -167,6 +173,7 @@ export interface StoreState {
   auditLogs: AuditLog[];
   activities: Activity[];
   currentUser: User | null;
+  notifications: Notification[];
   leadSources: LeadSource[];
   ecommercePlatforms: EcommercePlatform[];
   itIntegrations: ITIntegration[];
@@ -206,4 +213,7 @@ export interface StoreState {
   addActivity: (activity: Omit<Activity, 'id' | 'createdAt'>) => Promise<void>;
   updateActivity: (id: string, activity: Partial<Activity>) => Promise<void>;
   deleteActivity: (id: string) => Promise<void>;
+  syncGlobalCalendar: () => Promise<void>;
+  addNotification: (message: string, type?: 'info' | 'success' | 'error') => void;
+  removeNotification: (id: string) => void;
 }

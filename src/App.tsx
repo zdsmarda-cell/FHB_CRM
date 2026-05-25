@@ -72,7 +72,13 @@ function MainLayout() {
     const periodicRefresh = setInterval(() => {
       const store = useStore.getState();
       store.refreshState().then(() => store.checkPostponedDeals());
+      store.syncGlobalCalendar();
     }, 60000);
+
+    // Initial sync
+    setTimeout(() => {
+      useStore.getState().syncGlobalCalendar();
+    }, 3000);
 
     return () => {
       clearInterval(pollInterval);
@@ -105,6 +111,8 @@ function MainLayout() {
     navItems.push({ path: '/admin', label: t('menu.admin'), icon: Users });
   }
 
+  const { notifications } = useStore();
+
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       <Header />
@@ -116,6 +124,14 @@ function MainLayout() {
           <span className="text-sm font-medium">{notification.message}</span>
         </div>
       )}
+      <div className="fixed bottom-4 right-4 z-[60] flex flex-col gap-2">
+      {notifications.map(n => (
+        <div key={n.id} className={`text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 ${n.type === 'error' ? 'bg-red-600' : 'bg-indigo-600'}`}>
+          <Info className="w-5 h-5 text-indigo-100" />
+          <span className="text-sm font-medium">{n.message}</span>
+        </div>
+      ))}
+      </div>
       
       {/* Main Navigation */}
       <nav className="bg-white border-b border-gray-200 px-6 py-3 flex gap-6 mt-0 items-center justify-between">

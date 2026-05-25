@@ -1720,7 +1720,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [participants, setParticipants] = useState<string[]>([]);
   const [isVisible, setIsVisible] = useState(true);
 
-  const [activeTab, setActiveTab] = useState<'history' | 'calendar'>('history');
+  const [activeTab, setActiveTab] = useState<'history' | 'calendar'>('calendar');
 
   const now = new Date();
   
@@ -1803,7 +1803,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                if (new Date(existing.date).getTime() !== new Date(ev.date).getTime() || existing.meetingLink !== ev.link || existing.note !== ev.subject) {
                  updateActivity(existing.id, { date: ev.date, meetingLink: ev.link, note: ev.subject });
                  // Notify the UI using our quick hack local alert
-                 alert(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`));
+                 useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
                }
              } else {
                // Fallback: match by subject/date if externalEventId is empty
@@ -1814,7 +1814,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                if (existingFallback && ev.date) {
                  if (new Date(existingFallback.date).getTime() !== new Date(ev.date).getTime() || existingFallback.meetingLink !== ev.link) {
                    updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link, externalEventId: ev.id });
-                   alert(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`));
+                   useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
                  } else {
                    // Just save the mapping
                    updateActivity(existingFallback.id, { externalEventId: ev.id });
@@ -1835,7 +1835,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             if (!externalEvIds.has(lAct.externalEventId)) {
                 // Was deleted externally!
                 useStore.getState().deleteActivity(lAct.id);
-                console.log(`Deleted cancelled event from calendar: ${lAct.note}`);
+                useStore.getState().addNotification(t('settings.integrations.calendarDeleted', `Událost z kalendáře byla smazána: ${lAct.note}`), 'info');
             }
           }
         }
@@ -2066,7 +2066,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               onClick={() => setActiveTab('calendar')}
             >
-              Calendar (Future)
+              {t('activities.calendarFuture', 'Kalendář (Plánované)')}
             </button>
           </div>
         </div>
@@ -2103,7 +2103,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                <svg className="w-5 h-5 flex-shrink-0 text-yellow-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                <div>
                  <p className="font-semibold">{t('activities.syncWarningTitle', 'Nejste připojeni ke kalendáři')}</p>
-                 <p>{t('activities.syncWarningText', 'Pro oboustrannou synchronizaci událostí si prosím připojte MS Teams nebo Google Calendar v nastavení svého profilu.')}</p>
+                 <p>{t('activities.syncWarningText', 'Pro oboustrannou synchronizaci událostí si prosím připojte MS Office nebo Google v nastavení svého profilu.')}</p>
                </div>
              </div>
           )}
