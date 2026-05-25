@@ -841,7 +841,8 @@ async function startServer() {
             }
           }
         } else if (provider === 'microsoft' && credentials?.tokens) {
-          const searchQuery = relevantEmails.map((e: string) => `from:"${e}" OR to:"${e}" OR cc:"${e}"`).join(' OR ');
+          const uniqueEmails = Array.from(new Set(relevantEmails));
+          const searchQuery = '"' + uniqueEmails.map((e: string) => `participants:${e}`).join(' OR ') + '"';
           const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
             return await client.api('/me/messages')
               .header('ConsistencyLevel', 'eventual')
