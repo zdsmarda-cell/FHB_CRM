@@ -1865,7 +1865,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       const resCal = await apiFetch('/api/sync/fetch-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, credentials })
+        body: JSON.stringify({ provider, credentials, relevantEmails })
       });
       if (resCal.ok) {
         const dataCal = await resCal.json();
@@ -1898,6 +1898,23 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                    // Just save the mapping
                    updateActivity(existingFallback.id, { externalEventId: ev.id });
                  }
+               } else if (ev.date) {
+                 // Create new activity from calendar!
+                 let determineType = 'meeting';
+                 if (ev.link && ev.link.includes('teams.microsoft.com')) determineType = 'teams';
+                 else if (ev.link && ev.link.includes('meet.google.com')) determineType = 'teams';
+                 
+                 addActivity({
+                   dealId: deal.id,
+                   type: determineType as any,
+                   date: ev.date,
+                   note: ev.subject || 'Schůzka',
+                   createdBy: currentUser.id,
+                   isVisible: true,
+                   externalEventId: ev.id,
+                   meetingLink: ev.link
+                 });
+                 useStore.getState().addNotification(t('settings.integrations.calendarCreated', `Přidána událost z kalendáře: ${ev.subject}`), 'success');
                }
              }
           });

@@ -743,7 +743,7 @@ async function startServer() {
   });
 
   app.post('/api/sync/fetch-calendar', authMiddleware, async (req, res) => {
-    const { provider, credentials } = req.body;
+    const { provider, credentials, relevantEmails } = req.body;
     let events: any[] = [];
     try {
       if (provider === 'google' && credentials?.tokens) {
@@ -761,11 +761,12 @@ async function startServer() {
           id: item.id,
           subject: item.summary,
           date: item.start?.dateTime,
-          link: item.hangoutLink
+          link: item.hangoutLink,
+          attendees: item.attendees?.map(a => a.email) || []
         }));
       } else if (provider === 'microsoft' && credentials?.tokens) {
         const resList = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
-          return await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(100).get();
+          return await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).select('id,subject,start,onlineMeeting,attendees').top(100).get();
         });
         events = resList.value.map((item: any) => {
           let dateStr = item.start?.dateTime;
@@ -776,10 +777,20 @@ async function startServer() {
             id: item.id,
             subject: item.subject,
             date: dateStr,
-            link: item.onlineMeeting?.joinUrl
+            link: item.onlineMeeting?.joinUrl,
+            attendees: item.attendees?.map((a: any) => a.emailAddress?.address) || []
           };
         });
       }
+      
+      // Filter if relevantEmails provided
+      if (relevantEmails && relevantEmails.length > 0) {
+          const emailsLower = relevantEmails.map((e: string) => e.toLowerCase());
+          events = events.filter(ev => {
+             return ev.attendees.some((attObj: string) => emailsLower.includes((attObj || '').toLowerCase()));
+          });
+      }
+      
       res.json({ events });
     } catch (err: any) {
       console.error(err);
