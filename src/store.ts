@@ -567,7 +567,12 @@ export const useStore = create<StoreState>((set, get) => {
     const updatedUsers = state.users.map(u => u.id === id ? { ...u, ...userData } : u);
     const userToSync = updatedUsers.find(u => u.id === id);
     if (userToSync) await syncToDb({ users: [userToSync] });
-    set({ users: updatedUsers });
+    
+    // Also update currentUser if we are modifying the currently logged in user
+    set({ 
+      users: updatedUsers,
+      currentUser: state.currentUser?.id === id ? { ...state.currentUser, ...userData } : state.currentUser
+    });
   },
 
   addActivity: async (activity) => {

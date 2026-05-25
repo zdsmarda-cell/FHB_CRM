@@ -12,6 +12,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const { currentUser, updateUser } = useStore();
   const [config, setConfig] = useState<ConfigStatus | null>(null);
+  const [statusMsg, setStatusMsg] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   useEffect(() => {
     apiFetch('/api/auth/integrations-status')
@@ -38,17 +39,17 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
             updateUser(currentUser.id, { 
               googleIntegration: { connected: true, tokens: data.tokens } 
             });
-            alert(t('settings.integrations.success', 'Úspěšně propojeno!'));
+            setStatusMsg({type: 'success', text: t('settings.integrations.success', 'Úspěšně propojeno!')});
           } else if (event.data.provider === 'microsoft') {
             updateUser(currentUser.id, { 
               msIntegration: { connected: true, tokens: data.tokens } 
             });
-            alert(t('settings.integrations.success', 'Úspěšně propojeno!'));
+            setStatusMsg({type: 'success', text: t('settings.integrations.success', 'Úspěšně propojeno!')});
           }
         })
         .catch(err => {
           console.error('Failed to exchange code', err);
-          alert('Failed to complete integration.');
+          setStatusMsg({type: 'error', text: 'Failed to complete integration.'});
         });
       }
     };
@@ -94,10 +95,12 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
 
   const handleDisconnectGoogle = () => {
     updateUser(currentUser.id, { googleIntegration: null });
+    setStatusMsg({type: 'success', text: t('settings.integrations.disconnected', 'Úspěšně odpojeno.')});
   };
 
   const handleDisconnectMicrosoft = () => {
     updateUser(currentUser.id, { msIntegration: null });
+    setStatusMsg({type: 'success', text: t('settings.integrations.disconnected', 'Úspěšně odpojeno.')});
   };
 
   const isAdmin = currentUser.role === 'administrator';
@@ -114,6 +117,12 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {statusMsg && (
+          <div className={`px-6 py-3 text-sm font-medium border-b ${statusMsg.type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-100' : 'bg-red-50 text-red-800 border-red-100'}`}>
+            {statusMsg.text}
+          </div>
+        )}
 
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
           <div>
