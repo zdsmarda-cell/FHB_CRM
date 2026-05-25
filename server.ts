@@ -238,7 +238,13 @@ async function startServer() {
       const token = jwt.sign(
         { id: user.id, email: user.email, role: user.role, name: user.name },
         JWT_SECRET,
-        { expiresIn: '1h' } // 1 hour token
+        { expiresIn: '15m' } // 15 minutes token
+      );
+      
+      const refreshToken = jwt.sign(
+        { id: user.id, type: 'refresh' },
+        JWT_SECRET,
+        { expiresIn: '24h' } // 24 hours refresh token
       );
 
       try {
@@ -262,13 +268,52 @@ async function startServer() {
         console.error('Failed to write login log:', logErr);
       }
 
-      res.json({ token, user });
+      res.json({ token, refreshToken, user });
     } catch (err: any) {
       console.error('Login Error:', err);
       if (err.code === 'ETIMEDOUT') {
         console.error('HINT: Your database host could not be reached. Check firewall rules, VPNs, and ensure the DB_HOST is accessible from this server.');
       }
       res.status(500).json({ error: 'Server error during login', details: err.message });
+    }
+  });
+
+  app.post('/api/auth/refresh-session', async (req, res) => {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(401).json({ error: 'unauthorized', message: 'No refresh token' });
+    try {
+      const decoded: any = jwt.verify(refreshToken, JWT_SECRET);
+      if (decoded.type !== 'refresh') throw new Error('Invalid token type');
+      
+      const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [decoded.id]);
+      const users = rows as any[];
+      if (users.length === 0) return res.status(401).json({ error: 'unauthorized', message: 'User not found' });
+      const user = users[0];
+      if (user.isActive !== 1 && user.isActive !== true) return res.status(403).json({ error: 'inactiveAccount' });
+      
+      ['googleIntegration', 'msIntegration'].forEach(f => {
+        if (typeof user[f] === 'string') {
+           try { user[f] = JSON.parse(user[f]); } catch (e) { /* ignore */ }
+        }
+      });
+      user.isActive = true;
+      delete user.passwordHash;
+      
+      const newToken = jwt.sign(
+        { id: user.id, email: user.email, role: user.role, name: user.name },
+        JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+      
+      const newRefreshToken = jwt.sign(
+        { id: user.id, type: 'refresh' },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+      
+      res.json({ token: newToken, refreshToken: newRefreshToken, user });
+    } catch (e: any) {
+      res.status(401).json({ error: 'unauthorized', message: e.message });
     }
   });
 
@@ -562,6 +607,47 @@ async function startServer() {
   });
 
   // API endpoints for interacting with MS / Google APIs
+  
+  const callMsGraphWithRetry = async (initialTokens: any, userId: string, pool: any, apiCall: (client: any) => Promise<any>) => {
+    let currentTokens = initialTokens;
+    try {
+      const client = GraphClient.init({ authProvider: (done) => done(null, currentTokens.access_token) });
+      return await apiCall(client);
+    } catch (e: any) {
+      if (e.statusCode === 401 || (e.message && (e.message.includes('expired') || e.message.includes('InvalidAuthenticationToken')))) {
+        if (!currentTokens.refresh_token) throw new Error('Missing Microsoft refresh token');
+        const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: process.env.MS_CLIENT_ID || '',
+            client_secret: process.env.MS_CLIENT_SECRET || '',
+            refresh_token: currentTokens.refresh_token,
+            grant_type: 'refresh_token'
+          })
+        });
+        const newTokens = await response.json();
+        if (newTokens.error) throw new Error(newTokens.error_description || newTokens.error);
+        const mergedTokens = { ...currentTokens, ...newTokens };
+        
+        // Update user in DB
+        const [rows] = await pool.query('SELECT msIntegration FROM users WHERE id = ?', [userId]);
+        if ((rows as any[])[0]) {
+          let msInt: any = null;
+          try { msInt = JSON.parse((rows as any[])[0].msIntegration) } catch(err){}
+          if (msInt) {
+            msInt.tokens = mergedTokens;
+            await pool.query('UPDATE users SET msIntegration = ? WHERE id = ?', [JSON.stringify(msInt), userId]);
+          }
+        }
+        
+        const retryClient = GraphClient.init({ authProvider: (done) => done(null, mergedTokens.access_token) });
+        return await apiCall(retryClient);
+      }
+      throw e;
+    }
+  };
+
   app.post('/api/sync/calendar', authMiddleware, async (req, res) => {
     const { provider, credentials, activityDetails, action = 'create' } = req.body;
     let meetingLink = '';
@@ -617,37 +703,35 @@ async function startServer() {
         }
 
       } else if (provider === 'microsoft' && credentials?.tokens) {
-        const client = GraphClient.init({
-          authProvider: (done) => done(null, credentials.tokens.access_token)
-        });
-        
-        if (action === 'delete' && externalEventId) {
-           await client.api(`/me/events/${externalEventId}`).delete();
-        } else {
-          const startDateTime = new Date(activityDetails.date);
-          const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
-          
-          const event: any = {
-            subject: activityDetails.note || 'Meeting',
-            start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
-            end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
-            attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
-              emailAddress: { address: email },
-              type: 'required'
-            })) : []
-          };
-
-          let newEvent;
-          if (action === 'update' && externalEventId) {
-            newEvent = await client.api(`/me/events/${externalEventId}`).patch(event);
+        await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
+          if (action === 'delete' && externalEventId) {
+             await client.api(`/me/events/${externalEventId}`).delete();
           } else {
-            event.isOnlineMeeting = true;
-            event.onlineMeetingProvider = 'teamsForBusiness';
-            newEvent = await client.api('/me/events').post(event);
+            const startDateTime = new Date(activityDetails.date);
+            const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
+            
+            const event: any = {
+              subject: activityDetails.note || 'Meeting',
+              start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
+              end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
+              attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
+                emailAddress: { address: email },
+                type: 'required'
+              })) : []
+            };
+
+            let newEvent;
+            if (action === 'update' && externalEventId) {
+              newEvent = await client.api(`/me/events/${externalEventId}`).patch(event);
+            } else {
+              event.isOnlineMeeting = true;
+              event.onlineMeetingProvider = 'teamsForBusiness';
+              newEvent = await client.api('/me/events').post(event);
+            }
+            meetingLink = newEvent.onlineMeeting?.joinUrl || '';
+            externalEventId = newEvent.id || externalEventId;
           }
-          meetingLink = newEvent.onlineMeeting?.joinUrl || '';
-          externalEventId = newEvent.id || externalEventId;
-        }
+        });
       }
       res.json({ success: true, meetingLink, externalEventId });
     } catch (err: any) {
@@ -678,10 +762,9 @@ async function startServer() {
           link: item.hangoutLink
         }));
       } else if (provider === 'microsoft' && credentials?.tokens) {
-        const client = GraphClient.init({
-          authProvider: (done) => done(null, credentials.tokens.access_token)
+        const resList = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
+          return await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(100).get();
         });
-        const resList = await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(100).get();
         events = resList.value.map((item: any) => ({
           id: item.id,
           subject: item.subject,
@@ -725,15 +808,14 @@ async function startServer() {
             }
           }
         } else if (provider === 'microsoft' && credentials?.tokens) {
-          const client = GraphClient.init({
-            authProvider: (done) => done(null, credentials.tokens.access_token)
-          });
           const queryFilters = relevantEmails.map((e: string) => `from/emailAddress/address eq '${e}'`).join(' or ');
-          const messages = await client.api('/me/messages')
-            .filter(queryFilters)
-            .select('id,subject,from,receivedDateTime,bodyPreview')
-            .top(10)
-            .get();
+          const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
+            return await client.api('/me/messages')
+              .filter(queryFilters)
+              .select('id,subject,from,receivedDateTime,bodyPreview')
+              .top(10)
+              .get();
+          });
           
           if (messages && messages.value) {
             emailResults = messages.value.map((msg: any) => ({

@@ -9,19 +9,65 @@ const DEFAULT_PASS = hashPassword('password123');
 
 export const CLIENT_ID = uuidv4();
 
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
 export const apiFetch = async (url: string, options: RequestInit = {}) => {
-  const token = localStorage.getItem('jwt_token');
+  let token = localStorage.getItem('jwt_token');
   const headers = new Headers(options.headers || {});
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
+  
+  if (url !== '/api/auth/refresh-session' && url !== '/api/auth/login') {
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Client-Id', CLIENT_ID);
+    options.headers = headers;
   }
-  headers.set('X-Client-Id', CLIENT_ID);
-  options.headers = headers;
-  const res = await fetch(url, options);
-  if (res.status === 401 && url !== '/api/auth/login') {
-    localStorage.removeItem('jwt_token');
-    useStore.setState({ currentUser: null });
+  
+  let res = await fetch(url, options);
+
+  if (res.status === 401 && url !== '/api/auth/login' && url !== '/api/auth/refresh-session') {
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (refreshToken) {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        refreshPromise = fetch('/api/auth/refresh-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken })
+        }).then(async refreshRes => {
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            localStorage.setItem('jwt_token', data.token);
+            localStorage.setItem('refresh_token', data.refreshToken);
+            useStore.setState({ currentUser: data.user });
+            return true;
+          }
+          return false;
+        }).finally(() => {
+          isRefreshing = false;
+          refreshPromise = null;
+        });
+      }
+      
+      const refreshed = await refreshPromise;
+      if (refreshed) {
+        // Retry original request
+        const newToken = localStorage.getItem('jwt_token');
+        const retryHeaders = new Headers(options.headers || {});
+        if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
+        retryHeaders.set('X-Client-Id', CLIENT_ID);
+        options.headers = retryHeaders;
+        res = await fetch(url, options);
+      } else {
+        localStorage.removeItem('jwt_token');
+        localStorage.removeItem('refresh_token');
+        useStore.setState({ currentUser: null });
+      }
+    } else {
+      localStorage.removeItem('jwt_token');
+      useStore.setState({ currentUser: null });
+    }
   }
+
   return res;
 };
 
@@ -293,6 +339,7 @@ export const useStore = create<StoreState>((set, get) => {
         const data = await res.json();
         if (data.token) {
           localStorage.setItem('jwt_token', data.token);
+          if (data.refreshToken) localStorage.setItem('refresh_token', data.refreshToken);
         }
         set({ currentUser: data.user });
       } catch (err: any) {
@@ -302,6 +349,7 @@ export const useStore = create<StoreState>((set, get) => {
 
   logout: () => {
     localStorage.removeItem('jwt_token');
+    localStorage.removeItem('refresh_token');
     set({ currentUser: null });
   },
 
