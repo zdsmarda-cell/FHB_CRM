@@ -2278,7 +2278,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isSyncingEmails ? 'animate-spin' : ''}`} />
-              {t('common.syncEmails', 'Synchronizovat e-maily')}
+              {t('common.sync', 'Synchronizovat')}
             </button>
           )}
           {canEdit && !isAdding && (
@@ -2287,7 +2287,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               onClick={() => setIsAdding(true)}
               className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
             >
-              <Plus className="w-4 h-4" /> Add Activity
+              <Plus className="w-4 h-4" /> {t('activities.add', 'Přidat aktivitu')}
             </button>
           )}
         </div>
