@@ -841,10 +841,11 @@ async function startServer() {
             }
           }
         } else if (provider === 'microsoft' && credentials?.tokens) {
-          const queryFilters = relevantEmails.map((e: string) => `from/emailAddress/address eq '${e}' or toRecipients/any(t:t/emailAddress/address eq '${e}') or ccRecipients/any(c:c/emailAddress/address eq '${e}')`).join(' or ');
+          const searchQuery = relevantEmails.map((e: string) => `from:"${e}" OR to:"${e}" OR cc:"${e}"`).join(' OR ');
           const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
             return await client.api('/me/messages')
-              .filter(queryFilters)
+              .header('ConsistencyLevel', 'eventual')
+              .search(searchQuery)
               .select('id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview')
               .expand('attachments($select=name,contentType)')
               .top(10)
