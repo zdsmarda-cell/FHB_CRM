@@ -1723,6 +1723,10 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [isVisible, setIsVisible] = useState(true);
 
   const [activeTab, setActiveTab] = useState<'history' | 'calendar'>('calendar');
+  const [activityFilter, setActivityFilter] = useState<'all' | 'email' | 'meeting'>('all');
+  const [activityPage, setActivityPage] = useState(1);
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
+  const activitiesPerPage = 10;
 
   const now = new Date();
   
@@ -1730,10 +1734,45 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     .filter(a => a.dealId === deal.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const historyActivities = dealActivities.filter(a => new Date(a.date || a.createdAt) <= now || a.type === 'email');
+  const historyActivities = dealActivities
+    .filter(a => new Date(a.date || a.createdAt) <= now || a.type === 'email')
+    .sort((a, b) => new Date(b.date || b.createdAt).getTime() - new Date(a.date || a.createdAt).getTime());
   const futureActivities = dealActivities.filter(a => new Date(a.date || a.createdAt) > now && a.type !== 'email').sort((a, b) => new Date(a.date || a.createdAt).getTime() - new Date(b.date || b.createdAt).getTime());
   
-  const displayedActivities = activeTab === 'history' ? historyActivities : futureActivities;
+  let displayedActivities = activeTab === 'history' ? historyActivities : futureActivities;
+
+  // Visibility filtering
+  displayedActivities = displayedActivities.filter(activity => {
+    const isActivityVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
+    if (isActivityVisible) return true;
+    return currentUser?.role === 'administrator' || currentUser?.role === 'cso';
+  });
+
+  // Type filtering
+  if (activityFilter === 'email') {
+    displayedActivities = displayedActivities.filter(a => a.type === 'email');
+  } else if (activityFilter === 'meeting') {
+    displayedActivities = displayedActivities.filter(a => a.type === 'teams' || a.type === 'meeting' || a.type === 'call');
+  }
+
+  const totalPages = Math.ceil(displayedActivities.length / activitiesPerPage);
+  const paginatedActivities = displayedActivities.slice((activityPage - 1) * activitiesPerPage, activityPage * activitiesPerPage);
+
+  const toggleExpandActivity = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExpandedActivities(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleTabChange = (tab: 'history' | 'calendar') => {
+    setActiveTab(tab);
+    setActivityPage(1);
+  };
+
 
   const [newContactName, setNewContactName] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
@@ -2079,7 +2118,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     }
   };
 
-  const renderActivityNote = (activity: Activity) => {
+  const renderActivityNote = (activity: Activity, isExpanded: boolean) => {
     if (activity.type === 'email' && activity.note.startsWith('Subject: ')) {
       const parts = activity.note.split('\n\n');
       const headerBlock = parts[0];
@@ -2095,10 +2134,18 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               const val = line.substring(colonIdx + 1).trim();
               
               if (key === 'Attachments' && val.length > 0) {
+                const attachmentsItems = val.split(',').map(s => s.trim()).filter(Boolean);
                 return (
                   <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-2 pt-1 border-t border-gray-50">
                     <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{key}:</span>
-                    <span className="text-indigo-600 font-medium">{val}</span>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {attachmentsItems.map((att, idx) => (
+                        <a key={idx} href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); alert('Stahování příloh z emailu není v preview implementováno.'); }} className="text-indigo-600 font-medium hover:underline flex items-center gap-1">
+                          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                          {att}
+                        </a>
+                      ))}
+                    </div>
                   </div>
                 );
               }
@@ -2111,11 +2158,21 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               );
             })}
           </div>
-          <div className="p-3 whitespace-pre-wrap text-gray-600 leading-relaxed max-h-[400px] overflow-y-auto custom-scrollbar">
-            {bodyText}
-          </div>
+          {isExpanded && (
+            <div className="p-3 whitespace-pre-wrap text-gray-600 leading-relaxed overflow-y-auto custom-scrollbar">
+              {bodyText.trim() ? bodyText : <span className="italic text-gray-400">Empty body</span>}
+            </div>
+          )}
         </div>
       );
+    }
+
+    if (!isExpanded) {
+        return (
+          <p className="text-sm text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis mt-2 leading-relaxed">
+            {activity.note}
+          </p>
+        );
     }
 
     return (
@@ -2128,23 +2185,39 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center border-b border-gray-200 pb-2">
-        <div className="flex items-center gap-6">
-          <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <MessageSquare className="w-5 h-5 text-gray-400" />{t('common.activities')}
-          </h3>
-          <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
-            <button
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('history')}
-            >
-              History
-            </button>
-            <button
-              className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-              onClick={() => setActiveTab('calendar')}
-            >
-              {t('activities.calendarFuture', 'Kalendář (budoucí)')}
-            </button>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-6">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-gray-400" />{t('common.activities')}
+            </h3>
+            <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+              <button
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => handleTabChange('history')}
+              >
+                History
+              </button>
+              <button
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${activeTab === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                onClick={() => handleTabChange('calendar')}
+              >
+                {t('activities.calendarFuture', 'Kalendář (budoucí)')}
+              </button>
+            </div>
+            {activeTab === 'history' && (
+              <select
+                value={activityFilter}
+                onChange={(e) => {
+                  setActivityFilter(e.target.value as any);
+                  setActivityPage(1);
+                }}
+                className="px-3 py-1 text-sm border-gray-300 rounded-md text-gray-700 bg-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+              >
+                <option value="all">Vše</option>
+                <option value="email">E-maily</option>
+                <option value="meeting">Schůzky/Hovory</option>
+              </select>
+            )}
           </div>
         </div>
         <div className="flex gap-3">
@@ -2339,43 +2412,43 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       )}
 
       <div className="space-y-4">
-        {displayedActivities.length === 0 ? (
+        {paginatedActivities.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-sm border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
             {activeTab === 'history' ? 'No activities recorded yet.' : 'No upcoming activities.'}
           </div>
         ) : (
-          displayedActivities.filter(activity => {
-            const isActivityVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
-            if (isActivityVisible) return true;
-            return currentUser?.role === 'administrator' || currentUser?.role === 'cso';
-          }).map(activity => {
+          paginatedActivities.map(activity => {
             const user = users.find(u => u.id === activity.createdBy);
             const isActivityVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
             const isHidden = !isActivityVisible;
             const canEditActivity = (currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && activity.type !== 'email' && new Date(activity.date || activity.createdAt) > now;
+            const isExpanded = expandedActivities.has(activity.id);
             
             return (
-              <div key={activity.id} className={`border rounded-xl p-4 shadow-sm transition-shadow relative ${isHidden ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:shadow-md'}`}>
+              <div 
+                key={activity.id} 
+                onClick={(e) => toggleExpandActivity(activity.id, e)}
+                className={`border rounded-xl p-4 shadow-sm transition-shadow relative cursor-pointer ${isHidden ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:shadow-md'}`}>
                 <div className="absolute top-4 right-4 flex items-center gap-3">
                   <div className="text-xs text-gray-400">
                     {format(parseISO(activity.createdAt), 'MMM d, yyyy HH:mm')}
                   </div>
                   {canEditActivity && (
                     <div className="flex gap-2 items-center">
-                      <button disabled={isSyncingActivityRef === activity.id} onClick={() => handleEditActivity(activity)} className={`${isSyncingActivityRef === activity.id ? 'text-indigo-600' : 'text-gray-400 hover:text-indigo-600'} transition-colors disabled:opacity-50`} title={t('common.edit', 'Editovat')}>
+                      <button disabled={isSyncingActivityRef === activity.id} onClick={(e) => { e.stopPropagation(); handleEditActivity(activity); }} className={`${isSyncingActivityRef === activity.id ? 'text-indigo-600' : 'text-gray-400 hover:text-indigo-600'} transition-colors disabled:opacity-50`} title={t('common.edit', 'Editovat')}>
                         {isSyncingActivityRef === activity.id ? (
                            <RefreshCw className="w-4 h-4 animate-spin" />
                         ) : (
                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                         )}
                       </button>
-                      <button onClick={() => handleDeleteActivity(activity)} className="text-gray-400 hover:text-red-600 transition-colors" title="Delete">
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteActivity(activity); }} className="text-gray-400 hover:text-red-600 transition-colors" title="Delete">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     </div>
                   )}
                   {(currentUser?.role === 'administrator' || currentUser?.role === 'cso') && (
-                    <button onClick={() => handleToggleVisibility(activity)} className={`${isHidden ? 'text-red-500' : 'text-gray-400'} hover:text-red-700 transition-colors ml-1`} title={isHidden ? "Make visible" : "Make invisible"}>
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleVisibility(activity); }} className={`${isHidden ? 'text-red-500' : 'text-gray-400'} hover:text-red-700 transition-colors ml-1`} title={isHidden ? "Make visible" : "Make invisible"}>
                       {isHidden ? (
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
                       ) : (
@@ -2399,42 +2472,42 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                       </span>
                     </div>
                     
-                    {renderActivityNote(activity)}
+                    {renderActivityNote(activity, isExpanded)}
                     
                     {activity.type === 'teams' && activity.meetingLink && (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <a href={activity.meetingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors border border-purple-200">
+                        <a href={activity.meetingLink} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors border border-purple-200">
                           <Video className="w-3.5 h-3.5" />
                           {t('activities.joinTeamsMeeting', 'Join Teams Meeting')}
                         </a>
                         {activity.recordingLink && (
-                           <a href={activity.recordingLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200">
+                           <a href={activity.recordingLink} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors border border-blue-200">
                              <Video className="w-3.5 h-3.5" />
-                             {t('activities.playRecording', 'Záznam hovoru')}
+                             {t('activities.playRecording', 'Záznam hovoru / SharePoint')}
                            </a>
                         )}
                       </div>
                     )}
                     
-                    {activity.type === 'teams' && activity.meetingSummary && (
+                    {isExpanded && activity.type === 'teams' && activity.meetingSummary && (
                       <div className="mt-3 bg-indigo-50/50 p-3 rounded-lg border border-indigo-100 text-xs text-gray-700">
                         <div className="font-semibold text-indigo-900 mb-1 flex items-center gap-1">
                           <MessageSquare className="w-3.5 h-3.5" />
                           {t('activities.meetingSummaryTitle', 'Zápis / Copilot Review')}
                         </div>
-                        <div className="whitespace-pre-wrap max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                           {activity.meetingSummary}
                         </div>
                       </div>
                     )}
                     
-                    {activity.transcript && (!activity.meetingSummary) && (
+                    {isExpanded && activity.transcript && (!activity.meetingSummary) && (
                       <div className="mt-3 bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs text-gray-600">
                         <div className="font-semibold text-gray-800 mb-1 flex items-center gap-1">
                           <MessageSquare className="w-3.5 h-3.5" />
                           Copilot Transcript
                         </div>
-                        <div className="whitespace-pre-wrap max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="whitespace-pre-wrap max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
                           {activity.transcript}
                         </div>
                       </div>
@@ -2452,11 +2525,10 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                           <div className="flex flex-wrap gap-1">
                             {activity.participants.map(pid => {
                               const puser = users.find(u => u.id === pid);
-                              return puser ? (
-                                <span key={pid} className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full whitespace-nowrap">
-                                  {puser.name}
-                                </span>
-                              ) : null;
+                              if (puser) return <span key={pid} className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full whitespace-nowrap">{puser.name}</span>;
+                              // Check if it's an email string
+                              if (pid.includes('@')) return <span key={pid} className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full whitespace-nowrap">{pid}</span>;
+                              return null;
                             })}
                           </div>
                         </div>
@@ -2469,6 +2541,26 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           })
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+          <button 
+            onClick={() => setActivityPage(p => Math.max(1, p - 1))}
+            disabled={activityPage === 1}
+            className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+          >
+            {t('common.prev', 'Previous')}
+          </button>
+          <span className="text-xs text-gray-500">{t('common.pageOf', { current: activityPage, total: totalPages, defaultValue: `Page ${activityPage} of ${totalPages}` })}</span>
+          <button 
+            onClick={() => setActivityPage(p => Math.min(totalPages, p + 1))}
+            disabled={activityPage === totalPages}
+            className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+          >
+            {t('common.next', 'Next')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
