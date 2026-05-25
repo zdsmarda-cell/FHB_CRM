@@ -1760,11 +1760,11 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const seenEmailKeys = new Set();
   
   const isCalendarInvite = (subj: string, note: string) => {
-    const lowerSubj = subj.toLowerCase();
-    const isInviteSubj = /^(accepted|declined|canceled|zrušeno|zrušená|přijato|odmítnuto|tentative|předběžně přijato|updated|aktualizováno|invitation|pozvánka|new time proposed)[:]/.test(lowerSubj);
-    const hasIcs = /Attachments:.*\.ics/i.test(note);
-    // Also typical MS Graph calendar items without subject prefixes but with .msg / .ics attachments or specific body text
-    return isInviteSubj || hasIcs;
+    const isInviteSubj = /(^|fw:|fwd:|re:|odpověď:|přeposláno:)\s*(accepted|declined|canceled|zrušeno|zrušená|přijato|odmítnuto|tentative|předběžně|updated|aktualizováno|invitation|pozvánka|new time proposed)/i.test(subj) || 
+      /Předmět:.*(accepted|declined|canceled|zrušeno|zrušená|přijato|odmítnuto|tentative|předběžně|updated|aktualizováno|invitation|pozvánka|new time proposed)/i.test(note) ||
+      /\.ics(\b|\n|,)/i.test(note);
+    
+    return isInviteSubj;
   };
 
   displayedActivities.forEach(a => {
