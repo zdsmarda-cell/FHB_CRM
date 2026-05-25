@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X, Calendar, Mail, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useStore, apiFetch } from '../../store';
 
@@ -8,6 +9,7 @@ interface ConfigStatus {
 }
 
 export function IntegrationsModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const { currentUser, updateUser } = useStore();
   const [config, setConfig] = useState<ConfigStatus | null>(null);
 
@@ -36,10 +38,12 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
             updateUser(currentUser.id, { 
               googleIntegration: { connected: true, tokens: data.tokens } 
             });
+            alert(t('settings.integrations.success', 'Úspěšně propojeno!'));
           } else if (event.data.provider === 'microsoft') {
             updateUser(currentUser.id, { 
               msIntegration: { connected: true, tokens: data.tokens } 
             });
+            alert(t('settings.integrations.success', 'Úspěšně propojeno!'));
           }
         })
         .catch(err => {
@@ -50,7 +54,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [currentUser, updateUser]);
+  }, [currentUser, updateUser, t]);
 
   if (!currentUser) return null;
 
@@ -89,11 +93,11 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
   };
 
   const handleDisconnectGoogle = () => {
-    updateUser(currentUser.id, { googleIntegration: undefined });
+    updateUser(currentUser.id, { googleIntegration: null });
   };
 
   const handleDisconnectMicrosoft = () => {
-    updateUser(currentUser.id, { msIntegration: undefined });
+    updateUser(currentUser.id, { msIntegration: null });
   };
 
   const isAdmin = currentUser.role === 'administrator';
@@ -132,14 +136,15 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
                         <CheckCircle className="w-3.5 h-3.5" />
                         Connected
                       </div>
-                      <button onClick={handleDisconnectGoogle} className="text-xs font-semibold text-red-600 hover:text-red-700">Disconnect</button>
+                      <button type="button" onClick={handleDisconnectGoogle} className="text-xs font-semibold text-red-600 hover:text-red-700">{t('settings.integrations.disconnect', 'Odpojit')}</button>
                     </div>
                   ) : config?.google.configured ? (
                     <button 
+                      type="button"
                       onClick={handleConnectGoogle}
                       className="text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
                     >
-                      Connect
+                      {t('settings.integrations.connect', 'Propojit')}
                     </button>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
@@ -171,14 +176,15 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
                         <CheckCircle className="w-3.5 h-3.5" />
                         Connected
                       </div>
-                      <button onClick={handleDisconnectMicrosoft} className="text-xs font-semibold text-red-600 hover:text-red-700">Disconnect</button>
+                      <button type="button" onClick={handleDisconnectMicrosoft} className="text-xs font-semibold text-red-600 hover:text-red-700">{t('settings.integrations.disconnect', 'Odpojit')}</button>
                     </div>
                   ) : config?.microsoft.configured ? (
                     <button 
+                      type="button"
                       onClick={handleConnectMicrosoft}
                       className="text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
                     >
-                      Connect
+                      {t('settings.integrations.connect', 'Propojit')}
                     </button>
                   ) : (
                     <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200">
