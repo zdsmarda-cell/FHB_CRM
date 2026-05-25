@@ -1771,11 +1771,17 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             // only add if subject/date doesn't already exist to avoid spamming
             const exists = activities.some(a => a.type === 'email' && a.note.includes(email.subject));
             if (!exists) {
+              let noteContent = `Subject: ${email.subject}\nFrom: ${email.from}\n`;
+              if (email.to) noteContent += `To: ${email.to}\n`;
+              if (email.cc) noteContent += `Cc: ${email.cc}\n`;
+              if (email.attachments && email.attachments.length > 0) noteContent += `Attachments: ${email.attachments.join(', ')}\n`;
+              noteContent += `\n${email.body}`;
+
               addActivity({
                 dealId: deal.id,
                 type: 'email',
                 date: email.date || new Date().toISOString(),
-                note: `Subject: ${email.subject}\nFrom: ${email.from}\n\n${email.body}`,
+                note: noteContent,
                 createdBy: currentUser.id,
                 isVisible: true
               });
@@ -2025,7 +2031,8 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   };
 
   const handleToggleVisibility = (activity: Activity) => {
-      useStore.getState().updateActivity(activity.id, { isVisible: !(activity.isVisible ?? true) });
+      const isActVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
+      useStore.getState().updateActivity(activity.id, { isVisible: !isActVisible });
   };
   
   const handleCancelActivityForm = () => {
@@ -2070,6 +2077,52 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       case 'email': return 'Email';
       default: return 'Activity';
     }
+  };
+
+  const renderActivityNote = (activity: Activity) => {
+    if (activity.type === 'email' && activity.note.startsWith('Subject: ')) {
+      const parts = activity.note.split('\n\n');
+      const headerBlock = parts[0];
+      const bodyText = parts.slice(1).join('\n\n');
+      
+      return (
+        <div className="mt-2 text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+          <div className="p-3 bg-white border-b border-gray-100 space-y-1 text-xs">
+            {headerBlock.split('\n').map((line, i) => {
+              const colonIdx = line.indexOf(':');
+              if (colonIdx === -1) return <div key={i}>{line}</div>;
+              const key = line.substring(0, colonIdx).trim();
+              const val = line.substring(colonIdx + 1).trim();
+              
+              if (key === 'Attachments' && val.length > 0) {
+                return (
+                  <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-2 pt-1 border-t border-gray-50">
+                    <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{key}:</span>
+                    <span className="text-indigo-600 font-medium">{val}</span>
+                  </div>
+                );
+              }
+              
+              return (
+                <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-2">
+                  <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{key}:</span>
+                  <span className="text-gray-900 break-all">{val}</span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="p-3 whitespace-pre-wrap text-gray-600 leading-relaxed max-h-[400px] overflow-y-auto custom-scrollbar">
+            {bodyText}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <p className="text-sm text-gray-600 whitespace-pre-wrap mt-2 bg-gray-50 border border-gray-100 p-3 rounded-lg leading-relaxed">
+        {activity.note}
+      </p>
+    );
   };
 
   return (
@@ -2292,12 +2345,13 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           </div>
         ) : (
           displayedActivities.filter(activity => {
-            const isVisible = activity.isVisible ?? true;
-            if (isVisible) return true;
+            const isActivityVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
+            if (isActivityVisible) return true;
             return currentUser?.role === 'administrator' || currentUser?.role === 'cso';
           }).map(activity => {
             const user = users.find(u => u.id === activity.createdBy);
-            const isHidden = activity.isVisible === false;
+            const isActivityVisible = activity.isVisible === undefined ? true : Boolean(activity.isVisible);
+            const isHidden = !isActivityVisible;
             const canEditActivity = (currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && activity.type !== 'email' && new Date(activity.date || activity.createdAt) > now;
             
             return (
@@ -2345,9 +2399,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                       </span>
                     </div>
                     
-                    <p className="text-sm text-gray-600 whitespace-pre-wrap mt-2 bg-gray-50 border border-gray-100 p-3 rounded-lg leading-relaxed">
-                      {activity.note}
-                    </p>
+                    {renderActivityNote(activity)}
                     
                     {activity.type === 'teams' && activity.meetingLink && (
                       <div className="mt-3 flex flex-wrap gap-2">

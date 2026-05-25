@@ -799,28 +799,54 @@ async function startServer() {
           oAuth2Client.setCredentials(credentials.tokens);
           const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
           
-          const query = relevantEmails.map((e: string) => `from:${e}`).join(' OR ');
+          const query = relevantEmails.map((e: string) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ');
           const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 10 });
           
           if (listRes.data.messages) {
             for (const msg of listRes.data.messages) {
               if (!msg.id) continue;
-              const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'metadata', metadataHeaders: ['Subject', 'From', 'Date'] });
+              const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+              
+              const headers = msgRes.data.payload?.headers || [];
+              const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+              const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+              const to = headers.find(h => h.name?.toLowerCase() === 'to')?.value || '';
+              const cc = headers.find(h => h.name?.toLowerCase() === 'cc')?.value || '';
+              const date = headers.find(h => h.name?.toLowerCase() === 'date')?.value || new Date().toISOString();
+              
+              // Extract attachments from parts
+              const attachments: string[] = [];
+              const extractAttachments = (parts: any[]) => {
+                for (const part of parts) {
+                  if (part.filename && part.filename.length > 0) {
+                    attachments.push(part.filename);
+                  }
+                  if (part.parts) extractAttachments(part.parts);
+                }
+              };
+              if (msgRes.data.payload?.parts) {
+                extractAttachments(msgRes.data.payload.parts);
+              }
+              
               emailResults.push({
                 id: msg.id,
-                subject: msgRes.data.payload?.headers?.find(h => h.name === 'Subject')?.value || '',
-                from: msgRes.data.payload?.headers?.find(h => h.name === 'From')?.value || '',
-                date: msgRes.data.payload?.headers?.find(h => h.name === 'Date')?.value || new Date().toISOString(),
+                subject,
+                from,
+                to,
+                cc,
+                attachments,
+                date,
                 body: msgRes.data.snippet || ''
               });
             }
           }
         } else if (provider === 'microsoft' && credentials?.tokens) {
-          const queryFilters = relevantEmails.map((e: string) => `from/emailAddress/address eq '${e}'`).join(' or ');
+          const queryFilters = relevantEmails.map((e: string) => `from/emailAddress/address eq '${e}' or toRecipients/any(t:t/emailAddress/address eq '${e}') or ccRecipients/any(c:c/emailAddress/address eq '${e}')`).join(' or ');
           const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
             return await client.api('/me/messages')
               .filter(queryFilters)
-              .select('id,subject,from,receivedDateTime,bodyPreview')
+              .select('id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview')
+              .expand('attachments($select=name,contentType)')
               .top(10)
               .get();
           });
@@ -829,7 +855,10 @@ async function startServer() {
             emailResults = messages.value.map((msg: any) => ({
               id: msg.id,
               subject: msg.subject,
-              from: msg.from?.emailAddress?.address,
+              from: msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || '',
+              to: (msg.toRecipients || []).map((r: any) => r.emailAddress?.address).join(', '),
+              cc: (msg.ccRecipients || []).map((r: any) => r.emailAddress?.address).join(', '),
+              attachments: msg.hasAttachments && msg.attachments ? msg.attachments.map((a: any) => a.name) : [],
               date: msg.receivedDateTime,
               body: msg.bodyPreview
             }));
