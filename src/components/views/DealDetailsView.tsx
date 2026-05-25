@@ -1728,15 +1728,15 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     .filter(a => a.dealId === deal.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const historyActivities = dealActivities.filter(a => new Date(a.date) <= now || a.type === 'email');
-  const futureActivities = dealActivities.filter(a => new Date(a.date) > now && a.type !== 'email').sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const historyActivities = dealActivities.filter(a => new Date(a.date || a.createdAt) <= now || a.type === 'email');
+  const futureActivities = dealActivities.filter(a => new Date(a.date || a.createdAt) > now && a.type !== 'email').sort((a, b) => new Date(a.date || a.createdAt).getTime() - new Date(b.date || b.createdAt).getTime());
   
   const displayedActivities = activeTab === 'history' ? historyActivities : futureActivities;
 
   const [newContactName, setNewContactName] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
   
-  useEffect(() => {
+  React.useEffect(() => {
     if (currentUser && (currentUser.googleIntegration?.connected || currentUser.msIntegration?.connected)) {
       handleSyncBoth();
     }
@@ -1885,7 +1885,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const handleEditActivity = (activity: Activity) => {
     setEditingActivityId(activity.id);
     setActivityType(activity.type);
-    setActivityDate(format(parseISO(activity.date), "yyyy-MM-dd'T'HH:mm"));
+    setActivityDate(format(parseISO(activity.date || activity.createdAt), "yyyy-MM-dd'T'HH:mm"));
     setNote(activity.note);
     setMeetingLink(activity.meetingLink || '');
     
@@ -2092,7 +2092,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                     disabled={!newContactName || !newContactEmail}
                     onClick={() => {
                       if (!newContactName || !newContactEmail) return;
-                      const newContact = { name: newContactName, email: newContactEmail, profileUrl: '' };
+                      const newContact = { id: Math.random().toString(36).substring(7), name: newContactName, email: newContactEmail, profileUrl: '', position: '', phone: '' };
                       updateCompany(company.id, { contacts: [...company.contacts, newContact] }, currentUser?.id || '');
                       setContactEmails([...contactEmails, newContactEmail]);
                       setNewContactName('');
@@ -2152,7 +2152,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           }).map(activity => {
             const user = users.find(u => u.id === activity.createdBy);
             const isHidden = activity.isVisible === false;
-            const canEditActivity = (currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && activity.type !== 'email' && new Date(activity.date) > now;
+            const canEditActivity = (currentUser?.id === activity.createdBy || currentUser?.role === 'administrator' || currentUser?.role === 'cso') && activity.type !== 'email' && new Date(activity.date || activity.createdAt) > now;
             
             return (
               <div key={activity.id} className={`border rounded-xl p-4 shadow-sm transition-shadow relative ${isHidden ? 'bg-gray-100 border-gray-300' : 'bg-white border-gray-200 hover:shadow-md'}`}>
@@ -2177,7 +2177,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                       <span className="font-semibold text-gray-900">{getActivityLabel(activity.type)}</span>
                       {isHidden && <span className="text-[10px] uppercase font-bold tracking-wider text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Hidden</span>}
                       <span className="text-xs text-gray-500">
-                        planned on <span className="font-medium text-gray-700">{format(parseISO(activity.date), 'MMM d, yyyy HH:mm')}</span>
+                        planned on <span className="font-medium text-gray-700">{format(parseISO(activity.date || activity.createdAt), 'MMM d, yyyy HH:mm')}</span>
                       </span>
                     </div>
                     
