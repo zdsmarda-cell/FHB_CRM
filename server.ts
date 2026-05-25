@@ -148,6 +148,7 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN integrationTestingCompletedDate DATETIME;",
         "ALTER TABLE deals ADD COLUMN lostReasonId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN lostFromStage VARCHAR(50);",
+        "ALTER TABLE activities ADD COLUMN externalEventId VARCHAR(255);",
         "ALTER TABLE companies ADD COLUMN phonePrefix VARCHAR(20);",
         "ALTER TABLE companies ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
@@ -666,7 +667,7 @@ async function startServer() {
         const resList = await calendar.events.list({
           calendarId: 'primary',
           timeMin: new Date().toISOString(),
-          maxResults: 20,
+          maxResults: 100,
           singleEvents: true,
           orderBy: 'startTime'
         });
@@ -680,7 +681,7 @@ async function startServer() {
         const client = GraphClient.init({
           authProvider: (done) => done(null, credentials.tokens.access_token)
         });
-        const resList = await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(20).get();
+        const resList = await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(100).get();
         events = resList.value.map((item: any) => ({
           id: item.id,
           subject: item.subject,

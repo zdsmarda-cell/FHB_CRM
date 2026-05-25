@@ -1791,6 +1791,8 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       if (resCal.ok) {
         const dataCal = await resCal.json();
         if (dataCal.events) {
+          const externalEvIds = new Set(dataCal.events.map((e: any) => e.id));
+
           dataCal.events.forEach((ev: any) => {
              // Try to update existing future meeting with existing externalEventId
              const existing = activities.find(a => 
@@ -1820,6 +1822,60 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                }
              }
           });
+
+          // check for deletes of future events
+          const localFutureExternal = activities.filter(a => 
+            a.dealId === deal.id && 
+            a.type !== 'email' && 
+            a.externalEventId && 
+            new Date(a.date || a.createdAt) > new Date()
+          );
+
+          for (const lAct of localFutureExternal) {
+            if (!externalEvIds.has(lAct.externalEventId)) {
+                // Was deleted externally!
+                useStore.getState().deleteActivity(lAct.id);
+                console.log(`Deleted cancelled event from calendar: ${lAct.note}`);
+            }
+          }
+        }
+      }
+
+      // Push unsynced local future activities to calendar
+      const unsyncedActivities = activities.filter(a => 
+        a.type !== 'email' && a.dealId === deal.id && !a.externalEventId && 
+        a.createdBy === currentUser.id && new Date(a.date) > new Date()
+      );
+
+      for (const ua of unsyncedActivities) {
+        try {
+          const res = await apiFetch('/api/sync/calendar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              provider,
+              credentials,
+              action: 'create',
+              activityDetails: {
+                type: ua.type,
+                date: ua.date,
+                note: ua.note,
+                attendees: [
+                  currentUser.email,
+                  ...(ua.participants || []).map(id => users.find(u => u.id === id)?.email || id).filter(Boolean)
+                ]
+              }
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            updateActivity(ua.id, { 
+              meetingLink: data.meetingLink || ua.meetingLink, 
+              externalEventId: data.externalEventId 
+            });
+          }
+        } catch (e) {
+          console.error('Failed to push unsynced activity to calendar', e);
         }
       }
 
@@ -2040,8 +2096,18 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
 
       {isAdding && (
         <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-5 mb-6 space-y-4 shadow-sm">
-          <h4 className="font-medium text-gray-900">New Activity</h4>
+          <h4 className="font-medium text-gray-900">{editingActivityId ? 'Edit Activity' : 'New Activity'}</h4>
           
+          {!currentUser?.googleIntegration?.connected && !currentUser?.msIntegration?.connected && (
+             <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm p-3 rounded-lg flex items-start gap-2">
+               <svg className="w-5 h-5 flex-shrink-0 text-yellow-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+               <div>
+                 <p className="font-semibold">{t('activities.syncWarningTitle', 'Nejste připojeni ke kalendáři')}</p>
+                 <p>{t('activities.syncWarningText', 'Pro oboustrannou synchronizaci událostí si prosím připojte MS Teams nebo Google Calendar v nastavení svého profilu.')}</p>
+               </div>
+             </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Activity Type</label>
