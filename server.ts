@@ -712,8 +712,8 @@ async function startServer() {
             
             const event: any = {
               subject: activityDetails.note || 'Meeting',
-              start: { dateTime: startDateTime.toISOString(), timeZone: 'UTC' },
-              end: { dateTime: endDateTime.toISOString(), timeZone: 'UTC' },
+              start: { dateTime: startDateTime.toISOString().replace('Z', ''), timeZone: 'UTC' },
+              end: { dateTime: endDateTime.toISOString().replace('Z', ''), timeZone: 'UTC' },
               attendees: activityDetails.attendees ? activityDetails.attendees.map((email: string) => ({
                 emailAddress: { address: email },
                 type: 'required'
@@ -765,12 +765,18 @@ async function startServer() {
         const resList = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
           return await client.api('/me/events').filter(`start/dateTime ge '${new Date().toISOString()}'`).top(100).get();
         });
-        events = resList.value.map((item: any) => ({
-          id: item.id,
-          subject: item.subject,
-          date: item.start?.dateTime,
-          link: item.onlineMeeting?.joinUrl
-        }));
+        events = resList.value.map((item: any) => {
+          let dateStr = item.start?.dateTime;
+          if (dateStr && item.start?.timeZone === 'UTC' && !dateStr.endsWith('Z')) {
+            dateStr += 'Z';
+          }
+          return {
+            id: item.id,
+            subject: item.subject,
+            date: dateStr,
+            link: item.onlineMeeting?.joinUrl
+          };
+        });
       }
       res.json({ events });
     } catch (err: any) {

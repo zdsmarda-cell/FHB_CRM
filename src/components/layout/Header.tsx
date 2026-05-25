@@ -39,8 +39,8 @@ export function Header() {
           onClick={() => setShowIntegrations(true)}
           className="flex items-center gap-2 text-gray-600 hover:text-indigo-600 transition-colors text-sm font-medium"
         >
-          <Settings className="w-4 h-4" />
-          Settings
+          <Settings className={`w-4 h-4 ${(!currentUser?.googleIntegration?.connected && !currentUser?.msIntegration?.connected) ? 'text-red-500 animate-pulse' : ''}`} />
+          {t('menu.calendarSettings', 'Kalendář')}
         </button>
 
         {/* Language Switcher */}

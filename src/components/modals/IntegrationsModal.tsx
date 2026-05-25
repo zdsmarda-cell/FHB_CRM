@@ -109,7 +109,7 @@ export function IntegrationsModal({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl w-full max-w-xl shadow-xl flex flex-col overflow-hidden max-h-[90vh]">
         <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-          <h2 className="text-xl font-bold text-gray-900">Settings & Integrations</h2>
+          <h2 className="text-xl font-bold text-gray-900">{t('settings.title', 'Kalendář a integrace')}</h2>
           <button 
             onClick={onClose}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"

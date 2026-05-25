@@ -140,11 +140,11 @@ export function DealDetailsView() {
           </section>
 
           <section>
-            <DealAttributesForm deal={deal} canEdit={canEdit} />
+            <ContactsManager company={company} canEdit={canEdit} />
           </section>
 
           <section>
-            <ContactsManager company={company} canEdit={canEdit} />
+            <DealAttributesForm deal={deal} canEdit={canEdit} />
           </section>
           
           <section>
@@ -2110,20 +2110,20 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Activity Type</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.activityType', 'Typ aktivity')}</label>
               <select 
                 value={activityType}
                 onChange={(e) => setActivityType(e.target.value as ActivityType)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               >
-                <option value="meeting">In-person Meeting</option>
-                <option value="call">Phone Call</option>
-                <option value="teams">Teams Call</option>
-                <option value="email">Email</option>
+                <option value="meeting">{t('activities.typeMeeting', 'Osobní schůzka')}</option>
+                <option value="call">{t('activities.typeCall', 'Telefonický hovor')}</option>
+                <option value="teams">{t('activities.typeTeams', 'Teams schůzka')}</option>
+                <option value="email">{t('activities.typeEmail', 'Email')}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Date & Time</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.dateTime', 'Datum a čas')}</label>
               <input 
                 type="datetime-local"
                 value={activityDate}
@@ -2134,9 +2134,9 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             
             {activityType === 'teams' && (
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1">Meeting Link (optional)</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.meetingLink', 'Odkaz na schůzku (volitelné)')}</label>
                 <input 
-                  type="url"
+                  type="text"
                   placeholder="https://teams.microsoft.com/..."
                   value={meetingLink}
                   onChange={(e) => setMeetingLink(e.target.value)}
@@ -2146,10 +2146,10 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
             )}
             
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Participants</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.participants', 'Účastníci')}</label>
               
               <div className="mb-2">
-                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Colleagues</span>
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">{t('activities.colleagues', 'Kolegové')}</span>
                 <div className="flex flex-wrap gap-2">
                   {users.map(u => (
                     <button
@@ -2175,7 +2175,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               </div>
 
               <div>
-                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">Company Contacts</span>
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">{t('activities.companyContacts', 'Kontakty společnosti')}</span>
                 <div className="flex flex-wrap gap-2 items-center">
                   {company.contacts.map((c, i) => (
                     <button
@@ -2200,36 +2200,15 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                     </button>
                   ))}
                 </div>
-                
-                {/* Inline Add Contact */}
-                <div className="mt-2 flex gap-2 w-full max-w-sm">
-                  <input type="text" placeholder="Name" value={newContactName} onChange={e => setNewContactName(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" />
-                  <input type="email" placeholder="Email" value={newContactEmail} onChange={e => setNewContactEmail(e.target.value)} className="flex-1 px-2 py-1 border border-gray-300 rounded text-xs" />
-                  <button 
-                    type="button" 
-                    disabled={!newContactName || !newContactEmail}
-                    onClick={() => {
-                      if (!newContactName || !newContactEmail) return;
-                      const newContact = { id: Math.random().toString(36).substring(7), name: newContactName, email: newContactEmail, profileUrl: '', position: '', phone: '' };
-                      updateCompany(company.id, { contacts: [...company.contacts, newContact] }, currentUser?.id || '');
-                      setContactEmails([...contactEmails, newContactEmail]);
-                      setNewContactName('');
-                      setNewContactEmail('');
-                    }}
-                    className="px-2 py-1 bg-gray-100 border border-gray-300 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
               </div>
             </div>
 
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Notes / Description *</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.notesDescription', 'Poznámka / Popis *')}</label>
               <textarea 
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="What was discussed?"
+                placeholder={t('activities.notesPlaceholder', 'Co se řešilo?')}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none min-h-[100px]"
               />
             </div>
@@ -2243,16 +2222,16 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                     onChange={(e) => setIsVisible(e.target.checked)}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  <span className="text-sm text-gray-700 font-medium">Visible to everyone</span>
+                  <span className="text-sm text-gray-700 font-medium">{t('activities.visibleToEveryone', 'Viditelné pro všechny')}</span>
                 </label>
-                <p className="text-xs text-gray-500 ml-6 mt-0.5">If unchecked, this activity will only be visible to administrators and CSOs.</p>
+                <p className="text-xs text-gray-500 ml-6 mt-0.5">{t('activities.visibleToEveryoneDesc', 'Pokud není zaškrtnuto, uvidí tuto aktivitu pouze administrátoři a CSOs.')}</p>
               </div>
             )}
           </div>
           
           <div className="flex gap-2 justify-end pt-2">
-            <button onClick={handleCancelActivityForm} className="px-4 py-2 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50">Cancel</button>
-            <button onClick={handleSave} disabled={!note} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">Save Activity</button>
+            <button onClick={handleCancelActivityForm} className="px-4 py-2 border border-gray-300 bg-white text-sm font-medium rounded-lg hover:bg-gray-50">{t('activities.cancel', 'Zrušit')}</button>
+            <button onClick={handleSave} disabled={!note} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">{t('activities.saveActivity', 'Uložit aktivitu')}</button>
           </div>
         </div>
       )}
