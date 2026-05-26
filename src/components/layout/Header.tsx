@@ -5,11 +5,14 @@ import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { IntegrationsModal } from '../modals/IntegrationsModal';
 
+import { ProfileModal } from '../modals/ProfileModal';
+
 export function Header() {
   const { t, i18n } = useTranslation();
   const { currentUser, logout } = useStore();
   const navigate = useNavigate();
   const [showIntegrations, setShowIntegrations] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const toggleLanguage = () => {
     i18n.changeLanguage(i18n.language === 'cs' ? 'en' : 'cs');
@@ -54,7 +57,10 @@ export function Header() {
 
         {/* User Info & Logout */}
         <div className="flex items-center gap-4 border-l border-gray-200 pl-6">
-          <div className="flex items-center gap-2">
+          <div 
+            className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 -ml-1 rounded transition-colors"
+            onClick={() => setShowProfile(true)}
+          >
             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600">
               <UserIcon className="w-4 h-4" />
             </div>
@@ -78,6 +84,7 @@ export function Header() {
         </div>
       </div>
       {showIntegrations && <IntegrationsModal onClose={() => setShowIntegrations(false)} />}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
     </header>
   );
 }

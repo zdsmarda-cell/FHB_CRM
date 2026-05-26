@@ -385,6 +385,28 @@ export const useStore = create<StoreState>((set, get) => {
     }
   },
 
+  changePassword: async (currentPasswordHash, newPasswordHash) => {
+    try {
+      const res = await apiFetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPasswordHash, newPasswordHash })
+      });
+      if (res.ok) {
+        state.addNotification('Password updated successfully', 'success');
+        return { success: true };
+      } else {
+        const body = await res.json();
+        state.addNotification(body.message || body.error || 'Failed to update password', 'error');
+        return { success: false, error: body.message || body.error };
+      }
+    } catch (err: any) {
+      console.error('Failed to update password', err);
+      state.addNotification('Failed to update password', 'error');
+      return { success: false, error: err.message };
+    }
+  },
+
   setCurrentUser: (userId) => set((state) => ({ 
     currentUser: state.users.find(u => u.id === userId) || null 
   })),

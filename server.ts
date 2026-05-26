@@ -319,6 +319,27 @@ async function startServer() {
     }
   });
 
+  app.post('/api/auth/change-password', authMiddleware, async (req, res) => {
+    try {
+      const { currentPasswordHash, newPasswordHash } = req.body;
+      const userId = (req as any).user.id;
+      
+      const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [userId]);
+      const users: any[] = rows as any[];
+      if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+      
+      const user = users[0];
+      if (user.passwordHash !== currentPasswordHash) {
+        return res.status(401).json({ error: 'invalid_current_password', message: 'Current password is incorrect' });
+      }
+      
+      await pool.query('UPDATE users SET passwordHash = ? WHERE id = ?', [newPasswordHash, userId]);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/auth/reset-password', async (req, res) => {
     try {
       const { email } = req.body;

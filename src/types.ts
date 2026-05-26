@@ -203,6 +203,7 @@ export interface StoreState {
   logout: () => void;
   requestPasswordReset: (email: string) => Promise<string | undefined>; // returns token for dev purposes
   resetPassword: (token: string, newPasswordHash: string) => void;
+  changePassword: (currentPasswordHash: string, newPasswordHash: string) => Promise<{ success: boolean; error?: string }>;
   
   setCurrentUser: (userId: string) => void; // Keeping for compatibility, though login is preferred
   addCompanyAndDeal: (company: Omit<Company, 'id'>, dealCreatorId: string, hunterId?: string | null) => Promise<void>;
