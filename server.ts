@@ -1011,14 +1011,14 @@ async function startServer() {
       const isCS = lang === 'cs';
       
       const stages = isCS ? [
-        { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
+        { name: 'Lead & Opportunita', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
         { name: 'Discovery & Proposal', requirements: 'Pro přechod do této fáze musí Hunter provézt úvodní schůzku. Zde probíhá komunikace, odesílají se nabídky.' },
         { name: 'Contracting (Smlouvání)', requirements: 'Klíčový přechod. Nutno vyplnit: Doručovací země (Delivery countries), Průměrný počet kusů v objednávce (Items), Váha (Weight), Objem (Volume). Nutno nahrát cenovou nabídku.' },
         { name: 'Onboarding', requirements: 'Smlouva je podepsána. Vyžadovaná pole pro přechod: Datum podpisu smlouvy (Contract Signed Date), Datum nahrání ceníku, Preferovaný začátek IT integrace a Očekávané první naskladnění.' },
         { name: 'Farming (Živý provoz)', requirements: 'Konečná fáze. Vyžaduje: Potvrzení o dokončení IT integrace, Ostré datum prvního naskladnění (Actual First Stocking) a dokončené UAT testování.' },
         { name: 'Lost & Postponed', requirements: 'Z jakékoliv fáze lze přejít do rozeznání ztráty (Lost - vyžaduje vybrání důvodu úbytku ze sdíleného číselníku) nebo Odložení (Postponed - vyžaduje zadání data připomenutí a důvodu odložení).' }
       ] : [
-        { name: 'New (Open lead)', requirements: 'Only requires creation via Kanban board. Fully operated by Hunter.' },
+        { name: 'Lead & Opportunity', requirements: 'Only requires creation via Kanban board. Fully operated by Hunter.' },
         { name: 'Discovery & Proposal', requirements: 'Transitioned by Hunter after initial meeting. Used for communication and proposals.' },
         { name: 'Contracting', requirements: 'Critical transition. Mandatory attributes: Delivery countries, Average Items, Weight, Volume. Must upload a pricing offer.' },
         { name: 'Onboarding', requirements: 'Contract signed. Required fields: Contract Signed Date, Pricing Upload Date, IT Integration ID/Start, and Expected First Stocking Date.' },
@@ -1029,7 +1029,7 @@ async function startServer() {
       const rolesCS = [
         {
           name: 'Hunter',
-          privileges: 'Operuje primárně v začátcích (New -> Proposal).',
+          privileges: 'Operuje primárně v začátcích (Lead & Opportunita -> Proposal).',
           actions: [
             'Vytváření nových Dealů (Company Name, IČO, Zdroj).',
             'Vyplňování základních e-commerce platforem a Lead Sources.',
@@ -1087,7 +1087,7 @@ async function startServer() {
       const rolesEN = [
         {
           name: 'Hunter',
-          privileges: 'Operates primarily in the early stages (New -> Proposal).',
+          privileges: 'Operates primarily in the early stages (Lead & Opportunity -> Proposal).',
           actions: [
             'Creates new Deals (Company Name, ID, Source).',
             'Fills basic e-commerce platforms and Lead Sources.',
@@ -1273,7 +1273,7 @@ async function startServer() {
             <p>${isCS ? 'Základní obrazovka po přihlášení. Dealy (příležitosti) jsou zobrazeny jako karty ve sloupcích podle své fáze. Lze mezi nimi přesouvat, ale pouze pokud jsou splněny datové požadavky konkrétní role. Nový deal vytvoříte kliknutím na tlačítko "Add Deal".' : 'The main screen after logging in. Deals (opportunities) are displayed as cards in columns according to their stage. You can move them, but only if the data requirements for your role are met. Create a new deal by clicking "Add Deal".'}</p>            
             <div style="display: flex; gap: 10px; font-family: sans-serif; background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; page-break-inside: avoid;">
               <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">NEW <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">1</span></div>
+                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">LEAD & OPP... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">1</span></div>
                  <div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 13px;">
                     <div style="font-weight: bold; color: #111;">ABC s.r.o.</div>
                     <div style="color: #6b7280; font-size: 11px; margin-top: 4px;">Web Form</div>
@@ -1303,7 +1303,7 @@ async function startServer() {
                 </div>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                   <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: New</span>
+                   <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: Lead & Opportunity</span>
                    <span style="padding: 4px 8px; background: #f3f4f6; color: #374151; border-radius: 4px; font-size: 12px;">Zdroj: Web Form</span>
                 </div>
                 
