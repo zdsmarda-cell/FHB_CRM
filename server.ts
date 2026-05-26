@@ -910,7 +910,7 @@ async function startServer() {
   const multer = (await import('multer')).default;
   
   // Depending on whether running from `server-build/server.js` or project root via `tsx`
-  const baseDir = __dirname.endsWith('server-build') ? path.resolve(__dirname, '..') : __dirname;
+  const baseDir = __dirname.endsWith('dist') || __dirname.endsWith('server-build') ? path.resolve(__dirname, '..') : __dirname;
   const uploadDir = process.env.UPLOAD_DIR 
     ? path.resolve(baseDir, process.env.UPLOAD_DIR) 
     : path.join(baseDir, 'uploads');
@@ -1006,22 +1006,51 @@ async function startServer() {
     }
   });
 
-  app.get('/api/manual', (req, res) => {
+  app.get('/api/manual', async (req, res) => {
     try {
       const lang = req.query.lang === 'cs' ? 'cs' : 'en';
       const isCS = lang === 'cs';
       
       const doc = new PDFDocument({ margin: 50 });
       
-      const fontRegular = path.join(baseDir, 'fonts', 'Roboto-Regular.ttf');
-      const fontBold = path.join(baseDir, 'fonts', 'Roboto-Bold.ttf');
+      const fontsDir = path.join(baseDir, 'fonts');
+      if (!fs.existsSync(fontsDir)) fs.mkdirSync(fontsDir, { recursive: true });
+
+      const publicDir = path.join(baseDir, 'public');
+      if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
+
+      const fontRegular = path.join(fontsDir, 'Roboto-Regular.ttf');
+      const fontBold = path.join(fontsDir, 'Roboto-Bold.ttf');
+      const headerImagePath = path.join(publicDir, 'header.png');
+      const dealImagePath = path.join(publicDir, 'deal_view.png');
+
+      const downloadFile = async (url: string, filePath: string) => {
+        if (fs.existsSync(filePath)) return;
+        console.log(`Downloading ${filePath}...`);
+        const https = await import('https');
+        return new Promise<void>((resolve, reject) => {
+          https.get(url, { headers: { 'User-Agent': 'Node.js' } }, (response) => {
+             if (response.statusCode === 301 || response.statusCode === 302) {
+               https.get(response.headers.location!, { headers: { 'User-Agent': 'Node.js' } }, (res2) => {
+                 res2.pipe(fs.createWriteStream(filePath)).on('finish', resolve).on('error', reject);
+               }).on('error', reject);
+             } else {
+               response.pipe(fs.createWriteStream(filePath)).on('finish', resolve).on('error', reject);
+             }
+          }).on('error', reject);
+        });
+      };
+
+      await Promise.all([
+        downloadFile('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf', fontRegular),
+        downloadFile('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf', fontBold),
+        downloadFile('https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI', headerImagePath),
+        downloadFile('https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI', dealImagePath)
+      ]);
       
       if (fs.existsSync(fontRegular) && fs.existsSync(fontBold)) {
         doc.registerFont('Roboto-Regular', fontRegular);
         doc.registerFont('Roboto-Bold', fontBold);
-      } else {
-        doc.registerFont('Roboto-Regular', 'Helvetica');
-        doc.registerFont('Roboto-Bold', 'Helvetica-Bold');
       }
 
       const fontR = fs.existsSync(fontRegular) ? 'Roboto-Regular' : 'Helvetica';
@@ -1222,7 +1251,6 @@ async function startServer() {
       doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
       doc.moveDown();
       
-      const headerImagePath = path.join(baseDir, 'public', 'header.png');
       if (fs.existsSync(headerImagePath)) {
         doc.image(headerImagePath, { width: 500, align: 'center' });
         doc.moveDown(2);
@@ -1232,7 +1260,6 @@ async function startServer() {
       doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
       doc.moveDown();
       
-      const dealImagePath = path.join(baseDir, 'public', 'deal_view.png');
       if (fs.existsSync(dealImagePath)) {
         doc.image(dealImagePath, { width: 500, align: 'center' });
       }
