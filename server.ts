@@ -1006,6 +1006,25 @@ async function startServer() {
     }
   });
 
+  let cachedFontRegular: Buffer | null = null;
+  let cachedFontBold: Buffer | null = null;
+  let cachedHeaderImage: Buffer | null = null;
+  let cachedDealImage: Buffer | null = null;
+
+  async function fetchToBuffer(url: string, retries = 2): Promise<Buffer | null> {
+    for (let i = 0; i <= retries; i++) {
+       try {
+         const response = await fetch(url, { redirect: 'follow' });
+         if (response.ok) {
+           return Buffer.from(await response.arrayBuffer());
+         }
+       } catch (e) {
+         // suppress error and retry
+       }
+    }
+    return null;
+  }
+
   app.get('/api/manual', async (req, res) => {
     try {
       const lang = req.query.lang === 'cs' ? 'cs' : 'en';
@@ -1013,64 +1032,18 @@ async function startServer() {
       
       const doc = new PDFDocument({ margin: 50 });
       
-      const fontsDir = path.join(baseDir, 'fonts');
-      if (!fs.existsSync(fontsDir)) fs.mkdirSync(fontsDir, { recursive: true });
+      if (!cachedFontRegular) cachedFontRegular = await fetchToBuffer('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf');
+      if (!cachedFontBold) cachedFontBold = await fetchToBuffer('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf');
+      if (!cachedHeaderImage) cachedHeaderImage = await fetchToBuffer('https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI');
+      if (!cachedDealImage) cachedDealImage = await fetchToBuffer('https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI');
 
-      const publicDir = path.join(baseDir, 'public');
-      if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
-
-      const fontRegular = path.join(fontsDir, 'Roboto-Regular.ttf');
-      const fontBold = path.join(fontsDir, 'Roboto-Bold.ttf');
-      const headerImagePath = path.join(publicDir, 'header.png');
-      const dealImagePath = path.join(publicDir, 'deal_view.png');
-
-      const tryDeleteCorrupted = (filePath: string, minSize: number) => {
-        if (fs.existsSync(filePath)) {
-          try {
-            const stats = fs.statSync(filePath);
-            if (stats.size < minSize) {
-               console.log(`Deleting corrupted file: ${filePath} (${stats.size} bytes)`);
-               fs.unlinkSync(filePath);
-            }
-          } catch(e) {
-             console.error('Error checking file size:', e);
-          }
-        }
-      };
-
-      tryDeleteCorrupted(fontRegular, 100000);
-      tryDeleteCorrupted(fontBold, 100000);
-      tryDeleteCorrupted(headerImagePath, 1000);
-      tryDeleteCorrupted(dealImagePath, 1000);
-
-      const downloadFile = async (url: string, filePath: string) => {
-        if (fs.existsSync(filePath)) return;
-        console.log(`Downloading ${filePath}...`);
-        try {
-          const response = await fetch(url, { redirect: 'follow' });
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          const buffer = await response.arrayBuffer();
-          fs.writeFileSync(filePath, Buffer.from(buffer));
-        } catch (e) {
-          console.error(`Failed to download ${url} to ${filePath}:`, e);
-          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-        }
-      };
-
-      await Promise.all([
-        downloadFile('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf', fontRegular),
-        downloadFile('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf', fontBold),
-        downloadFile('https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI', headerImagePath),
-        downloadFile('https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI', dealImagePath)
-      ]);
-      
-      if (fs.existsSync(fontRegular) && fs.existsSync(fontBold)) {
-        doc.registerFont('Roboto-Regular', fontRegular);
-        doc.registerFont('Roboto-Bold', fontBold);
+      if (cachedFontRegular && cachedFontBold) {
+        doc.registerFont('Roboto-Regular', cachedFontRegular);
+        doc.registerFont('Roboto-Bold', cachedFontBold);
       }
 
-      const fontR = fs.existsSync(fontRegular) ? 'Roboto-Regular' : 'Helvetica';
-      const fontB = fs.existsSync(fontBold) ? 'Roboto-Bold' : 'Helvetica-Bold';
+      const fontR = cachedFontRegular ? 'Roboto-Regular' : 'Helvetica';
+      const fontB = cachedFontBold ? 'Roboto-Bold' : 'Helvetica-Bold';
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="manual-${lang}.pdf"`);
@@ -1267,8 +1240,8 @@ async function startServer() {
       doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
       doc.moveDown();
       
-      if (fs.existsSync(headerImagePath)) {
-        doc.image(headerImagePath, { width: 500, align: 'center' });
+      if (cachedHeaderImage) {
+        doc.image(cachedHeaderImage, { width: 500, align: 'center' });
         doc.moveDown(2);
       }
 
@@ -1276,8 +1249,8 @@ async function startServer() {
       doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
       doc.moveDown();
       
-      if (fs.existsSync(dealImagePath)) {
-        doc.image(dealImagePath, { width: 500, align: 'center' });
+      if (cachedDealImage) {
+        doc.image(cachedDealImage, { width: 500, align: 'center' });
       }
       
       doc.end();
