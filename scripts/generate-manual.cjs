@@ -7,246 +7,214 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
 }
 
-const doc = new PDFDocument({ margin: 50 });
-doc.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
-doc.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
+const generatePDF = (lang, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 50 });
+    doc.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
+    doc.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
+    
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+    
+    stream.on('finish', resolve);
+    stream.on('error', reject);
 
-const outputPath = path.join(publicDir, 'manual-cs.pdf');
-const stream = fs.createWriteStream(outputPath);
-doc.pipe(stream);
+    const isCS = lang === 'cs';
+    
+    // Titulek
+    doc.font('Roboto-Bold').fontSize(24).text(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual', { align: 'center' });
+    doc.moveDown();
+    
+    doc.font('Roboto-Regular').fontSize(12)
+      .text(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.', { align: 'justify' })
+      .moveDown(2);
 
-const pdfPromiseCS = new Promise((resolve, reject) => {
-  stream.on('finish', resolve);
-  stream.on('error', reject);
-});
+    // 1. Zabezpeceni
+    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access', { underline: true });
+    doc.font('Roboto-Regular').fontSize(12)
+      .text(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.')
+      .moveDown();
 
-doc.font('Roboto-Bold').fontSize(24).text('Uživatelský manuál aplikace', { align: 'center' });
-doc.moveDown();
+    // 2. Faze a prechody (Transitions)
+    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions', { underline: true });
+    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.').moveDown(0.5);
+    
+    const stages = isCS ? [
+      { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
+      { name: 'Discovery & Proposal', requirements: 'Pro přechod do této fáze musí Hunter provézt úvodní schůzku. Zde probíhá komunikace, odesílají se nabídky.' },
+      { name: 'Contracting (Smlouvání)', requirements: 'Klíčový přechod. Nutno vyplnit: Doručovací země (Delivery countries), Průměrný počet kusů v objednávce (Items), Váha (Weight), Objem (Volume). Nutno nahrát cenovou nabídku.' },
+      { name: 'Onboarding', requirements: 'Smlouva je podepsána. Vyžadovaná pole pro přechod: Datum podpisu smlouvy (Contract Signed Date), Datum nahrání ceníku, Preferovaný začátek IT integrace a Očekávané první naskladnění.' },
+      { name: 'Farming (Živý provoz)', requirements: 'Konečná fáze. Vyžaduje: Potvrzení o dokončení IT integrace, Ostré datum prvního naskladnění (Actual First Stocking) a dokončené UAT testování.' },
+      { name: 'Lost & Postponed', requirements: 'Z jakékoliv fáze lze přejít do rozeznání ztráty (Lost - vyžaduje vybrání důvodu úbytku ze sdíleného číselníku) nebo Odložení (Postponed - vyžaduje zadání data připomenutí a důvodu odložení).' }
+    ] : [
+      { name: 'New (Open lead)', requirements: 'Only requires creation via Kanban board. Fully operated by Hunter.' },
+      { name: 'Discovery & Proposal', requirements: 'Transitioned by Hunter after initial meeting. Used for communication and proposals.' },
+      { name: 'Contracting', requirements: 'Critical transition. Mandatory attributes: Delivery countries, Average Items, Weight, Volume. Must upload a pricing offer.' },
+      { name: 'Onboarding', requirements: 'Contract signed. Required fields: Contract Signed Date, Pricing Upload Date, IT Integration ID/Start, and Expected First Stocking Date.' },
+      { name: 'Farming (Live operations)', requirements: 'Final stage. Requires: IT Integration Completed Date, Actual First Stocking Date, and Testing Completed Date.' },
+      { name: 'Lost & Postponed', requirements: 'Can be transitioned to from any stage. Lost requires a reason from enumerations. Postponed requires resume date and reason.' }
+    ];
 
-doc.font('Roboto-Regular').fontSize(12)
-  .text('Tento manuál slouží jako průvodce pro různé role v rámci aplikace.', { align: 'justify' })
-  .moveDown();
+    stages.forEach(s => {
+      doc.font('Roboto-Bold').fontSize(11).text(s.name);
+      doc.font('Roboto-Regular').fontSize(11).text(s.requirements).moveDown(0.5);
+    });
+    doc.moveDown();
 
-doc.font('Roboto-Bold').fontSize(16).text('1. Instalace a přístup', { underline: true });
-doc.font('Roboto-Regular').fontSize(12)
-  .text('Aplikace je dostupná z webového prohlížeče. Není nutná žádná instalace, stačí přejít na URL adresu aplikace a přihlásit se pomocí Vašich přidělených údajů. Při prvním přihlášení doporučujeme změnit heslo v profilu uživatele.')
-  .moveDown();
+    // 3. Role
+    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations', { underline: true });
+    doc.moveDown(0.5);
 
-doc.font('Roboto-Bold').fontSize(16).text('2. Uživatelské role a funkce', { underline: true });
-doc.moveDown();
+    const rolesCS = [
+      {
+        name: 'Hunter',
+        privileges: 'Operuje primárně v začátcích (New -> Proposal).',
+        actions: [
+          'Vytváření nových Dealů (Company Name, IČO, Zdroj).',
+          'Vyplňování základních e-commerce platforem a Lead Sources.',
+          'Zadávání a správa kontaktních osob dané firmy (titul, jméno, email, telefon).',
+          'Vytváření meetingů a logování historie (ikdyž později přebírá někdo jiný, Hunter má read-only).'
+        ]
+      },
+      {
+        name: 'Closer',
+        privileges: 'Přijímá Deal po fázi Proposal, zaměřuje se na vykouzlení Contractu.',
+        actions: [
+          'Správa atributů balíků (Váha [Weight], Objem [Volume], Počet).',
+          'Určování doručovacích zemí (Delivery countries - z multi-select výběru).',
+          'Může provádět DNC (Do Not Contact) označení klienta v případě nespokojenosti.',
+          'Kliknutím na "Add Offer" nahrává k dealu historicky nezničitelné cenové nabídky (v PDF).'
+        ]
+      },
+      {
+        name: 'Farmer (Account Manager)',
+        privileges: 'Stará se o živého (Farming) a onboardujícího klienta.',
+        actions: [
+          'Komunikuje s IT pro doplnění datumů "IT Integration Completed".',
+          'Identifikuje reálný start obchodu a přepisuje odhady.',
+          'Přiřazuje klientským kontaktům tag "Inactive", pokud daná osoba opustila firmu.'
+        ]
+      },
+      {
+        name: 'Vedoucí',
+        privileges: 'Nadřízený k rolím (Hunter/Closer/Farmer).',
+        actions: [
+          'Vidí Dealy vlastněné těmito podřízenými skrz celý systém Kanbanu.',
+          'Z pohledu úprav získává stejná práva (Může editovat, psát poznámky).',
+          'Monitoruje Email logy a kalendář (pokud je synchronizován přes ikonu ozubeného kolečka v horním panelu).'
+        ]
+      },
+      {
+        name: 'CSO (Chief Sales Officer)',
+        privileges: 'Absolutní přístup k Sales potrubí (Pipeline).',
+        actions: [
+          'U libovolného Dealu může v záložce "Company Details" měnit aktuální přiřazení (Hunter, Closer, Farmer) v reálném čase formou Dropdownu.',
+          'Označením záznamů (Aktivity) "Visible: false" je může utajit před nižšími rolemi.'
+        ]
+      },
+      {
+        name: 'Admin',
+        privileges: 'Zajišťuje technický chod aplikace.',
+        actions: [
+          'Sekce "Admin Panel": Zakládá ostatní uživatele, resetuje hesla.',
+          'Mění konstantní číselníky: "Lead Sources", "Lost Reasons", atd.',
+          'Spravuje tabulky s podrobnými Login logy (historie přihlášení) a audit-trailem (kdo kdy jaké políčko změnil).'
+        ]
+      }
+    ];
 
-const roles = [
-  {
-    name: 'Hunter',
-    desc: 'Zodpovídá za vyhledávání a oslovování nových leadů, doplňování kontaktů, vedení schůzek (Discovery) a posun dealu do fáze návrhu (Proposal).',
-    actions: [
-      'Přidání nových příležitostí (Deals) přes tlačítko "Add Deal" na Kanban boardu.',
-      'Přidávání kontaktů u detailu příležitosti.',
-      'Plánování aktivit, logování proběhlých schůzek a emailů s klientem.',
-      'Přiřazování (Tagging) aktivit, přesouvání dealu do fází "Discovery" a "Proposal".'
-    ]
-  },
-  {
-    name: 'Closer',
-    desc: 'Úkolem Closera je finalizace podmínek, vytvoření nabídky na základě nasbíraných dat (váha, objem, atd.) a samotný podpis (Contracting).',
-    actions: [
-      'Vyplnění produktových atributů příležitosti (doručovací země, kusy, váha, objem).',
-      'Připojování cenových nabídek k příležitosti.',
-      'Vyjednávání a posun dealu do fází "Contracting" a případně "Onboarding" po úspěšném podpisu.',
-      'Odmítnuté dealy označuje jako "Postponed" (s datem pro budoucí kontakt) nebo "Lost".'
-    ]
-  },
-  {
-    name: 'Farmer (Account Manager)',
-    desc: 'Stará se o klienty od fáze integrace (Onboarding) až po dlouhodobou péči.',
-    actions: [
-      'Spravuje dealy od fáze "Onboarding" dále do "Farming".',
-      'Zadává data jako datum podpisu smlouvy, nahrání ceníku do systému, začátek IT integrace.',
-      'Eviduje první naskladnění (First Stocking) a předání do ostrého provozu (Farming).',
-      'Plánuje pravidelné schůzky a spravuje historii aktivit s klientem.'
-    ]
-  },
-  {
-    name: 'Vedoucí',
-    desc: 'Má přehled o aktivitách svých podřízených (Hunter, Closer, Farmer).',
-    actions: [
-      'Úprava a náhled příležitostí, které spravují jeho podřízení.',
-      'Nahlížení do reportů a trackování prodeje skrz Dashboard widgety.',
-      'Plánování cross-aktivit a vykrývání případných výpadků (zastupitelnost).'
-    ]
-  },
-  {
-    name: 'CSO (Chief Sales Officer)',
-    desc: 'Řídí celkové prodeje a strategii a vidí všechny dealy bez ohledu na přiřazení.',
-    actions: [
-      'Přiřazení členů týmu (Hunter, Closer, Farmer) k jednotlivým příležitostem.',
-      'Přístup do všech fází a ke všem záznamům firmy.',
-      'Právo označovat aktivity jako viditelné či skryté (pro případnou interní komunikaci).'
-    ]
-  },
-  {
-    name: 'Admin',
-    desc: 'Mimo všechny oprávnění prodeje řeší správu aplikace na pozadí.',
-    actions: [
-      'Správa uživatelů: Přidávání, úprava (včetně hesel a rolí) v Admin Panelu.',
-      'Správa číselníku Lead Sources, E-commerce platforem, integrací, důvodů ztráty (Lost reasons).',
-      'Přehled Email a Login logů aplikace.',
-      'Exportování dat a hromadné operace.'
-    ]
-  }
-];
+    const rolesEN = [
+      {
+        name: 'Hunter',
+        privileges: 'Operates primarily in the early stages (New -> Proposal).',
+        actions: [
+          'Creates new Deals (Company Name, ID, Source).',
+          'Fills basic e-commerce platforms and Lead Sources.',
+          'Enters and manages contact persons for the company.',
+          'Creates meetings and logs history (read-only for others later).'
+        ]
+      },
+      {
+        name: 'Closer',
+        privileges: 'Receives the Deal after Proposal, focuses on Contracting.',
+        actions: [
+          'Manages parcel attributes (Weight, Volume, Items).',
+          'Defines delivery countries (Delivery countries multi-select).',
+          'Can mark client contacts as DNC (Do Not Contact).',
+          'Uploads pricing offers (PDFs) clicking "Add Offer".'
+        ]
+      },
+      {
+        name: 'Farmer (Account Manager)',
+        privileges: 'Handles live (Farming) and onboarding clients.',
+        actions: [
+          'Communicates with IT to log "IT Integration Completed" dates.',
+          'Identifies actual launch metadata and overrides estimates.',
+          'Can tag client contacts as "Inactive" if they leave their company.'
+        ]
+      },
+      {
+        name: 'Manager',
+        privileges: 'Supervisor of Hunter/Closer/Farmer roles.',
+        actions: [
+          'Sees Deals owned by their subordinates across the Kanban board.',
+          'Inherits edit permissions for subordinate deals.',
+          'Monitors Email logs and synced calendars.'
+        ]
+      },
+      {
+        name: 'CSO (Chief Sales Officer)',
+        privileges: 'Absolute access to the Sales Pipeline.',
+        actions: [
+          'Can change role assignments (Hunter, Closer, Farmer) in real-time via the "Company Details" tab.',
+          'Can hide sensitive activities (Visible: false) from lower roles.'
+        ]
+      },
+      {
+        name: 'Admin',
+        privileges: 'Ensures technical operation.',
+        actions: [
+          '"Admin Panel": Creates users, resets passwords.',
+          'Manages enumerations: "Lead Sources", "Lost Reasons", etc.',
+          'Manages Login logs and the full audit trail (tracking all field changes).'
+        ]
+      }
+    ];
 
-roles.forEach(r => {
-  doc.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
-  doc.font('Roboto-Regular').fontSize(12).text(r.desc).moveDown(0.5);
-  r.actions.forEach(a => {
-    doc.text(`• ${a}`, { indent: 20 });
+    const rolesList = isCS ? rolesCS : rolesEN;
+    rolesList.forEach(r => {
+      doc.addPage();
+      doc.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
+      doc.font('Roboto-Bold').fontSize(11).text(r.privileges).moveDown(0.5);
+      
+      doc.font('Roboto-Regular');
+      r.actions.forEach(a => {
+        doc.text(`• ${a}`, { indent: 20 });
+      });
+      doc.moveDown();
+    });
+
+    // 4. GUI & Ovladani
+    doc.addPage();
+    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces', { underline: true });
+    doc.moveDown();
+    
+    doc.font('Roboto-Bold').fontSize(14).text(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel');
+    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.');
+    doc.moveDown();
+
+    doc.font('Roboto-Bold').fontSize(14).text(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View');
+    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.');
+    
+    doc.end();
   });
-  doc.moveDown();
-});
+};
 
-doc.font('Roboto-Bold').fontSize(16).text('3. Ukázky obrazovek a ovládání', { underline: true });
-doc.moveDown();
-
-doc.font('Roboto-Bold').fontSize(14).text('Kanban Board (Přehled prodejů)');
-doc.font('Roboto-Regular').fontSize(12)
-  .text('Zobrazuje příležitosti uspořádané podle fází (New, Discovery, Contracting... a další). Příležitosti lze přesouvat myší po jednotlivých sloupcích (Drag & Drop). Kliknutím na "Přidat Deal" / "Add Deal" založíte nové spojení.')
-  .moveDown();
-
-doc.font('Roboto-Bold').fontSize(14).text('Detail příležitosti');
-doc.font('Roboto-Regular').fontSize(12)
-  .text('Rozděleno na levý panel s detaily firmy, kontakty, produktovými údaji (pro Closera) a akcemi dealu. Vpravo se nachází Historie aktivit, sekce integrace e-mailů a schůzek a ukládání dokumentů.')
-  .moveDown();
-
-doc.font('Roboto-Bold').fontSize(14).text('Profil uživatele (Tato sekce)');
-doc.font('Roboto-Regular').fontSize(12)
-  .text('Profil umožňuje změnit uživatelské heslo a stáhnout tento návod. Dále se lze z hlavičky aplikace synchronizovat se svými Google / Microsoft kalendáři na záložce Kalendář (ikona ozubeného kolečka).')
-  .moveDown();
-
-doc.end();
-console.log('Manual generated successfully');
-
-// EN version
-const docEn = new PDFDocument({ margin: 50 });
-docEn.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
-docEn.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
-const outputPathEn = path.join(publicDir, 'manual-en.pdf');
-const streamEn = fs.createWriteStream(outputPathEn);
-docEn.pipe(streamEn);
-
-const pdfPromiseEN = new Promise((resolve, reject) => {
-  streamEn.on('finish', resolve);
-  streamEn.on('error', reject);
-});
-
-docEn.font('Roboto-Bold').fontSize(24).text('Application User Manual', { align: 'center' });
-docEn.moveDown();
-
-docEn.font('Roboto-Regular').fontSize(12)
-  .text('This manual serves as a guide for various roles within the application.', { align: 'justify' })
-  .moveDown();
-
-docEn.font('Roboto-Bold').fontSize(16).text('1. Installation and Access', { underline: true });
-docEn.font('Roboto-Regular').fontSize(12)
-  .text('The application is accessible from a web browser. No installation is necessary, just open the app URL and log in. We recommend changing your password in your user profile upon your first login.')
-  .moveDown();
-
-docEn.font('Roboto-Bold').fontSize(16).text('2. User Roles and Functions', { underline: true });
-docEn.moveDown();
-
-const rolesEn = [
-  {
-    name: 'Hunter',
-    desc: 'Responsible for sourcing and reaching out to new leads, adding contacts, conducting Discovery meetings, and advancing deals to the Proposal stage.',
-    actions: [
-      'Adding new opportunities (Deals) via the "Add Deal" button on the Kanban board.',
-      'Adding contacts to the opportunity details.',
-      'Planning activities and logging past meetings and emails with the client.',
-      'Tagging activities, maintaining notes, and advancing the deal to "Discovery" and "Proposal" stages.'
-    ]
-  },
-  {
-    name: 'Closer',
-    desc: 'The Closer finalizes terms, creates price offers based on collected data (weight, volume, etc.), and drives the contract signature.',
-    actions: [
-      'Filling out product attributes for the opportunity (delivery countries, items, weight, volume).',
-      'Attaching pricing offers to the opportunity.',
-      'Negotiating and advancing the deal to the "Contracting" and "Onboarding" stages upon signature.',
-      'Marking rejected deals as "Lost" or "Postponed" (with a date for future contact).'
-    ]
-  },
-  {
-    name: 'Farmer (Account Manager)',
-    desc: 'Takes care of clients from the Onboarding phase to long-term management.',
-    actions: [
-      'Manages deals moving from the "Onboarding" stage into "Farming".',
-      'Enters data such as contract signature dates, pricing uploads, and IT integration kickoff dates.',
-      'Logs the First Stocking date and handover to Farming operations.',
-      'Plans regular check-ins and manages activity history with the client.'
-    ]
-  },
-  {
-    name: 'Manager',
-    desc: 'Oversees the activities of subordinates (Hunter, Closer, Farmer).',
-    actions: [
-      'Edits and reviews opportunities that subordinates are managing.',
-      'Accesses reports and tracks sales metrics through Dashboard widgets.',
-      'Plans cross-activities and ensures seamless coverage if someone is unavailable.'
-    ]
-  },
-  {
-    name: 'CSO (Chief Sales Officer)',
-    desc: 'Directs overall sales strategy and can view/manage all deals regardless of assignment.',
-    actions: [
-      'Assigns team members (Hunter, Closer, Farmer) to individual opportunities.',
-      'Full access to all stages and company records.',
-      'Can toggle activity visibility (making activities visible or hidden for internal communication).'
-    ]
-  },
-  {
-    name: 'Admin',
-    desc: 'In addition to all sales permissions, handles background application administration.',
-    actions: [
-      'User management: Adding, editing (including passwords and roles) from the Admin Panel.',
-      'Managing enumerations (Lead Sources, E-commerce platforms, integrations, Lost reasons).',
-      'Reviewing application Email and Login logs.',
-      'Data exports and bulk operations.'
-    ]
-  }
-];
-
-rolesEn.forEach(r => {
-  docEn.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
-  docEn.font('Roboto-Regular').fontSize(12).text(r.desc).moveDown(0.5);
-  r.actions.forEach(a => {
-    docEn.text(`• ${a}`, { indent: 20 });
-  });
-  docEn.moveDown();
-});
-
-docEn.font('Roboto-Bold').fontSize(16).text('3. UI Screenshots and Navigation', { underline: true });
-docEn.moveDown();
-
-docEn.font('Roboto-Bold').fontSize(14).text('Kanban Board (Sales Overview)');
-docEn.font('Roboto-Regular').fontSize(12)
-  .text('Displays opportunities organized by stages (New, Discovery, Contracting... etc). Opportunities can be moved across columns (Drag & Drop). Click "Add Deal" to create a new one.')
-  .moveDown();
-
-docEn.font('Roboto-Bold').fontSize(14).text('Deal Details');
-docEn.font('Roboto-Regular').fontSize(12)
-  .text('Divided into a left panel with company details, contacts, product data (for Closers), and deal actions. The right panel contains Activity History, Email/Meeting Integration, and Document Storage.')
-  .moveDown();
-
-docEn.font('Roboto-Bold').fontSize(14).text('User Profile');
-docEn.font('Roboto-Regular').fontSize(12)
-  .text('The profile allows you to change your password and download this manual. Additionally, you can connect your Google or Microsoft email and calendar accounts by clicking the settings gear in the application header.')
-  .moveDown();
-
-docEn.end();
-console.log('EN Manual generated successfully');
-
-Promise.all([pdfPromiseCS, pdfPromiseEN]).then(() => {
-  console.log('Both PDFs generated and flushed successfully.');
+Promise.all([
+  generatePDF('cs', path.join(publicDir, 'manual-cs.pdf')),
+  generatePDF('en', path.join(publicDir, 'manual-en.pdf'))
+]).then(() => {
+  console.log('Both super-detailed PDFs generated successfully.');
 }).catch((err) => {
-  console.error('Error generating PDFs:', err);
+  console.error('Error generating detailed PDFs:', err);
 });

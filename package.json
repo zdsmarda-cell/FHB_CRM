@@ -39,6 +39,7 @@
     "mysql2": "^3.22.3",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.7",
+    "pdf-parse": "^2.4.5",
     "pdfkit": "^0.18.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",

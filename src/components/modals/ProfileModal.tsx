@@ -131,7 +131,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
               {t('profile.manualDescription', 'Stáhněte si kompletní uživatelský manuál aplikace ve formátu PDF pro Vaši roli.')}
             </p>
             <a
-              href={manualUrl}
+              href={`${manualUrl}?t=${new Date().getTime()}`}
               target="_blank"
               download
               className="flex items-center justify-center gap-2 w-full border border-gray-300 bg-white text-gray-700 font-medium py-2 rounded hover:bg-gray-50 transition-colors text-sm"
