@@ -8,23 +8,31 @@ if (!fs.existsSync(publicDir)) {
 }
 
 const doc = new PDFDocument({ margin: 50 });
+doc.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
+doc.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
+
 const outputPath = path.join(publicDir, 'manual-cs.pdf');
 const stream = fs.createWriteStream(outputPath);
 doc.pipe(stream);
 
-doc.font('Helvetica-Bold').fontSize(24).text('Uživatelský manuál aplikace', { align: 'center' });
+const pdfPromiseCS = new Promise((resolve, reject) => {
+  stream.on('finish', resolve);
+  stream.on('error', reject);
+});
+
+doc.font('Roboto-Bold').fontSize(24).text('Uživatelský manuál aplikace', { align: 'center' });
 doc.moveDown();
 
-doc.font('Helvetica').fontSize(12)
+doc.font('Roboto-Regular').fontSize(12)
   .text('Tento manuál slouží jako průvodce pro různé role v rámci aplikace.', { align: 'justify' })
   .moveDown();
 
-doc.font('Helvetica-Bold').fontSize(16).text('1. Instalace a přístup', { underline: true });
-doc.font('Helvetica').fontSize(12)
+doc.font('Roboto-Bold').fontSize(16).text('1. Instalace a přístup', { underline: true });
+doc.font('Roboto-Regular').fontSize(12)
   .text('Aplikace je dostupná z webového prohlížeče. Není nutná žádná instalace, stačí přejít na URL adresu aplikace a přihlásit se pomocí Vašich přidělených údajů. Při prvním přihlášení doporučujeme změnit heslo v profilu uživatele.')
   .moveDown();
 
-doc.font('Helvetica-Bold').fontSize(16).text('2. Uživatelské role a funkce', { underline: true });
+doc.font('Roboto-Bold').fontSize(16).text('2. Uživatelské role a funkce', { underline: true });
 doc.moveDown();
 
 const roles = [
@@ -89,29 +97,29 @@ const roles = [
 ];
 
 roles.forEach(r => {
-  doc.font('Helvetica-Bold').fontSize(14).text(`Role: ${r.name}`);
-  doc.font('Helvetica').fontSize(12).text(r.desc).moveDown(0.5);
+  doc.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
+  doc.font('Roboto-Regular').fontSize(12).text(r.desc).moveDown(0.5);
   r.actions.forEach(a => {
     doc.text(`• ${a}`, { indent: 20 });
   });
   doc.moveDown();
 });
 
-doc.font('Helvetica-Bold').fontSize(16).text('3. Ukázky obrazovek a ovládání', { underline: true });
+doc.font('Roboto-Bold').fontSize(16).text('3. Ukázky obrazovek a ovládání', { underline: true });
 doc.moveDown();
 
-doc.font('Helvetica-Bold').fontSize(14).text('Kanban Board (Přehled prodejů)');
-doc.font('Helvetica').fontSize(12)
+doc.font('Roboto-Bold').fontSize(14).text('Kanban Board (Přehled prodejů)');
+doc.font('Roboto-Regular').fontSize(12)
   .text('Zobrazuje příležitosti uspořádané podle fází (New, Discovery, Contracting... a další). Příležitosti lze přesouvat myší po jednotlivých sloupcích (Drag & Drop). Kliknutím na "Přidat Deal" / "Add Deal" založíte nové spojení.')
   .moveDown();
 
-doc.font('Helvetica-Bold').fontSize(14).text('Detail příležitosti');
-doc.font('Helvetica').fontSize(12)
+doc.font('Roboto-Bold').fontSize(14).text('Detail příležitosti');
+doc.font('Roboto-Regular').fontSize(12)
   .text('Rozděleno na levý panel s detaily firmy, kontakty, produktovými údaji (pro Closera) a akcemi dealu. Vpravo se nachází Historie aktivit, sekce integrace e-mailů a schůzek a ukládání dokumentů.')
   .moveDown();
 
-doc.font('Helvetica-Bold').fontSize(14).text('Profil uživatele (Tato sekce)');
-doc.font('Helvetica').fontSize(12)
+doc.font('Roboto-Bold').fontSize(14).text('Profil uživatele (Tato sekce)');
+doc.font('Roboto-Regular').fontSize(12)
   .text('Profil umožňuje změnit uživatelské heslo a stáhnout tento návod. Dále se lze z hlavičky aplikace synchronizovat se svými Google / Microsoft kalendáři na záložce Kalendář (ikona ozubeného kolečka).')
   .moveDown();
 
@@ -120,23 +128,30 @@ console.log('Manual generated successfully');
 
 // EN version
 const docEn = new PDFDocument({ margin: 50 });
+docEn.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
+docEn.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
 const outputPathEn = path.join(publicDir, 'manual-en.pdf');
 const streamEn = fs.createWriteStream(outputPathEn);
 docEn.pipe(streamEn);
 
-docEn.font('Helvetica-Bold').fontSize(24).text('Application User Manual', { align: 'center' });
+const pdfPromiseEN = new Promise((resolve, reject) => {
+  streamEn.on('finish', resolve);
+  streamEn.on('error', reject);
+});
+
+docEn.font('Roboto-Bold').fontSize(24).text('Application User Manual', { align: 'center' });
 docEn.moveDown();
 
-docEn.font('Helvetica').fontSize(12)
+docEn.font('Roboto-Regular').fontSize(12)
   .text('This manual serves as a guide for various roles within the application.', { align: 'justify' })
   .moveDown();
 
-docEn.font('Helvetica-Bold').fontSize(16).text('1. Installation and Access', { underline: true });
-docEn.font('Helvetica').fontSize(12)
+docEn.font('Roboto-Bold').fontSize(16).text('1. Installation and Access', { underline: true });
+docEn.font('Roboto-Regular').fontSize(12)
   .text('The application is accessible from a web browser. No installation is necessary, just open the app URL and log in. We recommend changing your password in your user profile upon your first login.')
   .moveDown();
 
-docEn.font('Helvetica-Bold').fontSize(16).text('2. User Roles and Functions', { underline: true });
+docEn.font('Roboto-Bold').fontSize(16).text('2. User Roles and Functions', { underline: true });
 docEn.moveDown();
 
 const rolesEn = [
@@ -201,31 +216,37 @@ const rolesEn = [
 ];
 
 rolesEn.forEach(r => {
-  docEn.font('Helvetica-Bold').fontSize(14).text(`Role: ${r.name}`);
-  docEn.font('Helvetica').fontSize(12).text(r.desc).moveDown(0.5);
+  docEn.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
+  docEn.font('Roboto-Regular').fontSize(12).text(r.desc).moveDown(0.5);
   r.actions.forEach(a => {
     docEn.text(`• ${a}`, { indent: 20 });
   });
   docEn.moveDown();
 });
 
-docEn.font('Helvetica-Bold').fontSize(16).text('3. UI Screenshots and Navigation', { underline: true });
+docEn.font('Roboto-Bold').fontSize(16).text('3. UI Screenshots and Navigation', { underline: true });
 docEn.moveDown();
 
-docEn.font('Helvetica-Bold').fontSize(14).text('Kanban Board (Sales Overview)');
-docEn.font('Helvetica').fontSize(12)
+docEn.font('Roboto-Bold').fontSize(14).text('Kanban Board (Sales Overview)');
+docEn.font('Roboto-Regular').fontSize(12)
   .text('Displays opportunities organized by stages (New, Discovery, Contracting... etc). Opportunities can be moved across columns (Drag & Drop). Click "Add Deal" to create a new one.')
   .moveDown();
 
-docEn.font('Helvetica-Bold').fontSize(14).text('Deal Details');
-docEn.font('Helvetica').fontSize(12)
+docEn.font('Roboto-Bold').fontSize(14).text('Deal Details');
+docEn.font('Roboto-Regular').fontSize(12)
   .text('Divided into a left panel with company details, contacts, product data (for Closers), and deal actions. The right panel contains Activity History, Email/Meeting Integration, and Document Storage.')
   .moveDown();
 
-docEn.font('Helvetica-Bold').fontSize(14).text('User Profile');
-docEn.font('Helvetica').fontSize(12)
+docEn.font('Roboto-Bold').fontSize(14).text('User Profile');
+docEn.font('Roboto-Regular').fontSize(12)
   .text('The profile allows you to change your password and download this manual. Additionally, you can connect your Google or Microsoft email and calendar accounts by clicking the settings gear in the application header.')
   .moveDown();
 
 docEn.end();
 console.log('EN Manual generated successfully');
+
+Promise.all([pdfPromiseCS, pdfPromiseEN]).then(() => {
+  console.log('Both PDFs generated and flushed successfully.');
+}).catch((err) => {
+  console.error('Error generating PDFs:', err);
+});
