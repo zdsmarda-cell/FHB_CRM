@@ -196,7 +196,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             <a
               href={manualUrl}
               target="_blank"
-              download
+              rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full border border-gray-300 bg-white text-gray-700 font-medium py-2 rounded hover:bg-gray-50 transition-colors text-sm"
             >
               <Download className="w-4 h-4" />

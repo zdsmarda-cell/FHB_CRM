@@ -13,7 +13,6 @@ import { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { v4 as uuidv4 } from "uuid";
-import PDFDocument from "pdfkit";
 
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
 
@@ -1006,75 +1005,10 @@ async function startServer() {
     }
   });
 
-  let cachedFontRegular: Buffer | null = null;
-  let cachedFontBold: Buffer | null = null;
-  let cachedHeaderImage: Buffer | null = null;
-  let cachedDealImage: Buffer | null = null;
-
-  async function fetchToBuffer(url: string, retries = 2): Promise<Buffer | null> {
-    for (let i = 0; i <= retries; i++) {
-       try {
-         const response = await fetch(url, { redirect: 'follow' });
-         if (response.ok) {
-           return Buffer.from(await response.arrayBuffer());
-         }
-       } catch (e) {
-         // suppress error and retry
-       }
-    }
-    return null;
-  }
-
   app.get('/api/manual', async (req, res) => {
     try {
       const lang = req.query.lang === 'cs' ? 'cs' : 'en';
       const isCS = lang === 'cs';
-      
-      const doc = new PDFDocument({ margin: 50 });
-      
-      if (!cachedFontRegular) cachedFontRegular = await fetchToBuffer('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf');
-      if (!cachedFontBold) cachedFontBold = await fetchToBuffer('https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf');
-      if (!cachedHeaderImage) cachedHeaderImage = await fetchToBuffer('https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI');
-      if (!cachedDealImage) cachedDealImage = await fetchToBuffer('https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI');
-
-      if (cachedFontRegular && cachedFontBold) {
-        doc.registerFont('Roboto-Regular', cachedFontRegular);
-        doc.registerFont('Roboto-Bold', cachedFontBold);
-      }
-
-      const fontR = cachedFontRegular ? 'Roboto-Regular' : 'Helvetica';
-      const fontB = cachedFontBold ? 'Roboto-Bold' : 'Helvetica-Bold';
-      
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="manual-${lang}.pdf"`);
-      
-      doc.pipe(res);
-      
-      const applyText = (str: string) => {
-        if (fontR === 'Helvetica') {
-           return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        }
-        return str;
-      };
-      
-      // Titulek
-      doc.fillColor('black');
-      doc.font(fontB).fontSize(24).text(applyText(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'), { align: 'center' });
-      doc.moveDown();
-      
-      doc.font(fontR).fontSize(12)
-        .text(applyText(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'), { align: 'justify' })
-        .moveDown(2);
-
-      // 1. Zabezpeceni
-      doc.font(fontB).fontSize(16).text(applyText(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'), { underline: true });
-      doc.font(fontR).fontSize(12)
-        .text(applyText(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'))
-        .moveDown();
-
-      // 2. Faze a prechody (Transitions)
-      doc.font(fontB).fontSize(16).text(applyText(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'), { underline: true });
-      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.')).moveDown(0.5);
       
       const stages = isCS ? [
         { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
@@ -1091,16 +1025,6 @@ async function startServer() {
         { name: 'Farming (Live operations)', requirements: 'Final stage. Requires: IT Integration Completed Date, Actual First Stocking Date, and Testing Completed Date.' },
         { name: 'Lost & Postponed', requirements: 'Can be transitioned to from any stage. Lost requires a reason from enumerations. Postponed requires resume date and reason.' }
       ];
-
-      stages.forEach(s => {
-        doc.font(fontB).fontSize(11).text(applyText(s.name));
-        doc.font(fontR).fontSize(11).text(applyText(s.requirements)).moveDown(0.5);
-      });
-      doc.moveDown();
-
-      // 3. Role
-      doc.font(fontB).fontSize(16).text(applyText(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'), { underline: true });
-      doc.moveDown(0.5);
 
       const rolesCS = [
         {
@@ -1219,41 +1143,135 @@ async function startServer() {
       ];
 
       const rolesList = isCS ? rolesCS : rolesEN;
-      rolesList.forEach(r => {
-        doc.addPage();
-        doc.font(fontB).fontSize(14).text(`Role: ${r.name}`);
-        doc.font(fontB).fontSize(11).text(applyText(r.privileges)).moveDown(0.5);
-        
-        doc.font(fontR);
-        r.actions.forEach(a => {
-          doc.text(`• ${applyText(a)}`, { indent: 20 });
-        });
-        doc.moveDown();
-      });
 
-      // 4. GUI & Ovladani
-      doc.addPage();
-      doc.font(fontB).fontSize(16).text(applyText(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'), { underline: true });
-      doc.moveDown();
-      
-      doc.font(fontB).fontSize(14).text(applyText(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));
-      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
-      doc.moveDown();
-      
-      if (cachedHeaderImage) {
-        doc.image(cachedHeaderImage, { width: 500, align: 'center' });
-        doc.moveDown(2);
-      }
+      const html = `
+        <!DOCTYPE html>
+        <html lang="${lang}">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Manual - FHB CRM</title>
+          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+          <style>
+            body { 
+              font-family: 'Roboto', 'Helvetica', sans-serif; 
+              line-height: 1.6; 
+              padding: 40px; 
+              max-width: 800px; 
+              margin: 0 auto; 
+              color: #333; 
+              background-color: #fcfcfc;
+            }
+            .content-wrapper {
+              background-color: white;
+              padding: 40px;
+              border-radius: 8px;
+              box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+              border: 1px solid #eee;
+            }
+            h1, h2, h3 { color: #111; }
+            h1 { text-align: center; margin-bottom: 20px; font-size: 28px; }
+            .subtitle { text-align: justify; margin-bottom: 40px; color: #555; }
+            h2 { 
+              margin-top: 40px; 
+              border-bottom: 2px solid #eee; 
+              padding-bottom: 8px; 
+              font-size: 20px;
+            }
+            .role { background: #f9fafb; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e5e7eb; page-break-inside: avoid; }
+            .role-name { margin-top: 0; color: #2563eb; font-size: 18px; }
+            .role-privilege { font-style: italic; color: #4b5563; margin-bottom: 12px; }
+            ul { padding-left: 24px; margin-top: 8px; }
+            li { margin-bottom: 8px; }
+            .screenshot { width: 100%; max-width: 600px; display: block; margin: 20px auto; border: 1px solid #eaeaea; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); page-break-inside: avoid; }
+            .stage-block { margin-bottom: 16px; page-break-inside: avoid; }
+            .stage-name { font-weight: bold; color: #1f2937; }
+            .page-break { page-break-before: always; }
+            .print-btn {
+               display: block;
+               width: 200px;
+               margin: 0 auto 30px auto;
+               padding: 12px 24px;
+               background-color: #2563eb;
+               color: white;
+               text-align: center;
+               border-radius: 6px;
+               text-decoration: none;
+               font-weight: bold;
+               cursor: pointer;
+               border: none;
+               font-size: 16px;
+            }
+            .print-btn:hover { background-color: #1d4ed8; }
+            @media print {
+              body { padding: 0; background-color: white; }
+              .content-wrapper { padding: 0; border: none; box-shadow: none; }
+              .no-print { display: none !important; }
+            }
+          </style>
+        </head>
+        <body>
+          <button class="print-btn no-print" onclick="window.print()">
+            ${isCS ? 'Tisk do PDF' : 'Print to PDF'}
+          </button>
+          
+          <div class="content-wrapper">
+            <h1>${isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'}</h1>
+            <p class="subtitle">${isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'}</p>
+            
+            <h2>${isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'}</h2>
+            <p>${isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'}</p>
+            
+            <h2>${isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'}</h2>
+            <p>${isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.'}</p>
+            
+            <div>
+              ${stages.map(s => `
+                <div class="stage-block">
+                  <div class="stage-name">${s.name}</div>
+                  <div class="stage-req">${s.requirements}</div>
+                </div>
+              `).join('')}
+            </div>
+            
+            <div class="page-break"></div>
+            
+            <h2>${isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'}</h2>
+            <div>
+              ${rolesList.map(r => `
+                <div class="role">
+                  <h3 class="role-name">Role: ${r.name}</h3>
+                  <div class="role-privilege">${r.privileges}</div>
+                  <ul>
+                    ${r.actions.map(a => `<li>${a}</li>`).join('')}
+                  </ul>
+                </div>
+              `).join('')}
+            </div>
 
-      doc.font(fontB).fontSize(14).text(applyText(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'));
-      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
-      doc.moveDown();
+            <div class="page-break"></div>
+
+            <h2>${isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'}</h2>
+            
+            <h3>${isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'}</h3>
+            <p>${isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'}</p>
+            <img src="https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI" class="screenshot" alt="Header UI" />
+            
+            <h3>${isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'}</h3>
+            <p>${isCS ? 'Rozdělené obrazovky:<br/><b>LEVÝ PANEL:</b> Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.<br/><b>PRAVÝ PANEL:</b> Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Activity Logs, Documents, and historical entries.'}</p>
+            <img src="https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI" class="screenshot" alt="Deal View UI" />
+          </div>
+          <script>
+            setTimeout(() => {
+              window.print();
+            }, 500);
+          </script>
+        </body>
+        </html>
+      `;
       
-      if (cachedDealImage) {
-        doc.image(cachedDealImage, { width: 500, align: 'center' });
-      }
-      
-      doc.end();
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(html);
     } catch (err: any) {
       console.error('Failed to generate manual:', err);
       // Ensure we don't crash the server, just end response if not already ended
