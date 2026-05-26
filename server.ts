@@ -1024,21 +1024,37 @@ async function startServer() {
       const headerImagePath = path.join(publicDir, 'header.png');
       const dealImagePath = path.join(publicDir, 'deal_view.png');
 
+      const tryDeleteCorrupted = (filePath: string, minSize: number) => {
+        if (fs.existsSync(filePath)) {
+          try {
+            const stats = fs.statSync(filePath);
+            if (stats.size < minSize) {
+               console.log(`Deleting corrupted file: ${filePath} (${stats.size} bytes)`);
+               fs.unlinkSync(filePath);
+            }
+          } catch(e) {
+             console.error('Error checking file size:', e);
+          }
+        }
+      };
+
+      tryDeleteCorrupted(fontRegular, 100000);
+      tryDeleteCorrupted(fontBold, 100000);
+      tryDeleteCorrupted(headerImagePath, 1000);
+      tryDeleteCorrupted(dealImagePath, 1000);
+
       const downloadFile = async (url: string, filePath: string) => {
         if (fs.existsSync(filePath)) return;
         console.log(`Downloading ${filePath}...`);
-        const https = await import('https');
-        return new Promise<void>((resolve, reject) => {
-          https.get(url, { headers: { 'User-Agent': 'Node.js' } }, (response) => {
-             if (response.statusCode === 301 || response.statusCode === 302) {
-               https.get(response.headers.location!, { headers: { 'User-Agent': 'Node.js' } }, (res2) => {
-                 res2.pipe(fs.createWriteStream(filePath)).on('finish', resolve).on('error', reject);
-               }).on('error', reject);
-             } else {
-               response.pipe(fs.createWriteStream(filePath)).on('finish', resolve).on('error', reject);
-             }
-          }).on('error', reject);
-        });
+        try {
+          const response = await fetch(url, { redirect: 'follow' });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          fs.writeFileSync(filePath, Buffer.from(buffer));
+        } catch (e) {
+          console.error(`Failed to download ${url} to ${filePath}:`, e);
+          if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        }
       };
 
       await Promise.all([
