@@ -1029,57 +1029,57 @@ async function startServer() {
       const rolesCS = [
         {
           name: 'Hunter',
-          privileges: 'Operuje primarne v zacatcich (New -> Proposal).',
+          privileges: 'Operuje primárně v začátcích (New -> Proposal).',
           actions: [
-            'Vytvareni novych Dealu (Company Name, ICO, Zdroj).',
-            'Vyplnovani zakladnich e-commerce platforem a Lead Sources.',
-            'Zadavani a sprava kontaktnich osob dane firmy (titul, jmeno, email, telefon).',
-            'Vytvareni meetingu a logovani historie (ikdyz pozdeji prebira nekdo jiny, Hunter ma read-only).'
+            'Vytváření nových Dealů (Company Name, IČO, Zdroj).',
+            'Vyplňování základních e-commerce platforem a Lead Sources.',
+            'Zadávání a správa kontaktních osob dané firmy (titul, jméno, email, telefon).',
+            'Vytváření meetingů a logování historie (i když později přebírá někdo jiný, Hunter má read-only).'
           ]
         },
         {
           name: 'Closer',
-          privileges: 'Prijima Deal po fazi Proposal, zameruje se na vykouzleni Contractu.',
+          privileges: 'Přijímá Deal po fázi Proposal, zaměřuje se na vykouzlení Contractu.',
           actions: [
-            'Sprava atributu baliku (Vaha [Weight], Objem [Volume], Pocet).',
-            'Urcovani dorucovacich zemi (Delivery countries - z multi-select vyberu).',
-            'Muze provadet DNC (Do Not Contact) oznaceni klienta v pripade nespokojenosti.',
-            'Kliknutim na "Add Offer" nahrava k dealu historicky neznicitelne cenove nabidky (v PDF).'
+            'Správa atributů balíků (Váha [Weight], Objem [Volume], Počet).',
+            'Určování doručovacích zemí (Delivery countries - z multi-select výběru).',
+            'Může provádět DNC (Do Not Contact) označení klienta v případě nespokojenosti.',
+            'Kliknutím na "Add Offer" nahrává k dealu historicky nezničitelné cenové nabídky (v PDF).'
           ]
         },
         {
           name: 'Farmer (Account Manager)',
-          privileges: 'Stara se o ziveho (Farming) a onboardujiciho klienta.',
+          privileges: 'Stará se o živého (Farming) a onboardujícího klienta.',
           actions: [
-            'Komunikuje s IT pro doplneni datumu "IT Integration Completed".',
-            'Identifikuje realny start obchodu a prepisuje odhady.',
-            'Prirazuje klientskym kontaktum tag "Inactive", pokud dana osoba opustila firmu.'
+            'Komunikuje s IT pro doplnění datumu "IT Integration Completed".',
+            'Identifikuje reálný start obchodu a přepisuje odhady.',
+            'Přiřazuje klientským kontaktům tag "Inactive", pokud daná osoba opustila firmu.'
           ]
         },
         {
-          name: 'Vedouci',
-          privileges: 'Nadrizeny k rolim (Hunter/Closer/Farmer).',
+          name: 'Vedoucí',
+          privileges: 'Nadřízený k rolím (Hunter/Closer/Farmer).',
           actions: [
-            'Vidi Dealy vlastnene temi podrizenymi skrz cely system Kanbanu.',
-            'Z pohledu uprav ziskava stejna prava (Muze editovat, psat poznamky).',
-            'Monitoruje Email logy a kalendar.'
+            'Vidí Dealy vlastněné těmi podřízenými skrz celý systém Kanbanu.',
+            'Z pohledu úprav získává stejná práva (Může editovat, psát poznámky).',
+            'Monitoruje Email logy a kalendář.'
           ]
         },
         {
           name: 'CSO (Chief Sales Officer)',
-          privileges: 'Absolutni pristup k Sales potrubi (Pipeline).',
+          privileges: 'Absolutní přístup k Sales potrubí (Pipeline).',
           actions: [
-            'U libovolneho Dealu muze v zalozce "Company Details" menit aktualni prirazeni v realnem case.',
-            'Oznacenim zaznamu "Visible: false" je muze utajit pred nizsimi rolemi.'
+            'U libovolného Dealu může v záložce "Company Details" měnit aktuální přiřazení v reálném čase.',
+            'Označením záznamu "Visible: false" je může utajit před nižšími rolemi.'
           ]
         },
         {
           name: 'Admin',
-          privileges: 'Zajistuje technicky chod aplikace.',
+          privileges: 'Zajišťuje technický chod aplikace.',
           actions: [
-            'Sekce "Admin Panel": Zaklada ostatni uzivatele, resetuje hesla.',
-            'Meni konstantni ciselniky: "Lead Sources", "Lost Reasons", atd.',
-            'Spravuje tabulky s podrobnymi Login logy (historie prihlaseni).'
+            'Sekce "Admin Panel": Zakládá ostatní uživatele, resetuje hesla.',
+            'Mění konstantní číselníky: "Lead Sources", "Lost Reasons", atd.',
+            'Spravuje tabulky s podrobnými Login logy (historie přihlášení).'
           ]
         }
       ];
@@ -1255,11 +1255,67 @@ async function startServer() {
             
             <h3>${isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'}</h3>
             <p>${isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'}</p>
-            <img src="https://placehold.co/600x120/f3f4f6/a1a1aa/png?text=Header+UI" class="screenshot" alt="Header UI" />
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; background-color: white; border: 1px solid #e5e7eb; padding: 15px 20px; border-radius: 8px; font-family: sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 20px 0; page-break-inside: avoid;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 24px; height: 24px; background: #3b82f6; border-radius: 4px;"></div>
+                <div style="font-weight: bold; font-size: 18px; color: #111827;">FHB CRM</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 15px; color: #4b5563;">
+                <span style="font-size: 14px; padding: 6px 12px; background: #f3f4f6; border-radius: 20px;">🔍 Hledat / Search...</span>
+                <span style="font-size: 18px;">⚙️</span>
+                <span style="display: inline-block; padding: 4px 8px; font-size: 14px; border: 1px solid #d1d5db; border-radius: 4px;">CS ▾</span>
+                <span style="display: inline-flex; justify-content: center; align-items: center; width: 36px; height: 36px; background: #3b82f6; color: white; border-radius: 50%; font-weight: bold; font-size: 14px;">JD</span>
+              </div>
+            </div>
             
             <h3>${isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'}</h3>
             <p>${isCS ? 'Rozdělené obrazovky:<br/><b>LEVÝ PANEL:</b> Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.<br/><b>PRAVÝ PANEL:</b> Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Activity Logs, Documents, and historical entries.'}</p>
-            <img src="https://placehold.co/600x400/f3f4f6/a1a1aa/png?text=Deal+View+UI" class="screenshot" alt="Deal View UI" />
+            
+            <div style="display: flex; gap: 20px; font-family: sans-serif; background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
+              <div style="flex: 2; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                  <h3 style="margin-top: 0; margin-bottom: 10px; color: #111;">Detail Firmy: ABC s.r.o.</h3>
+                  <div style="background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;">Advance to Discovery & Proposal →</div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-bottom: 25px;">
+                   <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: New</span>
+                   <span style="padding: 4px 8px; background: #f3f4f6; color: #374151; border-radius: 4px; font-size: 12px;">Zdroj: Web Form</span>
+                </div>
+                
+                <div style="display: flex; gap: 40px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px dashed #d1d5db;">
+                   <div>
+                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Základní údaje</div>
+                     <div style="margin-top: 8px; font-size: 14px;"><strong>IČO:</strong> <span style="color: #ef4444; border-bottom: 1px dashed #ef4444;" title="Chybějící údaj pro přechod">Nevyplněno</span></div>
+                     <div style="margin-top: 5px; font-size: 14px;"><strong>Země:</strong> CZ, SK</div>
+                   </div>
+                   <div>
+                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Obrat a váha</div>
+                     <div style="margin-top: 8px; font-size: 14px;"><strong>Položky/měs:</strong> 500</div>
+                     <div style="margin-top: 5px; font-size: 14px;"><strong>Prům. váha:</strong> 1.5 kg</div>
+                   </div>
+                </div>
+              </div>
+              
+              <div style="flex: 1; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
+                <h4 style="margin-top: 0; margin-bottom: 15px; color: #111; font-size: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">Log Aktivit / Timeline</h4>
+                
+                <div style="flex: 1;">
+                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; margin-bottom: 15px; position: relative;">
+                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
+                    <div style="font-size: 12px; color: #6b7280;">Dnes 14:00 • <b>Hunter</b></div>
+                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Telefonát s klientem - dohodnuta schůzka.</div>
+                  </div>
+                  
+                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; position: relative;">
+                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;"></div>
+                    <div style="font-size: 12px; color: #6b7280;">Včera 10:00 • <b>Hunter</b></div>
+                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Založení dealu z formuláře.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <script>
             setTimeout(() => {
