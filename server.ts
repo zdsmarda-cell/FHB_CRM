@@ -1254,7 +1254,7 @@ async function startServer() {
             <h2>${isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'}</h2>
             
             <h3>${isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'}</h3>
-            <p>${isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'}</p>
+            <p>${isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil. Zde je možné změnit heslo i stáhnout si tento manuál.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile. Here you can change your password and download this manual.'}</p>
             
             <div style="display: flex; justify-content: space-between; align-items: center; background-color: white; border: 1px solid #e5e7eb; padding: 15px 20px; border-radius: 8px; font-family: sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 20px 0; page-break-inside: avoid;">
               <div style="display: flex; align-items: center; gap: 10px;">
@@ -1262,15 +1262,38 @@ async function startServer() {
                 <div style="font-weight: bold; font-size: 18px; color: #111827;">FHB CRM</div>
               </div>
               <div style="display: flex; align-items: center; gap: 15px; color: #4b5563;">
-                <span style="font-size: 14px; padding: 6px 12px; background: #f3f4f6; border-radius: 20px;">🔍 Hledat / Search...</span>
-                <span style="font-size: 18px;">⚙️</span>
+                <span style="font-size: 14px; padding: 6px 12px; background: #f3f4f6; border-radius: 20px;">🔍 ${isCS ? 'Hledat dle IČO či názvu' : 'Search by ID or name'}...</span>
+                <span style="font-size: 18px;" title="${isCS ? 'Integrace kalendáře' : 'Calendar Integration'}">📅</span>
                 <span style="display: inline-block; padding: 4px 8px; font-size: 14px; border: 1px solid #d1d5db; border-radius: 4px;">CS ▾</span>
                 <span style="display: inline-flex; justify-content: center; align-items: center; width: 36px; height: 36px; background: #3b82f6; color: white; border-radius: 50%; font-weight: bold; font-size: 14px;">JD</span>
               </div>
             </div>
-            
-            <h3>${isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'}</h3>
-            <p>${isCS ? 'Rozdělené obrazovky:<br/><b>LEVÝ PANEL:</b> Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.<br/><b>PRAVÝ PANEL:</b> Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Activity Logs, Documents, and historical entries.'}</p>
+
+            <h3>${isCS ? 'D2: Kanban nástěnka (Pipeline)' : 'D2: Kanban Board (Pipeline)'}</h3>
+            <p>${isCS ? 'Základní obrazovka po přihlášení. Dealy (příležitosti) jsou zobrazeny jako karty ve sloupcích podle své fáze. Lze mezi nimi přesouvat, ale pouze pokud jsou splněny datové požadavky konkrétní role. Nový deal vytvoříte kliknutím na tlačítko "Add Deal".' : 'The main screen after logging in. Deals (opportunities) are displayed as cards in columns according to their stage. You can move them, but only if the data requirements for your role are met. Create a new deal by clicking "Add Deal".'}</p>            
+            <div style="display: flex; gap: 10px; font-family: sans-serif; background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; page-break-inside: avoid;">
+              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
+                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">NEW <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">1</span></div>
+                 <div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 13px;">
+                    <div style="font-weight: bold; color: #111;">ABC s.r.o.</div>
+                    <div style="color: #6b7280; font-size: 11px; margin-top: 4px;">Web Form</div>
+                 </div>
+              </div>
+              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
+                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">DISCOVERY &... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
+              </div>
+              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
+                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">CONTRACTING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
+              </div>
+              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
+                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">ONBOARDING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
+              </div>
+            </div>
+
+            <div class="page-break"></div>
+
+            <h3>${isCS ? 'D3: Detail firmy (Deal View) a plánování schůzek' : 'D3: Deal View and Event Planning'}</h3>
+            <p>${isCS ? 'Rozdělené obrazovky:<br/><b>LEVÝ PANEL:</b> Údaje firmy, Tagy, Produktová část, Dodatkové kontaktní osoby, Přenosy fází (Další fáze = Zelené tlačítko vpravo nahoře). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.<br/><b>PRAVÝ PANEL:</b> Kalendář schůzek, Log aktivit (hovory, zprávy), Uploadované dokumenty a přidávání nabídek (PDF).' : 'Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Additional contact persons, Stage transitions (Next stage = Green button top right). If an underlined field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Calendar events, Activity Logs, Uploaded documents and adding Offers (PDF).'}</p>
             
             <div style="display: flex; gap: 20px; font-family: sans-serif; background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
               <div style="flex: 2; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
@@ -1279,29 +1302,39 @@ async function startServer() {
                   <div style="background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;">Advance to Discovery & Proposal →</div>
                 </div>
                 
-                <div style="display: flex; gap: 10px; margin-bottom: 25px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                    <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: New</span>
                    <span style="padding: 4px 8px; background: #f3f4f6; color: #374151; border-radius: 4px; font-size: 12px;">Zdroj: Web Form</span>
                 </div>
                 
-                <div style="display: flex; gap: 40px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px dashed #d1d5db;">
-                   <div>
+                <div style="display: flex; gap: 20px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px dashed #d1d5db;">
+                   <div style="flex: 1;">
                      <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Základní údaje</div>
                      <div style="margin-top: 8px; font-size: 14px;"><strong>IČO:</strong> <span style="color: #ef4444; border-bottom: 1px dashed #ef4444;" title="Chybějící údaj pro přechod">Nevyplněno</span></div>
                      <div style="margin-top: 5px; font-size: 14px;"><strong>Země:</strong> CZ, SK</div>
                    </div>
-                   <div>
-                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Obrat a váha</div>
-                     <div style="margin-top: 8px; font-size: 14px;"><strong>Položky/měs:</strong> 500</div>
-                     <div style="margin-top: 5px; font-size: 14px;"><strong>Prům. váha:</strong> 1.5 kg</div>
+                   <div style="flex: 1;">
+                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Kontaktní osoby (+ Přidat)</div>
+                     <div style="margin-top: 8px; font-size: 14px; background: #fff; padding: 5px; border: 1px solid #eee;">
+                        <b>Jan Novák</b> (CEO) <br> <span style="color: #6b7280; font-size: 12px;">jan.novak@abc.cz | +420 123 456 789</span>
+                     </div>
                    </div>
                 </div>
               </div>
               
               <div style="flex: 1; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
-                <h4 style="margin-top: 0; margin-bottom: 15px; color: #111; font-size: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">Log Aktivit / Timeline</h4>
+                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
+                   <span style="font-weight: bold; font-size: 14px; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: -11px;">Timeline</span>
+                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Documents</span>
+                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Emails</span>
+                </div>
                 
                 <div style="flex: 1;">
+                  <div style="background: #fdf2f8; border: 1px solid #fbcfe8; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
+                    <div style="font-size: 12px; color: #db2777; font-weight: bold;">📅 Plánovaná schůzka</div>
+                    <div style="font-size: 13px; margin-top: 4px;">Dnes 15:00 - Google Meet (Sync)</div>
+                  </div>
+
                   <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; margin-bottom: 15px; position: relative;">
                     <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
                     <div style="font-size: 12px; color: #6b7280;">Dnes 14:00 • <b>Hunter</b></div>
@@ -1315,6 +1348,51 @@ async function startServer() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div class="page-break"></div>
+
+            <h3>${isCS ? 'D4: Sekce Administrace (Admin Panel)' : 'D4: Administration Section (Admin Panel)'}</h3>
+            <p>${isCS ? 'Vyhrazená sekce pro roli Admin. Slouží ke správě uživatelů (změny hesel a oprávnění - rolí). Umožňuje editaci globálních číselníků (Důvody ztráty, Zdroje leadů). Poskytuje pohled na Loginy a možnost auditovat systém díky integrovanému vyhledávání emailů nad Workspace účty (M365, Google).' : 'A dedicated section for the Admin role. Used for user management (password resets, role assignment). Allows editing global enumerations (Lost Reasons, Lead Sources). Provides access to Login logs and system audits with integrated email search across Workspace accounts (M365, Google).'}</p>
+            
+            <div style="font-family: sans-serif; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
+               <div style="display: flex; gap: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
+                 <span style="font-weight: bold; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 13px; margin-bottom: -15px;">Správa Uživatelů</span>
+                 <span style="font-weight: bold; color: #6b7280;">Číselníky (Enums)</span>
+                 <span style="font-weight: bold; color: #6b7280;">Audit (Emaily)</span>
+                 <span style="font-weight: bold; color: #6b7280;">Login Logy</span>
+               </div>
+               
+               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                 <b>Všichni uživatelé systému:</b>
+                 <button style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold;">+ Přidat Uživatele</button>
+               </div>
+               
+               <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 14px;">
+                 <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
+                   <th style="padding: 10px;">Email</th>
+                   <th style="padding: 10px;">Role</th>
+                   <th style="padding: 10px;">Vytvořeno</th>
+                   <th style="padding: 10px;">Akce</th>
+                 </tr>
+                 <tr style="border-bottom: 1px solid #e5e7eb;">
+                   <td style="padding: 10px;">admin@fhb.com</td>
+                   <td style="padding: 10px;"><span style="background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Admin</span></td>
+                   <td style="padding: 10px;">1. 1. 2026</td>
+                   <td style="padding: 10px; color: #3b82f6;">Změnit heslo</td>
+                 </tr>
+                 <tr>
+                   <td style="padding: 10px;">hunter@fhb.com</td>
+                   <td style="padding: 10px;"><span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Hunter</span></td>
+                   <td style="padding: 10px;">2. 1. 2026</td>
+                   <td style="padding: 10px; color: #3b82f6;">Změnit heslo</td>
+                 </tr>
+               </table>
+               
+               <div style="margin-top: 30px; background: #fff8f1; padding: 15px; border-left: 4px solid #f97316; border-radius: 4px;">
+                  <b>Tip: Audit (Vyhledávání Emailů)</b> 
+                  <p style="font-size: 13px; margin-top: 5px; color: #431407;">V záložce Audit má administrátor možnost vyhledávat příchozí i odchozí zprávy přes propojené Microsoft 365 a Google Workspace účty uživatelů (např. fulltextové vyhledávání dle IČO nebo domény klienta), což slouží k dohledu a zálohování důležité komunikace ke konkrétním dealům.</p>
+               </div>
             </div>
           </div>
           <script>
