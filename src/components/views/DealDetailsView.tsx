@@ -16,7 +16,7 @@ export function DealDetailsView() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const store = useStore();
-  const { deals, companies, auditLogs, users, currentUser, updateCompany } = store;
+  const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal } = store;
 
   React.useEffect(() => {
     store.refreshState();

@@ -393,16 +393,16 @@ export const useStore = create<StoreState>((set, get) => {
         body: JSON.stringify({ currentPasswordHash, newPasswordHash })
       });
       if (res.ok) {
-        state.addNotification('Password updated successfully', 'success');
+        get().addNotification('Password updated successfully', 'success');
         return { success: true };
       } else {
         const body = await res.json();
-        state.addNotification(body.message || body.error || 'Failed to update password', 'error');
+        get().addNotification(body.message || body.error || 'Failed to update password', 'error');
         return { success: false, error: body.message || body.error };
       }
     } catch (err: any) {
       console.error('Failed to update password', err);
-      state.addNotification('Failed to update password', 'error');
+      get().addNotification('Failed to update password', 'error');
       return { success: false, error: err.message };
     }
   },

@@ -73,7 +73,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     }
   };
 
-  const manualUrl = i18n.language === 'cs' ? '/manual-cs.pdf' : '/manual-en.pdf';
+  const manualUrl = `/api/manual?lang=${i18n.language}`;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -194,7 +194,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
               {t('profile.manualDescription', 'Stáhněte si kompletní uživatelský manuál aplikace ve formátu PDF pro Vaši roli.')}
             </p>
             <a
-              href={`${manualUrl}?t=${new Date().getTime()}`}
+              href={manualUrl}
               target="_blank"
               download
               className="flex items-center justify-center gap-2 w-full border border-gray-300 bg-white text-gray-700 font-medium py-2 rounded hover:bg-gray-50 transition-colors text-sm"
