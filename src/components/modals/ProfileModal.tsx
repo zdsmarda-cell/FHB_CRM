@@ -14,21 +14,43 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordStatus, setPasswordStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  
+  // New state for inline errors
+  const [errors, setErrors] = useState<{
+    currentPassword?: string;
+    newPassword?: string;
+    confirmPassword?: string;
+    general?: string;
+  }>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   if (!currentUser) return null;
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPasswordStatus(null);
+    setErrors({});
+    setSuccessMessage(null);
     
-    if (newPassword !== confirmPassword) {
-      setPasswordStatus({ type: 'error', message: t('auth.passwordsDoNotMatch', 'Passwords do not match') });
-      return;
+    let currentErrors: any = {};
+    let hasError = false;
+
+    if (!currentPassword) {
+      currentErrors.currentPassword = t('profile.errors.currentRequired', 'Zadejte stávající heslo.');
+      hasError = true;
     }
-    
+
     if (newPassword.length < 6) {
-      setPasswordStatus({ type: 'error', message: t('auth.passwordTooShort', 'Password must be at least 6 characters') });
+      currentErrors.newPassword = t('profile.errors.passwordTooShort', 'Nové heslo musí mít alespoň 6 znaků.');
+      hasError = true;
+    }
+
+    if (newPassword !== confirmPassword) {
+      currentErrors.confirmPassword = t('profile.errors.passwordsDoNotMatch', 'Nové heslo a jeho kontrola se neshodují.');
+      hasError = true;
+    }
+
+    if (hasError) {
+      setErrors(currentErrors);
       return;
     }
 
@@ -38,12 +60,16 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     );
 
     if (success) {
-      setPasswordStatus({ type: 'success', message: t('auth.passwordChangedSuccess', 'Password changed successfully') });
+      setSuccessMessage(t('profile.successMessage', 'Heslo bylo úspěšně změněno.'));
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } else {
-      setPasswordStatus({ type: 'error', message: error || t('auth.passwordChangeFailed', 'Failed to change password') });
+      if (error === 'invalid_current_password' || error?.includes('Current password is incorrect')) {
+        setErrors({ currentPassword: t('profile.errors.invalidCurrent', 'Zadané stávající heslo není správné.') });
+      } else {
+        setErrors({ general: error || t('profile.errors.general', 'Nepodařilo se změnit heslo.') });
+      }
     }
   };
 
@@ -67,7 +93,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             <h3 className="text-lg font-bold text-gray-900">{currentUser.name}</h3>
             <p className="text-sm text-gray-500">{currentUser.email}</p>
             <span className="mt-2 text-xs font-semibold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full">
-              {t(`roles.${currentUser.role}`)}
+              {t(`roles.${currentUser.role}`, currentUser.role)}
             </span>
           </div>
 
@@ -79,37 +105,74 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             
             <form onSubmit={handlePasswordChange} className="space-y-4">
               <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {t('profile.currentPasswordDesc', 'Zadejte své aktuální heslo pro ověření identity')}
+                </label>
                 <input
                   type="password"
                   placeholder={t('profile.currentPassword', 'Původní heslo')}
-                  className="w-full text-sm py-2 px-3 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full text-sm py-2 px-3 border rounded focus:outline-none focus:ring-1 ${
+                    errors.currentPassword 
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50 text-red-900' 
+                      : 'border-gray-300 focus:ring-indigo-500'
+                  }`}
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
                 />
+                {errors.currentPassword && (
+                  <p className="mt-1 text-xs text-red-600">{errors.currentPassword}</p>
+                )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {t('profile.newPasswordDesc', 'Nové heslo musí obsahovat alespoň 6 znaků')}
+                </label>
                 <input
                   type="password"
                   placeholder={t('profile.newPassword', 'Nové heslo')}
-                  className="w-full text-sm py-2 px-3 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full text-sm py-2 px-3 border rounded focus:outline-none focus:ring-1 ${
+                    errors.newPassword 
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50 text-red-900' 
+                      : 'border-gray-300 focus:ring-indigo-500'
+                  }`}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  required
                 />
+                {errors.newPassword && (
+                  <p className="mt-1 text-xs text-red-600">{errors.newPassword}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  {t('profile.confirmNewPasswordDesc', 'Zadejte nové heslo znovu pro kontrolu překlepů')}
+                </label>
                 <input
                   type="password"
                   placeholder={t('profile.confirmNewPassword', 'Nové heslo znovu')}
-                  className="w-full text-sm py-2 px-3 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className={`w-full text-sm py-2 px-3 border rounded focus:outline-none focus:ring-1 ${
+                    errors.confirmPassword 
+                      ? 'border-red-500 focus:ring-red-500 bg-red-50 text-red-900' 
+                      : 'border-gray-300 focus:ring-indigo-500'
+                  }`}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
                 />
+                {errors.confirmPassword && (
+                  <p className="mt-1 text-xs text-red-600">{errors.confirmPassword}</p>
+                )}
               </div>
 
-              {passwordStatus && (
-                <div className={`p-2 rounded text-xs font-medium ${passwordStatus.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {passwordStatus.message}
+              {errors.general && (
+                <div className="p-2 rounded text-xs font-medium bg-red-50 text-red-700">
+                  {errors.general}
+                </div>
+              )}
+              
+              {successMessage && (
+                <div className="p-2 rounded text-xs font-medium bg-green-50 text-green-700">
+                  {successMessage}
                 </div>
               )}
 

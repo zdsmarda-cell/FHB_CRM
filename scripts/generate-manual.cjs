@@ -7,11 +7,13 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
 }
 
+const removeDiacritics = (str) => {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+};
+
 const generatePDF = (lang, outputPath) => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
-    doc.registerFont('Roboto-Regular', path.join(__dirname, 'Roboto-Regular.ttf'));
-    doc.registerFont('Roboto-Bold', path.join(__dirname, 'Roboto-Bold.ttf'));
     
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
@@ -22,22 +24,23 @@ const generatePDF = (lang, outputPath) => {
     const isCS = lang === 'cs';
     
     // Titulek
-    doc.font('Roboto-Bold').fontSize(24).text(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual', { align: 'center' });
+    doc.fillColor('black');
+    doc.font('Helvetica-Bold').fontSize(24).text(removeDiacritics(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'), { align: 'center' });
     doc.moveDown();
     
-    doc.font('Roboto-Regular').fontSize(12)
-      .text(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.', { align: 'justify' })
+    doc.font('Helvetica').fontSize(12)
+      .text(removeDiacritics(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'), { align: 'justify' })
       .moveDown(2);
 
     // 1. Zabezpeceni
-    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access', { underline: true });
-    doc.font('Roboto-Regular').fontSize(12)
-      .text(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.')
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'), { underline: true });
+    doc.font('Helvetica').fontSize(12)
+      .text(removeDiacritics(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'))
       .moveDown();
 
     // 2. Faze a prechody (Transitions)
-    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions', { underline: true });
-    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.').moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'), { underline: true });
+    doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.')).moveDown(0.5);
     
     const stages = isCS ? [
       { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
@@ -56,69 +59,69 @@ const generatePDF = (lang, outputPath) => {
     ];
 
     stages.forEach(s => {
-      doc.font('Roboto-Bold').fontSize(11).text(s.name);
-      doc.font('Roboto-Regular').fontSize(11).text(s.requirements).moveDown(0.5);
+      doc.font('Helvetica-Bold').fontSize(11).text(removeDiacritics(s.name));
+      doc.font('Helvetica').fontSize(11).text(removeDiacritics(s.requirements)).moveDown(0.5);
     });
     doc.moveDown();
 
     // 3. Role
-    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations', { underline: true });
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'), { underline: true });
     doc.moveDown(0.5);
 
     const rolesCS = [
       {
         name: 'Hunter',
-        privileges: 'Operuje primárně v začátcích (New -> Proposal).',
+        privileges: 'Operuje primarne v zacatcich (New -> Proposal).',
         actions: [
-          'Vytváření nových Dealů (Company Name, IČO, Zdroj).',
-          'Vyplňování základních e-commerce platforem a Lead Sources.',
-          'Zadávání a správa kontaktních osob dané firmy (titul, jméno, email, telefon).',
-          'Vytváření meetingů a logování historie (ikdyž později přebírá někdo jiný, Hunter má read-only).'
+          'Vytvareni novych Dealu (Company Name, ICO, Zdroj).',
+          'Vyplnovani zakladnich e-commerce platforem a Lead Sources.',
+          'Zadavani a sprava kontaktnich osob dane firmy (titul, jmeno, email, telefon).',
+          'Vytvareni meetingu a logovani historie (ikdyz pozdeji prebira nekdo jiny, Hunter ma read-only).'
         ]
       },
       {
         name: 'Closer',
-        privileges: 'Přijímá Deal po fázi Proposal, zaměřuje se na vykouzlení Contractu.',
+        privileges: 'Prijima Deal po fazi Proposal, zameruje se na vykouzleni Contractu.',
         actions: [
-          'Správa atributů balíků (Váha [Weight], Objem [Volume], Počet).',
-          'Určování doručovacích zemí (Delivery countries - z multi-select výběru).',
-          'Může provádět DNC (Do Not Contact) označení klienta v případě nespokojenosti.',
-          'Kliknutím na "Add Offer" nahrává k dealu historicky nezničitelné cenové nabídky (v PDF).'
+          'Sprava atributu baliku (Vaha [Weight], Objem [Volume], Pocet).',
+          'Urcovani dorucovacich zemi (Delivery countries - z multi-select vyberu).',
+          'Muze provadet DNC (Do Not Contact) oznaceni klienta v pripade nespokojenosti.',
+          'Kliknutim na "Add Offer" nahrava k dealu historicky neznicitelne cenove nabidky (v PDF).'
         ]
       },
       {
         name: 'Farmer (Account Manager)',
-        privileges: 'Stará se o živého (Farming) a onboardujícího klienta.',
+        privileges: 'Stara se o ziveho (Farming) a onboardujiciho klienta.',
         actions: [
-          'Komunikuje s IT pro doplnění datumů "IT Integration Completed".',
-          'Identifikuje reálný start obchodu a přepisuje odhady.',
-          'Přiřazuje klientským kontaktům tag "Inactive", pokud daná osoba opustila firmu.'
+          'Komunikuje s IT pro doplneni datumu "IT Integration Completed".',
+          'Identifikuje realny start obchodu a prepisuje odhady.',
+          'Prirazuje klientskym kontaktum tag "Inactive", pokud dana osoba opustila firmu.'
         ]
       },
       {
-        name: 'Vedoucí',
-        privileges: 'Nadřízený k rolím (Hunter/Closer/Farmer).',
+        name: 'Vedouci',
+        privileges: 'Nadrizeny k rolim (Hunter/Closer/Farmer).',
         actions: [
-          'Vidí Dealy vlastněné těmito podřízenými skrz celý systém Kanbanu.',
-          'Z pohledu úprav získává stejná práva (Může editovat, psát poznámky).',
-          'Monitoruje Email logy a kalendář (pokud je synchronizován přes ikonu ozubeného kolečka v horním panelu).'
+          'Vidi Dealy vlastnene temi podrizenymi skrz cely system Kanbanu.',
+          'Z pohledu uprav ziskava stejna prava (Muze editovat, psat poznamky).',
+          'Monitoruje Email logy a kalendar.'
         ]
       },
       {
         name: 'CSO (Chief Sales Officer)',
-        privileges: 'Absolutní přístup k Sales potrubí (Pipeline).',
+        privileges: 'Absolutni pristup k Sales potrubi (Pipeline).',
         actions: [
-          'U libovolného Dealu může v záložce "Company Details" měnit aktuální přiřazení (Hunter, Closer, Farmer) v reálném čase formou Dropdownu.',
-          'Označením záznamů (Aktivity) "Visible: false" je může utajit před nižšími rolemi.'
+          'U libovolneho Dealu muze v zalozce "Company Details" menit aktualni prirazeni v realnem case.',
+          'Oznacenim zaznamu "Visible: false" je muze utajit pred nizsimi rolemi.'
         ]
       },
       {
         name: 'Admin',
-        privileges: 'Zajišťuje technický chod aplikace.',
+        privileges: 'Zajistuje technicky chod aplikace.',
         actions: [
-          'Sekce "Admin Panel": Zakládá ostatní uživatele, resetuje hesla.',
-          'Mění konstantní číselníky: "Lead Sources", "Lost Reasons", atd.',
-          'Spravuje tabulky s podrobnými Login logy (historie přihlášení) a audit-trailem (kdo kdy jaké políčko změnil).'
+          'Sekce "Admin Panel": Zaklada ostatni uzivatele, resetuje hesla.',
+          'Meni konstantni ciselniky: "Lead Sources", "Lost Reasons", atd.',
+          'Spravuje tabulky s podrobnymi Login logy (historie prihlaseni).'
         ]
       }
     ];
@@ -184,29 +187,30 @@ const generatePDF = (lang, outputPath) => {
     const rolesList = isCS ? rolesCS : rolesEN;
     rolesList.forEach(r => {
       doc.addPage();
-      doc.font('Roboto-Bold').fontSize(14).text(`Role: ${r.name}`);
-      doc.font('Roboto-Bold').fontSize(11).text(r.privileges).moveDown(0.5);
+      doc.font('Helvetica-Bold').fontSize(14).text(`Role: ${r.name}`);
+      doc.font('Helvetica-Bold').fontSize(11).text(removeDiacritics(r.privileges)).moveDown(0.5);
       
-      doc.font('Roboto-Regular');
+      doc.font('Helvetica');
       r.actions.forEach(a => {
-        doc.text(`• ${a}`, { indent: 20 });
+        doc.text(`• ${removeDiacritics(a)}`, { indent: 20 });
       });
       doc.moveDown();
     });
 
     // 4. GUI & Ovladani
     doc.addPage();
-    doc.font('Roboto-Bold').fontSize(16).text(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces', { underline: true });
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'), { underline: true });
     doc.moveDown();
     
-    doc.font('Roboto-Bold').fontSize(14).text(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel');
-    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.');
+    doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));
+    doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
     doc.moveDown();
 
-    doc.font('Roboto-Bold').fontSize(14).text(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View');
-    doc.font('Roboto-Regular').fontSize(11).text(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.');
+    doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'));
+    doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
     
     doc.end();
+
   });
 };
 
