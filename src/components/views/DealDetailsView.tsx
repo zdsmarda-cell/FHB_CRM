@@ -34,6 +34,8 @@ export function DealDetailsView() {
   const [activeRightTab, setActiveRightTab] = useState<'activities' | 'documents' | 'history'>('activities');
   const historyPerPage = 5;
 
+  const [dealFormData, setDealFormData] = useState<Partial<Deal>>({});
+
   if (!deal || !company || !currentUser) {
     return <div className="p-6">Not found or unauthorized.</div>;
   }
@@ -58,17 +60,20 @@ export function DealDetailsView() {
 
   const handleEditClick = () => {
     setFormData(company);
+    setDealFormData({ hunterId: deal.hunterId, closerId: deal.closerId, farmerId: deal.farmerId });
     setIsEditing(true);
   };
 
   const handleSave = () => {
     updateCompany(company.id, formData, currentUser.id);
+    updateDeal(deal.id, dealFormData, currentUser.id);
     setIsEditing(false);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
     setFormData({});
+    setDealFormData({});
   };
 
   return (
@@ -84,26 +89,50 @@ export function DealDetailsView() {
           </div>
           
           <div className="ml-8 flex flex-wrap items-center gap-2">
-            {[
-              { role: 'Hunter', id: deal.hunterId },
-              { role: 'Closer', id: deal.closerId },
-              { role: 'Farmer', id: deal.farmerId }
-            ].map(({ role, id }) => {
-              if (!id) return null;
-              const user = users.find(u => u.id === id);
-              if (!user) return null;
-              return (
-                <div key={role} className="flex items-center gap-2 bg-white/60 border border-gray-200 rounded-lg pl-1.5 pr-3 py-1.5 shadow-sm" title={`${role}: ${user.name}`}>
-                  <div className="flex-shrink-0 w-7 h-7 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
-                    {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+            {!isEditing ? (
+              [
+                { role: 'Hunter', id: deal.hunterId },
+                { role: 'Closer', id: deal.closerId },
+                { role: 'Farmer', id: deal.farmerId }
+              ].map(({ role, id }) => {
+                if (!id) return null;
+                const user = users.find(u => u.id === id);
+                if (!user) return null;
+                return (
+                  <div key={role} className="flex items-center gap-2 bg-white/60 border border-gray-200 rounded-lg pl-1.5 pr-3 py-1.5 shadow-sm" title={`${role}: ${user.name}`}>
+                    <div className="flex-shrink-0 w-7 h-7 rounded-md bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                      {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="flex flex-col justify-center">
+                      <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold leading-none">{role}</span>
+                      <span className="text-gray-900 font-medium text-sm leading-none mt-1 truncate max-w-[120px]">{user.name}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-col justify-center">
-                    <span className="text-[9px] uppercase tracking-wider text-gray-500 font-bold leading-none">{role}</span>
-                    <span className="text-gray-900 font-medium text-sm leading-none mt-1 truncate max-w-[120px]">{user.name}</span>
+                );
+              })
+            ) : (
+              <div className="flex gap-4">
+                {[
+                  { role: 'Hunter', field: 'hunterId' as keyof Deal },
+                  { role: 'Closer', field: 'closerId' as keyof Deal },
+                  { role: 'Farmer', field: 'farmerId' as keyof Deal }
+                ].map(({ role, field }) => (
+                  <div key={role} className="flex flex-col">
+                    <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{role}</label>
+                    <select
+                      value={(dealFormData[field] as string) || ''}
+                      onChange={(e) => setDealFormData({ ...dealFormData, [field]: e.target.value || null })}
+                      className="text-sm py-1 pl-2 pr-8 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    >
+                      <option value="">-- {t('common.unassigned', 'Nepřiřazeno')} --</option>
+                      {users.map(u => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
                   </div>
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {canEdit && !isEditing && (
