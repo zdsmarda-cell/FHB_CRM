@@ -1013,33 +1013,50 @@ async function startServer() {
       
       const doc = new PDFDocument({ margin: 50 });
       
+      const fontRegular = path.join(baseDir, 'fonts', 'Roboto-Regular.ttf');
+      const fontBold = path.join(baseDir, 'fonts', 'Roboto-Bold.ttf');
+      
+      if (fs.existsSync(fontRegular) && fs.existsSync(fontBold)) {
+        doc.registerFont('Roboto-Regular', fontRegular);
+        doc.registerFont('Roboto-Bold', fontBold);
+      } else {
+        doc.registerFont('Roboto-Regular', 'Helvetica');
+        doc.registerFont('Roboto-Bold', 'Helvetica-Bold');
+      }
+
+      const fontR = fs.existsSync(fontRegular) ? 'Roboto-Regular' : 'Helvetica';
+      const fontB = fs.existsSync(fontBold) ? 'Roboto-Bold' : 'Helvetica-Bold';
+      
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="manual-${lang}.pdf"`);
       
       doc.pipe(res);
       
-      const removeDiacritics = (str: string) => {
-        return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const applyText = (str: string) => {
+        if (fontR === 'Helvetica') {
+           return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        }
+        return str;
       };
       
       // Titulek
       doc.fillColor('black');
-      doc.font('Helvetica-Bold').fontSize(24).text(removeDiacritics(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'), { align: 'center' });
+      doc.font(fontB).fontSize(24).text(applyText(isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'), { align: 'center' });
       doc.moveDown();
       
-      doc.font('Helvetica').fontSize(12)
-        .text(removeDiacritics(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'), { align: 'justify' })
+      doc.font(fontR).fontSize(12)
+        .text(applyText(isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'), { align: 'justify' })
         .moveDown(2);
 
       // 1. Zabezpeceni
-      doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'), { underline: true });
-      doc.font('Helvetica').fontSize(12)
-        .text(removeDiacritics(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'))
+      doc.font(fontB).fontSize(16).text(applyText(isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'), { underline: true });
+      doc.font(fontR).fontSize(12)
+        .text(applyText(isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'))
         .moveDown();
 
       // 2. Faze a prechody (Transitions)
-      doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'), { underline: true });
-      doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.')).moveDown(0.5);
+      doc.font(fontB).fontSize(16).text(applyText(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'), { underline: true });
+      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.')).moveDown(0.5);
       
       const stages = isCS ? [
         { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
@@ -1058,13 +1075,13 @@ async function startServer() {
       ];
 
       stages.forEach(s => {
-        doc.font('Helvetica-Bold').fontSize(11).text(removeDiacritics(s.name));
-        doc.font('Helvetica').fontSize(11).text(removeDiacritics(s.requirements)).moveDown(0.5);
+        doc.font(fontB).fontSize(11).text(applyText(s.name));
+        doc.font(fontR).fontSize(11).text(applyText(s.requirements)).moveDown(0.5);
       });
       doc.moveDown();
 
       // 3. Role
-      doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'), { underline: true });
+      doc.font(fontB).fontSize(16).text(applyText(isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'), { underline: true });
       doc.moveDown(0.5);
 
       const rolesCS = [
@@ -1186,27 +1203,39 @@ async function startServer() {
       const rolesList = isCS ? rolesCS : rolesEN;
       rolesList.forEach(r => {
         doc.addPage();
-        doc.font('Helvetica-Bold').fontSize(14).text(`Role: ${r.name}`);
-        doc.font('Helvetica-Bold').fontSize(11).text(removeDiacritics(r.privileges)).moveDown(0.5);
+        doc.font(fontB).fontSize(14).text(`Role: ${r.name}`);
+        doc.font(fontB).fontSize(11).text(applyText(r.privileges)).moveDown(0.5);
         
-        doc.font('Helvetica');
+        doc.font(fontR);
         r.actions.forEach(a => {
-          doc.text(`• ${removeDiacritics(a)}`, { indent: 20 });
+          doc.text(`• ${applyText(a)}`, { indent: 20 });
         });
         doc.moveDown();
       });
 
       // 4. GUI & Ovladani
       doc.addPage();
-      doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'), { underline: true });
+      doc.font(fontB).fontSize(16).text(applyText(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'), { underline: true });
       doc.moveDown();
       
-      doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));
-      doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
+      doc.font(fontB).fontSize(14).text(applyText(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));
+      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile.'));
       doc.moveDown();
+      
+      const headerImagePath = path.join(baseDir, 'public', 'header.png');
+      if (fs.existsSync(headerImagePath)) {
+        doc.image(headerImagePath, { width: 500, align: 'center' });
+        doc.moveDown(2);
+      }
 
-      doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'));
-      doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
+      doc.font(fontB).fontSize(14).text(applyText(isCS ? 'D2: Detail firmy (Deal View)' : 'D2: Deal View'));
+      doc.font(fontR).fontSize(11).text(applyText(isCS ? 'Rozdělené obrazovky:\n- LEVÝ PANEL: Údaje firmy, Tagy, Produktová část, Přenosy fází (Přesun fáze = Zelené tlačítko "Advance to..."). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.\n- PRAVÝ PANEL: Log aktivit (hovory, zprávy), Dokumenty a historický vklad.' : 'Split view:\n- LEFT PANEL: Company details, Tags, Products, Stage transitions (Move stage = Green "Advance to..." button). If a field shines red, data is missing for the transition.\n- RIGHT PANEL: Activity Logs, Documents, and historical entries.'));
+      doc.moveDown();
+      
+      const dealImagePath = path.join(baseDir, 'public', 'deal_view.png');
+      if (fs.existsSync(dealImagePath)) {
+        doc.image(dealImagePath, { width: 500, align: 'center' });
+      }
       
       doc.end();
     } catch (err: any) {

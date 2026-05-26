@@ -211,6 +211,28 @@ const resources = {
         emailRequired: 'Email is required',
         emailInvalid: 'Invalid email format',
         passwordRequired: 'Password is required'
+      },
+      profile: {
+        title: 'My Profile',
+        changePassword: 'Change Password',
+        currentPassword: 'Current Password',
+        currentPasswordDesc: 'Enter your current password to verify identity',
+        newPassword: 'New Password',
+        newPasswordDesc: 'New password must contain at least 6 characters',
+        confirmNewPassword: 'Confirm New Password',
+        confirmNewPasswordDesc: 'Re-enter your new password to avoid typos',
+        savePassword: 'Change Password',
+        manual: 'Manual',
+        manualDescription: 'Download the complete application user manual in PDF format for your role.',
+        downloadManual: 'Download Manual (PDF)',
+        successMessage: 'Password was successfully changed.',
+        errors: {
+          currentRequired: 'Please enter your current password.',
+          passwordTooShort: 'New password must have at least 6 characters.',
+          passwordsDoNotMatch: 'New password and confirmation do not match.',
+          invalidCurrent: 'The given current password is incorrect.',
+          general: 'Failed to change password.'
+        }
       }
     }
   },
@@ -423,6 +445,28 @@ const resources = {
         emailRequired: 'Email musí být zadán',
         emailInvalid: 'Neplatný formát emailu',
         passwordRequired: 'Heslo musí být zadáno'
+      },
+      profile: {
+        title: 'Můj profil',
+        changePassword: 'Změna hesla',
+        currentPassword: 'Původní heslo',
+        currentPasswordDesc: 'Zadejte své aktuální heslo pro ověření identity',
+        newPassword: 'Nové heslo',
+        newPasswordDesc: 'Nové heslo musí obsahovat alespoň 6 znaků',
+        confirmNewPassword: 'Nové heslo znovu',
+        confirmNewPasswordDesc: 'Zadejte nové heslo znovu pro kontrolu překlepů',
+        savePassword: 'Změnit heslo',
+        manual: 'Manuál',
+        manualDescription: 'Stáhněte si kompletní uživatelský manuál aplikace ve formátu PDF pro Vaši roli.',
+        downloadManual: 'Stáhnout návod (PDF)',
+        successMessage: 'Heslo bylo úspěšně změněno.',
+        errors: {
+          currentRequired: 'Zadejte stávající heslo.',
+          passwordTooShort: 'Nové heslo musí mít alespoň 6 znaků.',
+          passwordsDoNotMatch: 'Nové heslo a jeho kontrola se neshodují.',
+          invalidCurrent: 'Zadané stávající heslo není správné.',
+          general: 'Nepodařilo se změnit heslo.'
+        }
       }
     }
   }
