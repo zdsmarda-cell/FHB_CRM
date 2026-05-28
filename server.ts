@@ -1223,7 +1223,10 @@ async function startServer() {
             <h2>${isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'}</h2>
             <p>${isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'}</p>
             
-            <h2>${isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'}</h2>
+            <h2>${isCS ? '2. Uživatelské rozhraní (Nástěnka vs Seznam)' : '2. User Interface (Board vs List)'}</h2>
+            <p>${isCS ? 'Každý uživatel má možnost přepínat mezi vizuálním zobrazením Kanban (sloupce dle fází) a tabulkovým Seznamem přes přepínač v pravém horním rohu. Obě zobrazení reflektují ta samá práva a omezení. Ze Seznamu i Nástěnky se lze prokliknout do detailu příležitosti. Sloupce listu obsahují možnost filtrovat dle stavu (Stage) či země.' : 'Every user can toggle between the visual Kanban Board and a Tabular List view using the toggle in the top right corner. Both views respect the same permissions and constraints. Users can click into the Deal detail from both views. The list allows filtering by Stage or Country.'}</p>
+            
+            <h2>${isCS ? '3. Přechody mezi stavy (Pipeline Transitions)' : '3. Pipeline Stages and Transitions'}</h2>
             <p>${isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.'}</p>
             
             <div>
@@ -1237,7 +1240,7 @@ async function startServer() {
             
             <div class="page-break"></div>
             
-            <h2>${isCS ? '3. Seznam rolí a jejich operace' : '3. User Roles and Operations'}</h2>
+            <h2>${isCS ? '4. Seznam rolí a jejich operace' : '4. User Roles and Operations'}</h2>
             <div>
               ${rolesList.map(r => `
                 <div class="role">

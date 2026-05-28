@@ -10,6 +10,8 @@ import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
 import { LostDealModal } from '../modals/LostDealModal';
 import { useNavigate } from 'react-router-dom';
 import { AlertModal } from '../modals/AlertModal';
+import { DealsListView } from './DealsListView';
+import { List, Kanban } from 'lucide-react';
 
 const AVATAR_COLORS = [
   'bg-blue-500',
@@ -69,11 +71,18 @@ export function KanbanBoard() {
     const saved = localStorage.getItem('kanban_zoom');
     return saved ? parseFloat(saved) : 1;
   });
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>(() => {
+    return (localStorage.getItem('board_view_mode') as 'kanban' | 'list') || 'kanban';
+  });
   const navigate = useNavigate();
 
   useEffect(() => {
     localStorage.setItem('kanban_zoom', zoomLevel.toString());
   }, [zoomLevel]);
+
+  useEffect(() => {
+    localStorage.setItem('board_view_mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     state.refreshState();
@@ -286,20 +295,43 @@ export function KanbanBoard() {
             <button onClick={() => setZoomLevel(z => Math.min(1.5, z + 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">+</button>
           </div>
         </div>
-        <button 
-          onClick={() => setIsFormOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
-        >
-          {t('menu.newDeal')}
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => setViewMode('kanban')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <Kanban className="w-4 h-4" />
+              Kanban
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              <List className="w-4 h-4" />
+              {t('common.list', 'List')}
+            </button>
+          </div>
+          <button 
+            onClick={() => setIsFormOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm"
+          >
+            {t('menu.newDeal')}
+          </button>
+        </div>
       </div>
 
-      <div 
-        ref={scrollContainerRef}
-        onDragOver={handleContainerDragOver}
-        onDragLeave={stopAutoScroll}
-        className="overflow-x-auto pb-4 flex-1"
-      >
+      {viewMode === 'list' ? (
+        <div className="flex-1 overflow-hidden">
+          <DealsListView />
+        </div>
+      ) : (
+        <div 
+          ref={scrollContainerRef}
+          onDragOver={handleContainerDragOver}
+          onDragLeave={stopAutoScroll}
+          className="overflow-x-auto pb-4 flex-1"
+        >
         <div 
           className="flex gap-6 items-start h-full"
           style={{ zoom: zoomLevel } as any}
@@ -477,6 +509,7 @@ export function KanbanBoard() {
         })}
         </div>
       </div>
+      )}
 
       {isFormOpen && (
         <CompanyForm onClose={() => setIsFormOpen(false)} />
