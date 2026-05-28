@@ -2946,6 +2946,8 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editNoteText, setEditNoteText] = useState('');
   
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+
   const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
 
   const sortedNotes = [...(deal.notes || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -2985,10 +2987,11 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
     setEditingNoteId(null);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!currentUser || !window.confirm(t('common.confirmDelete', 'Opravdu chcete smazat tento záznam?'))) return;
-    const newNotes = (deal.notes || []).filter(n => n.id !== id);
+  const handleDelete = async () => {
+    if (!currentUser || !noteToDelete) return;
+    const newNotes = (deal.notes || []).filter(n => n.id !== noteToDelete);
     await updateDeal(deal.id, { notes: newNotes }, currentUser.id);
+    setNoteToDelete(null);
   };
 
   return (
@@ -3039,7 +3042,7 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
                  {isEditable && (
                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                      <button title={t('common.edit')} onClick={() => { setEditingNoteId(note.id); setEditNoteText(note.text); }} className="p-1 text-gray-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
-                     <button title={t('common.delete')} onClick={() => handleDelete(note.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                     <button title={t('common.delete')} onClick={() => setNoteToDelete(note.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
                    </div>
                  )}
                </div>
@@ -3085,6 +3088,16 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
           </button>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!noteToDelete}
+        title={t('common.deleteNoteTitle', 'Smazat poznámku')}
+        message={t('common.confirmDelete', 'Opravdu chcete smazat tento záznam?')}
+        confirmText={t('common.delete', 'Smazat')}
+        cancelText={t('common.cancel', 'Zrušit')}
+        onConfirm={handleDelete}
+        onCancel={() => setNoteToDelete(null)}
+      />
     </div>
   );
 }
