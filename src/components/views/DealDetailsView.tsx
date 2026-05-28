@@ -3096,7 +3096,7 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
         confirmText={t('common.delete', 'Smazat')}
         cancelText={t('common.cancel', 'Zrušit')}
         onConfirm={handleDelete}
-        onCancel={() => setNoteToDelete(null)}
+        onClose={() => setNoteToDelete(null)}
       />
     </div>
   );
