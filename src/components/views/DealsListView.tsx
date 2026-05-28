@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Company, Deal } from '../../types';
-import { Eye, EyeOff, Search, Filter } from 'lucide-react';
+import { Eye, EyeOff, Search, Filter, ArrowUp, ArrowDown } from 'lucide-react';
 import { AlertModal } from '../modals/AlertModal';
 import { COUNTRIES } from '../../lib/countryMapping';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -26,6 +26,25 @@ export function DealsListView() {
   const selectedStages = searchParams.getAll('stage');
   const [showCountryFilter, setShowCountryFilter] = useState(false);
   const [showStageFilter, setShowStageFilter] = useState(false);
+
+  const SearchParams = searchParams; // helper to preserve refs if needed
+
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' | null = 'asc';
+    if (sortConfig && sortConfig.key === key) {
+      if (sortConfig.direction === 'asc') direction = 'desc';
+      else direction = null;
+    }
+    setSortConfig(direction ? { key, direction } : null);
+  };
+
+  const renderSortIcon = (columnKey: string) => {
+    if (sortConfig?.key !== columnKey) return null;
+    if (sortConfig.direction === 'asc') return <ArrowUp className="w-4 h-4 ml-1 inline-block" />;
+    return <ArrowDown className="w-4 h-4 ml-1 inline-block" />;
+  };
 
   const updateParams = (updates: Record<string, any>) => {
     const newParams = new URLSearchParams(searchParams);
@@ -89,12 +108,58 @@ export function DealsListView() {
     });
   }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages]);
 
-  const totalPages = Math.ceil(filteredDeals.length / itemsPerPage);
+  const sortedDeals = useMemo(() => {
+    let sortableDeals = [...filteredDeals];
+    if (sortConfig !== null) {
+      sortableDeals.sort((a, b) => {
+        const companyA = companies.find(c => c.id === a.companyId);
+        const companyB = companies.find(c => c.id === b.companyId);
+        if (!companyA || !companyB) return 0;
+        
+        let aValue: any = '';
+        let bValue: any = '';
+        
+        switch (sortConfig.key) {
+          case 'name':
+            aValue = companyA.name;
+            bValue = companyB.name;
+            break;
+          case 'ico':
+            aValue = companyA.companyId;
+            bValue = companyB.companyId;
+            break;
+          case 'country':
+            aValue = companyA.country || 'Czechia';
+            bValue = companyB.country || 'Czechia';
+            break;
+          case 'segment':
+            aValue = companyA.segment || '';
+            bValue = companyB.segment || '';
+            break;
+          case 'stage':
+            aValue = t(`stages.${a.stage}`);
+            bValue = t(`stages.${b.stage}`);
+            break;
+        }
+        
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return sortableDeals;
+  }, [filteredDeals, sortConfig, companies, t]);
+
+  const totalPages = Math.ceil(sortedDeals.length / itemsPerPage);
 
   const currentDeals = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredDeals.slice(start, start + itemsPerPage);
-  }, [filteredDeals, currentPage]);
+    return sortedDeals.slice(start, start + itemsPerPage);
+  }, [sortedDeals, currentPage]);
 
   const handleToggleVisibility = (e: React.MouseEvent, company: Company) => {
     e.stopPropagation();
@@ -210,11 +275,21 @@ export function DealsListView() {
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider border-b border-gray-200 sticky top-0 z-0">
             <tr>
-              <th className="px-6 py-4 font-medium">{t('admin.name')}</th>
-              <th className="px-6 py-4 font-medium">{t('fields.ico')}</th>
-              <th className="px-6 py-4 font-medium">{t('fields.country')}</th>
-              <th className="px-6 py-4 font-medium">{t('fields.segment')}</th>
-              <th className="px-6 py-4 font-medium">{t('common.stage', 'Stav')}</th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('name')}>
+                {t('admin.name')} {renderSortIcon('name')}
+              </th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('ico')}>
+                {t('fields.ico')} {renderSortIcon('ico')}
+              </th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('country')}>
+                {t('fields.country')} {renderSortIcon('country')}
+              </th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('segment')}>
+                {t('fields.segment')} {renderSortIcon('segment')}
+              </th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('stage')}>
+                {t('common.stage', 'Stav')} {renderSortIcon('stage')}
+              </th>
               {currentUser?.role === 'administrator' && (
                 <th className="px-6 py-4 font-medium">{t('admin.visibility')}</th>
               )}
