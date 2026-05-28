@@ -247,7 +247,7 @@ async function startServer() {
       const refreshToken = jwt.sign(
         { id: user.id, type: 'refresh' },
         JWT_SECRET,
-        { expiresIn: '24h' } // 24 hours refresh token
+        { expiresIn: '12h' } // 12 hours refresh token
       );
 
       try {
@@ -311,7 +311,7 @@ async function startServer() {
       const newRefreshToken = jwt.sign(
         { id: user.id, type: 'refresh' },
         JWT_SECRET,
-        { expiresIn: '24h' }
+        { expiresIn: '12h' }
       );
       
       res.json({ token: newToken, refreshToken: newRefreshToken, user });
