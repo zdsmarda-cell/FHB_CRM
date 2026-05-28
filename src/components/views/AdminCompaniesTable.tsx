@@ -1,27 +1,50 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Company } from '../../types';
-import { Edit2, Eye, EyeOff, Search, Filter } from 'lucide-react';
-import { AdminCompanyModal } from '../modals/AdminCompanyModal';
+import { Eye, EyeOff, Search, Filter } from 'lucide-react';
 import { AlertModal } from '../modals/AlertModal';
 import { COUNTRIES } from '../../lib/countryMapping';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 export function AdminCompaniesTable() {
   const { t } = useTranslation();
   const store = useStore();
-  const { companies, updateCompany, currentUser } = store;
+  const { companies, deals, updateCompany, currentUser } = store;
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [currentPage, setCurrentPage] = useState(1);
+  const currentPage = parseInt(searchParams.get('page') || '1', 10);
   const itemsPerPage = 10;
-  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   
   const [alertInfo, setAlertInfo] = useState({ isOpen: false, title: '', message: '' });
 
   // Filters
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
+  const searchTerm = searchParams.get('search') || '';
+  const selectedCountries = searchParams.getAll('country');
   const [showCountryFilter, setShowCountryFilter] = useState(false);
+
+  const updateParams = (updates: Record<string, any>) => {
+    const newParams = new URLSearchParams(searchParams);
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === '') {
+        newParams.delete(key);
+      } else if (Array.isArray(value)) {
+        newParams.delete(key);
+        value.forEach(v => newParams.append(key, v));
+      } else {
+        newParams.set(key, value.toString());
+      }
+    });
+    setSearchParams(newParams);
+  };
+
+  const setCurrentPage = (page: number | ((p: number) => number)) => {
+    const newPage = typeof page === 'function' ? page(currentPage) : page;
+    updateParams({ page: newPage });
+  };
+
+  const setSearchTerm = (term: string) => updateParams({ search: term, page: 1 });
 
   // Apply filters
   const filteredCompanies = useMemo(() => {
@@ -45,16 +68,30 @@ export function AdminCompaniesTable() {
     return filteredCompanies.slice(start, start + itemsPerPage);
   }, [filteredCompanies, currentPage]);
 
-  const handleToggleVisibility = (company: Company) => {
+  const handleToggleVisibility = (e: React.MouseEvent, company: Company) => {
+    e.stopPropagation();
     if (!currentUser) return;
     updateCompany(company.id, { isVisible: company.isVisible === false ? true : false }, currentUser.id);
   };
 
   const handleCountryToggle = (country: string) => {
-    setSelectedCountries(prev => 
-      prev.includes(country) ? prev.filter(c => c !== country) : [...prev, country]
-    );
-    setCurrentPage(1);
+    const newCountries = selectedCountries.includes(country) 
+      ? selectedCountries.filter(c => c !== country) 
+      : [...selectedCountries, country];
+    updateParams({ country: newCountries, page: 1 });
+  };
+
+  const handleRowClick = (companyId: string) => {
+    const deal = deals.find(d => d.companyId === companyId);
+    if (deal) {
+      navigate(`/deal/${deal.id}`);
+    } else {
+      setAlertInfo({
+        isOpen: true,
+        title: t('common.error', 'Error'),
+        message: t('admin.dealNotFound', 'Nenalezen žádný deal pro tuto společnost.')
+      });
+    }
   };
 
   return (
@@ -66,7 +103,7 @@ export function AdminCompaniesTable() {
             type="text"
             placeholder={t('admin.searchCompanyPlaceholder')}
             value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
           />
         </div>
@@ -111,26 +148,29 @@ export function AdminCompaniesTable() {
               <th className="px-6 py-4 font-medium">{t('fields.country')}</th>
               <th className="px-6 py-4 font-medium">{t('fields.segment')}</th>
               <th className="px-6 py-4 font-medium">{t('admin.status')} ({t('admin.visibility')})</th>
-              <th className="px-6 py-4 font-medium text-right"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {currentCompanies.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
                   {t('admin.noRecords')}
                 </td>
               </tr>
             ) : (
               currentCompanies.map(company => (
-                <tr key={company.id} className="hover:bg-gray-50 transition-colors">
+                <tr 
+                  key={company.id} 
+                  className="hover:bg-indigo-50 transition-colors cursor-pointer"
+                  onClick={() => handleRowClick(company.id)}
+                >
                   <td className="px-6 py-4 font-medium text-gray-900">{company.name}</td>
                   <td className="px-6 py-4 text-gray-500">{company.companyId}</td>
                   <td className="px-6 py-4 text-gray-500">{company.country || 'Czechia'}</td>
                   <td className="px-6 py-4 text-gray-500">{t(`fields.segment`) + ': ' + company.segment}</td>
                   <td className="px-6 py-4">
                     <button
-                      onClick={() => handleToggleVisibility(company)}
+                      onClick={(e) => handleToggleVisibility(e, company)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border ${company.isVisible !== false ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}`}
                     >
                       {company.isVisible !== false ? (
@@ -138,15 +178,6 @@ export function AdminCompaniesTable() {
                       ) : (
                         <><EyeOff className="w-3.5 h-3.5" /> {t('admin.hidden')}</>
                       )}
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button 
-                      onClick={() => setEditingCompany(company)}
-                      className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition"
-                      title={t('common.edit')}
-                    >
-                      <Edit2 className="w-4 h-4" />
                     </button>
                   </td>
                 </tr>
@@ -174,21 +205,6 @@ export function AdminCompaniesTable() {
             {t('common.next', 'Next')}
           </button>
         </div>
-      )}
-
-      {editingCompany && (
-        <AdminCompanyModal
-          company={editingCompany}
-          onClose={() => setEditingCompany(null)}
-          onSaveSuccess={() => {
-            setEditingCompany(null);
-            setAlertInfo({ 
-              isOpen: true, 
-              title: t('admin.companyUpdatedTitle'), 
-              message: t('admin.companyUpdatedMessage') 
-            });
-          }}
-        />
       )}
 
       <AlertModal 

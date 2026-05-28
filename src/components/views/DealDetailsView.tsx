@@ -31,7 +31,7 @@ export function DealDetailsView() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState<Partial<Company>>({});
   const [historyPage, setHistoryPage] = useState(1);
-  const [activeRightTab, setActiveRightTab] = useState<'activities' | 'documents' | 'history'>('activities');
+  const [activeRightTab, setActiveRightTab] = useState<'activities' | 'documents' | 'history' | 'notes'>('activities');
   const historyPerPage = 5;
 
   const [dealFormData, setDealFormData] = useState<Partial<Deal>>({});
@@ -206,6 +206,12 @@ export function DealDetailsView() {
             >
               {t('common.history')}
             </button>
+            <button
+              onClick={() => setActiveRightTab('notes')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeRightTab === 'notes' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+            >
+              {t('common.notes', 'Poznámky')}
+            </button>
           </div>
 
           {activeRightTab === 'activities' && (
@@ -214,6 +220,10 @@ export function DealDetailsView() {
 
           {activeRightTab === 'documents' && (
             <DocumentsManager deal={deal} company={company} canEdit={canEdit} />
+          )}
+
+          {activeRightTab === 'notes' && (
+            <NotesManager deal={deal} company={company} canEdit={canEdit} />
           )}
 
           {activeRightTab === 'history' && (
@@ -2923,6 +2933,156 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
               </button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company, canEdit: boolean }) {
+  const { t } = useTranslation();
+  const { updateDeal, currentUser, users } = useStore();
+  const [newNote, setNewNote] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState('');
+  
+  const subordinateIds = getSubordinateIds(users, currentUser?.id || '');
+
+  const sortedNotes = [...(deal.notes || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  
+  const [page, setPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(sortedNotes.length / itemsPerPage);
+  const paginatedNotes = sortedNotes.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+  const canEditOrDeleteNote = (noteId: string, authorId: string) => {
+    if (!currentUser) return false;
+    if (currentUser.id === authorId) return true;
+    if (currentUser.role === 'cso' || currentUser.role === 'administrator') return true;
+    if (subordinateIds.includes(authorId)) return true; // Author is subordinate
+    return false;
+  };
+
+  const handleCreate = async () => {
+    if (!newNote.trim() || !currentUser) return;
+    const note: any = {
+      id: uuidv4(),
+      text: newNote.trim(),
+      createdBy: currentUser.id,
+      createdAt: new Date().toISOString()
+    };
+    await updateDeal(deal.id, { notes: [...(deal.notes || []), note] }, currentUser.id);
+    setNewNote('');
+    setPage(1);
+  };
+
+  const handleUpdate = async (id: string) => {
+    if (!editNoteText.trim() || !currentUser) return;
+    const newNotes = (deal.notes || []).map(n => 
+      n.id === id ? { ...n, text: editNoteText.trim(), updatedAt: new Date().toISOString() } : n
+    );
+    await updateDeal(deal.id, { notes: newNotes }, currentUser.id);
+    setEditingNoteId(null);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!currentUser || !window.confirm(t('common.confirmDelete', 'Opravdu chcete smazat tento záznam?'))) return;
+    const newNotes = (deal.notes || []).filter(n => n.id !== id);
+    await updateDeal(deal.id, { notes: newNotes }, currentUser.id);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-gray-400" />
+          {t('common.notes', 'Poznámky')}
+        </h3>
+      </div>
+      
+      {canEdit && (
+        <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+          <textarea
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            placeholder={t('common.newNote', 'Nová poznámka...')}
+            rows={3}
+            className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-sm"
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              onClick={handleCreate}
+              disabled={!newNote.trim()}
+              className="px-4 py-2 bg-indigo-600 text-white font-medium text-sm rounded hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {t('common.add', 'Přidat')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {paginatedNotes.map(note => {
+           const author = users.find(u => u.id === note.createdBy);
+           const isEditable = canEditOrDeleteNote(note.id, note.createdBy);
+
+           return (
+             <div key={note.id} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm relative group">
+               <div className="flex justify-between items-start mb-2">
+                 <div className="flex items-center gap-2 text-xs text-gray-500">
+                   <UserIcon className="w-3 h-3" />
+                   <span className="font-medium text-gray-700">{author?.name || 'Unknown'}</span>
+                   <span>•</span>
+                   <span>{format(parseISO(note.createdAt), 'dd.MM.yyyy HH:mm')}</span>
+                   {note.updatedAt && <span className="text-gray-400 italic">(Upraveno)</span>}
+                 </div>
+                 {isEditable && (
+                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                     <button title={t('common.edit')} onClick={() => { setEditingNoteId(note.id); setEditNoteText(note.text); }} className="p-1 text-gray-400 hover:text-indigo-600"><Edit2 className="w-4 h-4" /></button>
+                     <button title={t('common.delete')} onClick={() => handleDelete(note.id)} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="w-4 h-4" /></button>
+                   </div>
+                 )}
+               </div>
+               
+               {editingNoteId === note.id ? (
+                 <div className="mt-2">
+                   <textarea
+                     value={editNoteText}
+                     onChange={(e) => setEditNoteText(e.target.value)}
+                     rows={3}
+                     className="w-full px-3 py-2 border border-gray-300 rounded outline-none focus:border-indigo-500 text-sm"
+                   />
+                   <div className="flex gap-2 mt-2 justify-end">
+                      <button onClick={() => setEditingNoteId(null)} className="px-3 py-1.5 border border-gray-300 rounded text-sm text-gray-700 hover:bg-gray-50">{t('common.cancel')}</button>
+                      <button onClick={() => handleUpdate(note.id)} disabled={!editNoteText.trim()} className="px-3 py-1.5 bg-indigo-600 text-white rounded text-sm hover:bg-indigo-700 disabled:opacity-50">{t('common.save')}</button>
+                   </div>
+                 </div>
+               ) : (
+                 <p className="text-gray-800 text-sm whitespace-pre-wrap">{note.text}</p>
+               )}
+             </div>
+           );
+        })}
+        {sortedNotes.length === 0 && <p className="text-sm text-gray-500 text-center py-4">{t('common.noRecords', 'Žádné záznamy')}</p>}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+          <button 
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page === 1}
+            className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+          >
+            {t('common.prev', 'Previous')}
+          </button>
+          <span className="text-xs text-gray-500">{page} / {totalPages}</span>
+          <button 
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page === totalPages}
+            className="text-sm text-indigo-600 font-medium disabled:opacity-50"
+          >
+            {t('common.next', 'Next')}
+          </button>
         </div>
       )}
     </div>

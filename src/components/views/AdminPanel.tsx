@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Edit2, UserPlus, CheckCircle2, XCircle, Mail } from 'lucide-react';
 import { UserForm } from '../modals/UserForm';
 import { User } from '../../types';
@@ -71,7 +72,15 @@ export function AdminPanel() {
   const store = useStore();
   const { users, currentUser } = store;
 
-  const [activeTab, setActiveTab] = useState<'users' | 'emails' | 'logins' | 'settings' | 'companies'>('users');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTabDefault = searchParams.get('tab') as 'users' | 'emails' | 'logins' | 'settings' | 'companies' || 'users';
+  const activeTab = activeTabDefault;
+  const setActiveTab = (tab: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams);
+  };
+  
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [newLeadSource, setNewLeadSource] = useState('');

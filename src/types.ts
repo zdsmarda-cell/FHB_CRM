@@ -103,6 +103,14 @@ export interface PricingOffer {
   createdBy: string;
 }
 
+export interface Note {
+  id: string;
+  text: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface DealDocument {
   id: string;
   description: string;
@@ -129,6 +137,7 @@ export interface Deal {
   averageParcelVolume?: number;
   pricingOffers?: PricingOffer[];
   documents?: DealDocument[];
+  notes?: Note[];
   contractSignedDate?: string | null;
   pricingUploadedDate?: string | null;
   itIntegrationId?: string | null;
