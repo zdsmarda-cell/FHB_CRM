@@ -181,9 +181,14 @@ async function startServer() {
               if (hostnames && hostnames.length > 0) {
                 await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", [hostnames[0], row.id]);
                 console.log(`[DNS] Resolved missing host for login ${row.id}: ${hostnames[0]}`);
+              } else {
+                await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
               }
             } catch (e: any) {
-              console.error(`[DNS] Retro error for ${lookupIp}:`, e.message);
+              await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
+              if (e.code !== 'ENOTFOUND') {
+                console.error(`[DNS] Retro error for ${lookupIp}:`, e.message);
+              }
             }
           }
         }
@@ -285,9 +290,14 @@ async function startServer() {
             const hostnames = await dns.promises.reverse(lookupIp);
             if (hostnames && hostnames.length > 0) {
               resolvedHost = hostnames[0];
+            } else {
+              resolvedHost = '-';
             }
           } catch (dnsErr: any) {
-            console.error(`[DNS] Login error for ${ip}:`, dnsErr.message);
+            resolvedHost = '-';
+            if (dnsErr.code !== 'ENOTFOUND') {
+              console.error(`[DNS] Login error for ${ip}:`, dnsErr.message);
+            }
           }
         }
         console.log(`[LOGIN] User IP: ${ip}, RemoteAddr: ${remoteAddr}, X-Forwarded: ${xForwarded}, Resolved: ${resolvedHost}`);
