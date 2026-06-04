@@ -170,8 +170,8 @@ async function startServer() {
       
       // Retroactively fix missing DNS hostnames in login logs
       try {
-        const [rows] = await connection.query("SELECT id, ip FROM login_logs WHERE resolvedHost IS NULL OR resolvedHost = ''");
-        const logs = rows as { id: string, ip: string }[];
+        const [rows] = await connection.query("SELECT id, ip, resolvedHost FROM login_logs WHERE resolvedHost IS NULL OR resolvedHost = '' OR resolvedHost = '-'");
+        const logs = rows as { id: string, ip: string, resolvedHost: string }[];
         for (const row of logs) {
           if (row.ip && row.ip !== '127.0.0.1' && row.ip !== '::1') {
             let lookupIp = row.ip;
@@ -182,10 +182,10 @@ async function startServer() {
                 await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", [hostnames[0], row.id]);
                 console.log(`[DNS] Resolved missing host for login ${row.id}: ${hostnames[0]}`);
               } else {
-                await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
+                if (row.resolvedHost !== '-') await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
               }
             } catch (e: any) {
-              await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
+              if (row.resolvedHost !== '-') await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", ['-', row.id]);
               if (e.code !== 'ENOTFOUND') {
                 console.error(`[DNS] Retro error for ${lookupIp}:`, e.message);
               }
