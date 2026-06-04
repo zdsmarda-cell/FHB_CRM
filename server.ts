@@ -169,30 +169,27 @@ async function startServer() {
       console.log("[DB INIT] Database migrations passed successfully.");
       
       // Retroactively fix missing DNS hostnames in login logs
-      (async () => {
-        try {
-          const [rows] = await connection.query("SELECT id, ip FROM login_logs WHERE resolvedHost IS NULL OR resolvedHost = ''");
-          const logs = rows as { id: string, ip: string }[];
-          for (const row of logs) {
-            if (row.ip && row.ip !== '127.0.0.1' && row.ip !== '::1') {
-              let lookupIp = row.ip;
-              if (lookupIp.startsWith('::ffff:')) lookupIp = lookupIp.substring(7);
-              try {
-                // Must require dynamically to access dns.promises here since dns might not be imported at top level if not used elsewhere, wait, it might be. I'll just use it via global requirement here if necessary, or just dns.promises if it's imported. I will just rely on the existing dns import, but let me check if dns is imported top level.
-                const hostnames = await require('dns').promises.reverse(lookupIp);
-                if (hostnames && hostnames.length > 0) {
-                  await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", [hostnames[0], row.id]);
-                  console.log(`[DNS] Resolved missing host for login ${row.id}: ${hostnames[0]}`);
-                }
-              } catch (e) {
-                // ignore
+      try {
+        const [rows] = await connection.query("SELECT id, ip FROM login_logs WHERE resolvedHost IS NULL OR resolvedHost = ''");
+        const logs = rows as { id: string, ip: string }[];
+        for (const row of logs) {
+          if (row.ip && row.ip !== '127.0.0.1' && row.ip !== '::1') {
+            let lookupIp = row.ip;
+            if (lookupIp.startsWith('::ffff:')) lookupIp = lookupIp.substring(7);
+            try {
+              const hostnames = await require('dns').promises.reverse(lookupIp);
+              if (hostnames && hostnames.length > 0) {
+                await connection.query("UPDATE login_logs SET resolvedHost = ? WHERE id = ?", [hostnames[0], row.id]);
+                console.log(`[DNS] Resolved missing host for login ${row.id}: ${hostnames[0]}`);
               }
+            } catch (e: any) {
+              console.error(`[DNS] Retro error for ${lookupIp}:`, e.message);
             }
           }
-        } catch (e) {
-          console.error("Failed to update missing hostnames:", e);
         }
-      })();
+      } catch (e) {
+        console.error("Failed to update missing hostnames:", e);
+      }
     } finally {
       connection.release();
     }
@@ -277,7 +274,9 @@ async function startServer() {
       );
 
       try {
-        const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').toString().split(',')[0].trim();
+        const xForwarded = req.headers['x-forwarded-for'] || '';
+        const remoteAddr = req.socket.remoteAddress || '';
+        const ip = (xForwarded || remoteAddr).toString().split(',')[0].trim();
         let resolvedHost = '';
         if (ip && ip !== '127.0.0.1' && ip !== '::1') {
           try {
@@ -287,10 +286,11 @@ async function startServer() {
             if (hostnames && hostnames.length > 0) {
               resolvedHost = hostnames[0];
             }
-          } catch (dnsErr) {
-            // Ignore DNS resolution
+          } catch (dnsErr: any) {
+            console.error(`[DNS] Login error for ${ip}:`, dnsErr.message);
           }
         }
+        console.log(`[LOGIN] User IP: ${ip}, RemoteAddr: ${remoteAddr}, X-Forwarded: ${xForwarded}, Resolved: ${resolvedHost}`);
         await pool.query(
           'INSERT INTO login_logs (id, userId, timestamp, ip, resolvedHost) VALUES (?, ?, ?, ?, ?)',
           [uuidv4(), user.id, new Date(), ip, resolvedHost]
