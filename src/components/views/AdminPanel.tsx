@@ -333,7 +333,7 @@ export function AdminPanel() {
 
                     {/* Storage Types */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold text-gray-800 mb-4">Stávající skladování</h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('deal.attributes.currentStorage', 'Stávající skladování')}</h3>
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
@@ -367,7 +367,7 @@ export function AdminPanel() {
                 />
               ))}
               {store.storageTypes.length === 0 && (
-                <li className="py-3 text-sm text-gray-500">Žádné typy skladování</li>
+                <li className="py-3 text-sm text-gray-500">{t('common.noStorageTypes', 'Žádné typy skladování')}</li>
               )}
             </ul>
           </div>

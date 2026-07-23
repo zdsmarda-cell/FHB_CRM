@@ -818,7 +818,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Stávající skladování</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.currentStorage', 'Stávající skladování')}</label>
             <select 
               value={formData.storageTypeId || ''} 
               onChange={e => setFormData({ ...formData, storageTypeId: e.target.value })}
@@ -853,7 +853,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Odhadovaný počet balíků ročně</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.estimatedYearlyParcels', 'Odhadovaný počet balíků ročně')}</label>
             <input 
               type="text"
               value={yearlyParcelsStr} 
@@ -863,7 +863,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Měsíce sezóny</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.seasonMonths', 'Měsíce sezóny')}</label>
             <div className="flex flex-wrap gap-2 mb-2">
               {(formData.seasonMonths || []).map((month, idx) => (
                 <div key={idx} className="flex items-center gap-1 bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-sm font-medium">
@@ -883,8 +883,8 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
             
             <div className="flex gap-2">
                <select id="season_month_select" className="w-1/2 px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors">
-                 <option value="">-- Vyberte měsíc --</option>
-                 {['Leden', 'Únor', 'Březen', 'Duben', 'Květen', 'Červen', 'Červenec', 'Srpen', 'Září', 'Říjen', 'Listopad', 'Prosinec'].map(m => (
+                 <option value="">{t('deal.attributes.selectMonth', '-- Vyberte měsíc --')}</option>
+                 {[t('deal.attributes.months.january', 'Leden'), t('deal.attributes.months.february', 'Únor'), t('deal.attributes.months.march', 'Březen'), t('deal.attributes.months.april', 'Duben'), t('deal.attributes.months.may', 'Květen'), t('deal.attributes.months.june', 'Červen'), t('deal.attributes.months.july', 'Červenec'), t('deal.attributes.months.august', 'Srpen'), t('deal.attributes.months.september', 'Září'), t('deal.attributes.months.october', 'Říjen'), t('deal.attributes.months.november', 'Listopad'), t('deal.attributes.months.december', 'Prosinec')].map(m => (
                    <option key={m} value={m}>{m}</option>
                  ))}
                </select>
@@ -896,12 +896,12 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                    }
                    select.value = '';
                  }
-               }} className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 text-sm font-medium transition-colors">Přidat</button>
+               }} className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 text-sm font-medium transition-colors">{t('common.add', 'Přidat')}</button>
             </div>
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Celkový počet SKU</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.totalSku', 'Celkový počet SKU')}</label>
             <input 
               type="text"
               value={skuCountStr} 
@@ -922,7 +922,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Produkty, které zákazník prodává</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.productsSold', 'Produkty, které zákazník prodává')}</label>
             <textarea
               value={formData.productsSold || ''} 
               onChange={e => setFormData({ ...formData, productsSold: e.target.value })}
@@ -969,7 +969,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">Používání COD (vyberte zemi a procento)</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.codUsage', 'Používání COD (vyberte zemi a procento)')}</label>
             <div className="space-y-2 mb-2">
               {(formData.codUsage || []).map((cu, idx) => (
                 <div key={idx} className="flex gap-2 items-center">
@@ -990,14 +990,14 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                     const newCod = [...(formData.codUsage || [])];
                     newCod.splice(idx, 1);
                     setFormData({ ...formData, codUsage: newCod });
-                  }} className="text-red-500 hover:text-red-700 text-sm ml-2">Odebrat</button>
+                  }} className="text-red-500 hover:text-red-700 text-sm ml-2">{t('common.remove', 'Odebrat')}</button>
                 </div>
               ))}
             </div>
             
             <div className="flex gap-2">
                <select id="cod_country_select" className="w-1/2 px-3 py-2 border border-gray-300 rounded text-sm bg-white">
-                 <option value="">-- Vyberte zemi --</option>
+                 <option value="">{t('deal.attributes.selectCountry', '-- Vyberte zemi --')}</option>
                  <option value="CZ">CZ</option>
                  <option value="SK">SK</option>
                  <option value="PL">PL</option>
@@ -1014,7 +1014,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
                    }
                    select.value = '';
                  }
-               }} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 text-sm font-medium">Přidat</button>
+               }} className="px-3 py-2 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 text-sm font-medium">{t('common.add', 'Přidat')}</button>
             </div>
           </div>
 
@@ -1160,23 +1160,23 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Stávající skladování</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.currentStorage', 'Stávající skladování')}</span>
             <span className="text-gray-900 font-medium">{stName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný počet balíků (měsíčně / ročně)</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.estimatedParcelsMonthlyYearly', 'Odhadovaný počet balíků (měsíčně / ročně)')}</span>
             <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'} / {deal.estimatedYearlyParcels || '-'}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Měsíce sezóny</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.seasonMonths', 'Měsíce sezóny')}</span>
             <span className="text-gray-900 font-medium">{deal.seasonMonths?.join(', ') || '-'}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Celkový počet SKU</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.totalSku', 'Celkový počet SKU')}</span>
             <span className="text-gray-900 font-medium">{deal.skuCount || '-'}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Produkty, které zákazník prodává</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.productsSold', 'Produkty, které zákazník prodává')}</span>
             <span className="text-gray-900 font-medium">{deal.productsSold || '-'}</span>
           </div>
           <div>
@@ -3290,7 +3290,7 @@ function NotesManager({ deal, company, canEdit }: { deal: Deal, company: Company
                    <span className="font-medium text-gray-700">{author?.name || 'Unknown'}</span>
                    <span>•</span>
                    <span>{format(parseISO(note.createdAt), 'dd.MM.yyyy HH:mm')}</span>
-                   {note.updatedAt && <span className="text-gray-400 italic">(Upraveno)</span>}
+                   {note.updatedAt && <span className="text-gray-400 italic">{t('common.edited', '(Upraveno)')}</span>}
                  </div>
                  {isEditable && (
                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
