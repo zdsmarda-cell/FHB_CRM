@@ -57,7 +57,6 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
           managerId: formData.managerId || null,
           isActive: formData.isActive,
           isTestAccount: formData.isTestAccount,
-          isTestAccount: formData.isTestAccount,
           ...(formData.password ? { passwordHash: hashPassword(formData.password) } : {})
         });
       } else {
@@ -67,6 +66,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
           role: formData.role,
           managerId: formData.managerId || null,
           isActive: formData.isActive,
+          isTestAccount: formData.isTestAccount,
           passwordHash: hashPassword(formData.password || 'password123')
         });
       }
