@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS companies (
   email VARCHAR(100),
   phone VARCHAR(50),
   phonePrefix VARCHAR(20),
-  isVisible BOOLEAN DEFAULT TRUE,
+  isActive BOOLEAN DEFAULT TRUE,
   urls JSON,
   contacts JSON
 );
@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS storage_types (
   id VARCHAR(50) PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
-  isVisible BOOLEAN DEFAULT TRUE
+  isActive BOOLEAN DEFAULT TRUE
 );
-INSERT IGNORE INTO storage_types (id, name, isVisible) VALUES ('own', 'Vlastní sklad', TRUE), ('fulfillment', 'Pronajatý sklad (fulfillment)', TRUE);
+INSERT IGNORE INTO storage_types (id, name, isActive) VALUES ('own', 'Vlastní sklad', TRUE), ('fulfillment', 'Pronajatý sklad (fulfillment)', TRUE);
 
 CREATE TABLE IF NOT EXISTS deals (
   id VARCHAR(50) PRIMARY KEY,

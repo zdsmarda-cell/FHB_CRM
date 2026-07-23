@@ -1,4 +1,4 @@
-import { createPool } from 'mysql2/promise';
+const { createPool } = require('mysql2/promise');
 
 async function run() {
   const pool = createPool({

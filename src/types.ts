@@ -86,7 +86,7 @@ export interface LeadSource {
 export interface StorageType {
   id: string;
   name: string;
-  isVisible: boolean;
+  isActive: boolean;
 }
 
 export interface EcommercePlatform {
