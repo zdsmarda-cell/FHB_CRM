@@ -184,12 +184,27 @@ async function startServer() {
             'Doplnky stravy',
             'Knihy a časopisy',
             'Potreby pre domáce zvieratá',
-            'Hračky'
+            'Hračky',
+            'Ostatní'
           ];
           for (const s of defaultSegments) {
             await connection.query("INSERT INTO segments (id, name, isActive) VALUES (UUID(), ?, TRUE)", [s]);
           }
           console.log(`[DB INIT] Seeded ${defaultSegments.length} default segments.`);
+        }
+        
+        // Migrate old segment values to Ostatní ID
+        const [ostatniRows] = await connection.query("SELECT id FROM segments WHERE name = 'Ostatní' LIMIT 1");
+        let ostatniId = (ostatniRows as any[])[0]?.id;
+        
+        if (!ostatniId) {
+          const uuidRes = await connection.query("SELECT UUID() as uuid");
+          ostatniId = (uuidRes[0] as any[])[0].uuid;
+          await connection.query("INSERT INTO segments (id, name, isActive) VALUES (?, 'Ostatní', TRUE)", [ostatniId]);
+        }
+        
+        if (ostatniId) {
+           await connection.query("UPDATE companies SET segment = ? WHERE LENGTH(segment) != 36 AND segment IS NOT NULL AND segment != ''", [ostatniId]);
         }
       } catch (e: any) {
         console.error('[DB INIT] Error seeding segments:', e.message);

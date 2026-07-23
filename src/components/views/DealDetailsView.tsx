@@ -69,9 +69,14 @@ export function DealDetailsView() {
   const handleSave = async () => {
     setSaveError('');
     try {
-      if (formData.urls) {
-         formData.urls = formData.urls.filter(u => u.trim() !== '');
+      const validUrls = (formData.urls || company.urls || []).filter(u => u.trim() !== '');
+      if (validUrls.length === 0) {
+        setSaveError(t('errors.requiredField'));
+        return;
       }
+      
+      formData.urls = validUrls;
+      
       await updateCompany(company.id, formData, currentUser.id);
       await updateDeal(deal.id, dealFormData, currentUser.id);
       setIsEditing(false);
@@ -407,7 +412,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
           </div>
         </div>
         <div className="col-span-2">
-          <label className="block text-gray-500 mb-1">{t('fields.urls')}</label>
+          <label className="block text-gray-500 mb-1">{t('fields.urls')} *</label>
           {(formData.urls || []).map((url: string, index: number) => (
             <div key={index} className="flex gap-2 mb-2">
               <input 
