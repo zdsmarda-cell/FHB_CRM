@@ -107,7 +107,7 @@ export const useStore = create<StoreState>((set, get) => {
           leadSources: data.leadSources || [],
           segments: data.segments || [],
           ecommercePlatforms: data.ecommercePlatforms || [],
-          storageTypes: (data.storageTypes || []).map((s: any) => ({ ...s, isActive: s.isVisible })),
+          storageTypes: data.storageTypes || [],
           itIntegrations: data.itIntegrations || [],
           lostReasons: data.lostReasons || [],
           auditLogs: data.auditLogs || [],
@@ -158,7 +158,7 @@ export const useStore = create<StoreState>((set, get) => {
             leadSources: data.leadSources || [],
             segments: data.segments || [],
             ecommercePlatforms: data.ecommercePlatforms || [],
-            storageTypes: (data.storageTypes || []).map((s: any) => ({ ...s, isActive: s.isVisible })),
+            storageTypes: data.storageTypes || [],
             itIntegrations: data.itIntegrations || [],
             lostReasons: data.lostReasons || [],
             auditLogs: data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : state.auditLogs,
@@ -286,7 +286,7 @@ export const useStore = create<StoreState>((set, get) => {
     
     addStorageType: async (name) => {
       const newType = { id: uuidv4(), name, isActive: true };
-      await syncToDb({ storage_types: [{ ...newType, isVisible: newType.isActive, isActive: undefined }] });
+      await syncToDb({ storage_types: [newType] });
       set(state => ({ storageTypes: [...state.storageTypes, newType] }));
     },
     updateStorageType: async (id, updates) => {
@@ -294,8 +294,7 @@ export const useStore = create<StoreState>((set, get) => {
       const existing = state.storageTypes.find(p => p.id === id);
       if (!existing) return;
       const updated = { ...existing, ...updates };
-      const dbUpdated = { ...updated, isVisible: updated.isActive, isActive: undefined };
-      await syncToDb({ storage_types: [dbUpdated] });
+      await syncToDb({ storage_types: [updated] });
       set(state => ({ storageTypes: state.storageTypes.map(p => p.id === id ? updated : p) }));
     },
     deleteStorageType: async (id) => {

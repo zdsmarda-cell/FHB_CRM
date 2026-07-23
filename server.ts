@@ -110,7 +110,6 @@ async function startServer() {
       }
       // Apply missing column alterations
       const migrations = [
-        "UPDATE deals SET stage='lead_opportunity' WHERE stage='lead';",
         "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
         "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
@@ -134,9 +133,6 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN documents JSON;",
         "ALTER TABLE lead_sources ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE ecommerce_platforms ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
-        "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
-        "UPDATE deals SET closerId = ownerId WHERE (stage = 'discovery_proposal' OR stage = 'contracting' OR stage = 'onboarding') AND ownerId IS NOT NULL;",
-        "UPDATE deals SET farmerId = ownerId WHERE stage = 'farming' AND ownerId IS NOT NULL;",
         "ALTER TABLE activities ADD COLUMN transcript TEXT;",
         "ALTER TABLE activities ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE activities ADD COLUMN participants JSON;",
@@ -157,7 +153,6 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS login_logs (id VARCHAR(50) PRIMARY KEY, userId VARCHAR(50) NOT NULL, timestamp DATETIME NOT NULL, ip VARCHAR(100), resolvedHost VARCHAR(255));",
-        "UPDATE deals SET stage='opportunity' WHERE stage='lead_opportunity';",
         "ALTER TABLE activities ADD COLUMN duration INT;",
         "ALTER TABLE deals ADD COLUMN storageTypeId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN estimatedYearlyParcels INT;",
@@ -167,7 +162,8 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN codUsage JSON;",
         "ALTER TABLE deals ADD COLUMN b2cShare INT;",
 
-        "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;"
+        "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;",
+              "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
       ];
       for (const m of migrations) {
         try {
