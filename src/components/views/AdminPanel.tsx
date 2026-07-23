@@ -85,6 +85,7 @@ export function AdminPanel() {
   const [newLeadSource, setNewLeadSource] = useState('');
   const [newSegment, setNewSegment] = useState('');
   const [newEcommercePlatform, setNewEcommercePlatform] = useState('');
+  const [newStorageType, setNewStorageType] = useState('');
   const [newItIntegration, setNewItIntegration] = useState('');
   const [newLostReason, setNewLostReason] = useState('');
 

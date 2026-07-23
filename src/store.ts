@@ -194,6 +194,7 @@ export const useStore = create<StoreState>((set, get) => {
     leadSources: [],
     segments: [],
     ecommercePlatforms: [],
+  storageTypes: [],
     itIntegrations: [],
     lostReasons: [],
     auditLogs: [],

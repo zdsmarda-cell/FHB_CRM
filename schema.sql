@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS companies (
   contacts JSON
 );
 
+
+CREATE TABLE IF NOT EXISTS storage_types (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  isVisible BOOLEAN DEFAULT TRUE
+);
+INSERT IGNORE INTO storage_types (id, name, isVisible) VALUES ('own', 'Vlastní sklad', TRUE), ('fulfillment', 'Pronajatý sklad (fulfillment)', TRUE);
+
 CREATE TABLE IF NOT EXISTS deals (
   id VARCHAR(50) PRIMARY KEY,
   companyId VARCHAR(50),
@@ -51,6 +59,13 @@ CREATE TABLE IF NOT EXISTS deals (
   farmerId VARCHAR(50),
   leadSourceId VARCHAR(50),
   ecommercePlatformId VARCHAR(50),
+  storageTypeId VARCHAR(50),
+  estimatedYearlyParcels INT,
+  seasonMonths JSON,
+  skuCount INT,
+  productsSold TEXT,
+  codUsage JSON,
+  b2cShare INT,
   estimatedMonthlyParcels INT,
   deliveryCountries JSON,
   averageItemsPerOrder DECIMAL(10,2),

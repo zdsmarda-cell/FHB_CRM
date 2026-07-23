@@ -464,7 +464,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
 
 function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean }) {
   const { t } = useTranslation();
-  const { leadSources, ecommercePlatforms, itIntegrations, updateDeal, currentUser, users } = useStore();
+  const { leadSources, ecommercePlatforms, storageTypes, itIntegrations, updateDeal, currentUser, users } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -522,6 +522,14 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const [formData, setFormData] = useState<Partial<Deal>>({
     leadSourceId: deal.leadSourceId,
     ecommercePlatformId: deal.ecommercePlatformId,
+  
+    storageTypeId: deal.storageTypeId,
+    estimatedYearlyParcels: deal.estimatedYearlyParcels,
+    seasonMonths: deal.seasonMonths || [],
+    skuCount: deal.skuCount,
+    productsSold: deal.productsSold,
+    codUsage: deal.codUsage || [],
+    b2cShare: deal.b2cShare ?? 50,
     deliveryCountries: deal.deliveryCountries || [],
     averageItemsPerOrder: deal.averageItemsPerOrder,
     averageParcelWeight: deal.averageParcelWeight,
@@ -536,6 +544,9 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   });
   
   const [parcelsStr, setParcelsStr] = useState<string>(deal.estimatedMonthlyParcels?.toString() || '');
+  const [yearlyParcelsStr, setYearlyParcelsStr] = useState<string>(deal.estimatedYearlyParcels?.toString() || '');
+  const [skuCountStr, setSkuCountStr] = useState<string>(deal.skuCount?.toString() || '');
+  const [skuCountError, setSkuCountError] = useState<boolean>(false);
   const [parcelsError, setParcelsError] = useState<boolean>(false);
   
   const [itemsStr, setItemsStr] = useState<string>(deal.averageItemsPerOrder?.toString() || '');
@@ -560,6 +571,9 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       integrationTestingCompletedDate: deal.integrationTestingCompletedDate
     });
     setParcelsStr(deal.estimatedMonthlyParcels?.toString() || '');
+    setYearlyParcelsStr(deal.estimatedYearlyParcels?.toString() || '');
+    setSkuCountStr(deal.skuCount?.toString() || '');
+    setSkuCountError(false);
     setParcelsError(false);
     
     setItemsStr(deal.averageItemsPerOrder?.toString() || '');
@@ -739,6 +753,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const lsName = leadSources.find(s => s.id === deal.leadSourceId)?.name || '-';
   const ecName = ecommercePlatforms.find(s => s.id === deal.ecommercePlatformId)?.name || '-';
+  const stName = storageTypes.find(s => s.id === deal.storageTypeId)?.name || '-';
 
   return (
     <div className="mb-8">
@@ -794,6 +809,21 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Stávající skladování</label>
+            <select 
+              value={formData.storageTypeId || ''} 
+              onChange={e => setFormData({ ...formData, storageTypeId: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+            >
+              <option value="">{t('deal.attributes.notSelected')}</option>
+              {storageTypes.filter(st => st.isActive !== false || st.id === deal.storageTypeId).map(st => (
+                <option key={st.id} value={st.id}>{st.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-gray-500 mb-1">{t('deal.attributes.estimatedParcels')} *</label>
             <input 
@@ -814,6 +844,66 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
               <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>
             )}
           </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Odhadovaný počet balíků ročně</label>
+            <input 
+              type="text"
+              value={yearlyParcelsStr} 
+              onChange={e => setYearlyParcelsStr(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Měsíce sezóny</label>
+            <select 
+              multiple
+              value={formData.seasonMonths || []}
+              onChange={e => {
+                const values = Array.from(e.target.selectedOptions, option => option.value);
+                setFormData({ ...formData, seasonMonths: values });
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none h-32"
+            >
+              {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Podržte Ctrl (nebo Cmd) pro výběr více možností.</p>
+          </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Celkový počet SKU</label>
+            <input 
+              type="text"
+              value={skuCountStr} 
+              onChange={e => {
+                const val = e.target.value;
+                setSkuCountStr(val);
+                if (val && (!Number.isInteger(Number(val)) || Number(val) <= 0)) {
+                  setSkuCountError(true);
+                } else {
+                  setSkuCountError(false);
+                }
+              }}
+              className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (skuCountError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
+            />
+            {skuCountError && (
+              <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-gray-500 mb-1">Produkty, které zákazník prodává</label>
+            <textarea
+              value={formData.productsSold || ''} 
+              onChange={e => setFormData({ ...formData, productsSold: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              rows={3}
+            />
+          </div>
+
           
           {showCloserAttributes && (
             <>
@@ -974,10 +1064,32 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
             <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.ecommercePlatform')}</span>
             <span className="text-gray-900 font-medium">{ecName}</span>
           </div>
+
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.estimatedParcels')}</span>
-            <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'}</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Stávající skladování</span>
+            <span className="text-gray-900 font-medium">{stName}</span>
           </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Odhadovaný počet balíků (měsíčně / ročně)</span>
+            <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'} / {deal.estimatedYearlyParcels || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Měsíce sezóny</span>
+            <span className="text-gray-900 font-medium">{deal.seasonMonths?.join(', ') || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Celkový počet SKU</span>
+            <span className="text-gray-900 font-medium">{deal.skuCount || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Produkty, které zákazník prodává</span>
+            <span className="text-gray-900 font-medium">{deal.productsSold || '-'}</span>
+          </div>
+          <div>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">Podíl B2B vs B2C</span>
+            <span className="text-gray-900 font-medium">B2B: {100 - (deal.b2cShare ?? 50)}% / B2C: {deal.b2cShare ?? 50}%</span>
+          </div>
+
           
           {showCloserAttributes && (
             <>

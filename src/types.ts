@@ -83,6 +83,12 @@ export interface LeadSource {
   isActive?: boolean;
 }
 
+export interface StorageType {
+  id: string;
+  name: string;
+  isVisible: boolean;
+}
+
 export interface EcommercePlatform {
   id: string;
   name: string;
@@ -136,6 +142,13 @@ export interface Deal {
   farmerId: string | null;
   leadSourceId?: string;
   ecommercePlatformId?: string;
+  storageTypeId?: string;
+  estimatedYearlyParcels?: number;
+  seasonMonths?: string[];
+  skuCount?: number;
+  productsSold?: string;
+  codUsage?: { countryCode: string; percentage: number }[];
+  b2cShare?: number;
   estimatedMonthlyParcels?: number;
   deliveryCountries?: string[];
   averageItemsPerOrder?: number;
@@ -194,6 +207,7 @@ export interface StoreState {
   leadSources: LeadSource[];
   segments: Segment[];
   ecommercePlatforms: EcommercePlatform[];
+  storageTypes: StorageType[];
   itIntegrations: ITIntegration[];
   lostReasons: LostReason[];
   

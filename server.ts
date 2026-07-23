@@ -159,6 +159,14 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS login_logs (id VARCHAR(50) PRIMARY KEY, userId VARCHAR(50) NOT NULL, timestamp DATETIME NOT NULL, ip VARCHAR(100), resolvedHost VARCHAR(255));",
         "UPDATE deals SET stage='opportunity' WHERE stage='lead_opportunity';",
         "ALTER TABLE activities ADD COLUMN duration INT;",
+        "ALTER TABLE deals ADD COLUMN storageTypeId VARCHAR(50);",
+        "ALTER TABLE deals ADD COLUMN estimatedYearlyParcels INT;",
+        "ALTER TABLE deals ADD COLUMN seasonMonths JSON;",
+        "ALTER TABLE deals ADD COLUMN skuCount INT;",
+        "ALTER TABLE deals ADD COLUMN productsSold TEXT;",
+        "ALTER TABLE deals ADD COLUMN codUsage JSON;",
+        "ALTER TABLE deals ADD COLUMN b2cShare INT;",
+
         "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;"
       ];
       for (const m of migrations) {
@@ -1542,6 +1550,7 @@ async function startServer() {
       const [leadSources] = await pool.query('SELECT * FROM lead_sources');
       const [segments] = await pool.query('SELECT * FROM segments');
       const [ecommercePlatforms] = await pool.query('SELECT * FROM ecommerce_platforms');
+      const [storageTypes] = await pool.query('SELECT * FROM storage_types');
       const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
 
@@ -1567,10 +1576,11 @@ async function startServer() {
         users: parsedUsers,
         me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
-        deals: parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers', 'documents', 'notes']),
+        deals: parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers', 'documents', 'notes', 'seasonMonths', 'codUsage']),
         leadSources: parseJsonFields(leadSources as any[], []),
         segments: parseJsonFields(segments as any[], []),
         ecommercePlatforms: parseJsonFields(ecommercePlatforms as any[], []),
+        storageTypes: parseJsonFields(storageTypes as any[], []),
         itIntegrations: parseJsonFields(itIntegrations as any[], []),
         lostReasons: parseJsonFields(lostReasons as any[], []),
         auditLogs: [],
