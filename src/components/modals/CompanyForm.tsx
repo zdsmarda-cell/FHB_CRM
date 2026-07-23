@@ -14,6 +14,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
   const { t } = useTranslation();
   const { addCompanyAndDeal, currentUser, companies, users, segments } = useStore();
   const [icoError, setIcoError] = useState<string>('');
+  const [urlError, setUrlError] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [hunterId, setHunterId] = useState<string>('');
 
@@ -64,23 +65,40 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     if (!currentUser) return;
     setSubmitAttempted(true);
     setIcoError('');
+    setUrlError('');
     
-    if (!formData.companyId || !formData.name || !formData.address || !formData.email) {
+    const validUrls = (formData.urls || []).filter(u => u.trim() !== '');
+
+    if (!formData.name || !formData.address || validUrls.length === 0) {
       return;
     }
 
     // Check if IČO already exists directly to avoid catching generic errors
-    if (companies.some(c => c.companyId === formData.companyId)) {
-        setIcoError(t('errors.icoExists'));
-        return;
+    if (formData.companyId && formData.companyId.trim() !== '') {
+      if (companies.some(c => c.companyId === formData.companyId?.trim())) {
+          setIcoError(t('errors.icoExists'));
+          return;
+      }
+    }
+
+    // Check if URL already exists
+    const hasUrlConflict = companies.some(c => 
+      c.urls?.some(url => validUrls.includes(url) && url.trim() !== '')
+    );
+
+    if (hasUrlConflict) {
+      setUrlError(t('errors.urlExists', 'Tato URL adresa již existuje v systému.'));
+      return;
     }
 
     try {
-      await addCompanyAndDeal(formData, currentUser.id, hunterId || null);
+      await addCompanyAndDeal({...formData, urls: validUrls}, currentUser.id, hunterId || null);
       onClose();
     } catch (err: any) {
       if (err.message === 'icoExists') {
         setIcoError(t('errors.icoExists'));
+      } else if (err.message === 'urlExists') {
+        setUrlError(t('errors.urlExists', 'Tato URL adresa již existuje v systému.'));
       } else if (err.message && err.message.includes('Unknown column')) {
         setIcoError(t('errors.dbColumnError'));
       } else {
@@ -113,9 +131,8 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')} *</label>
-              <input required value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className={`w-full px-4 py-3 border ${submitAttempted && !formData.companyId ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : (icoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')} rounded-lg shadow-sm text-sm`} />
-              {submitAttempted && !formData.companyId && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')}</label>
+              <input value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className={`w-full px-4 py-3 border ${icoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded-lg shadow-sm text-sm`} />
               {icoError && <p className="mt-1 text-sm text-red-600">{icoError}</p>}
             </div>
             <div>
@@ -175,9 +192,8 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')} *</label>
-              <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className={`w-full px-4 py-3 border ${submitAttempted && !formData.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded-lg shadow-sm text-sm`} />
-              {submitAttempted && !formData.email && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')}</label>
+              <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full px-4 py-3 border border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-lg shadow-sm text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.phone')}</label>
@@ -204,12 +220,14 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">{t('fields.urls')}</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">{t('fields.urls')} *</label>
             {formData.urls.map((url, index) => (
               <div key={index} className="flex gap-2 mb-2">
-                <input value={url} onChange={e => handleUrlChange(index, e.target.value)} placeholder="https://" className="flex-1 px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm" />
+                <input value={url} onChange={e => handleUrlChange(index, e.target.value)} placeholder="https://" className={`flex-1 px-4 py-3 border ${submitAttempted && (formData.urls || []).filter(u => u.trim() !== '').length === 0 ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : (urlError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')} rounded-lg shadow-sm text-sm`} />
               </div>
             ))}
+            {submitAttempted && (formData.urls || []).filter(u => u.trim() !== '').length === 0 && <p className="mt-1 mb-2 text-sm text-red-600">{t('errors.requiredField')}</p>}
+            {urlError && <p className="mt-1 mb-2 text-sm text-red-600">{urlError}</p>}
             <button type="button" onClick={addUrl} className="text-sm text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-800">
               <Plus className="w-4 h-4" /> Add URL
             </button>

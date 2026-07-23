@@ -37,30 +37,48 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
     setFormData(prev => ({ ...prev, country, region, phonePrefix }));
   };
 
+  const [urlError, setUrlError] = useState('');
+
   const handleSaveInfo = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!currentUser) return;
     
     setSubmitAttempted(true);
     setIcoError('');
+    setUrlError('');
     
-    if (!formData.companyId || !formData.name || !formData.address || !formData.email) {
+    const validUrls = (formData.urls || []).filter(u => u.trim() !== '');
+
+    if (!formData.name || !formData.address || validUrls.length === 0) {
       return;
     }
 
-    if (companies.some(c => c.companyId === formData.companyId && c.id !== company.id)) {
-        setIcoError(t('errors.icoExists'));
-        return;
+    if (formData.companyId && formData.companyId.trim() !== '') {
+      if (companies.some(c => c.companyId === formData.companyId?.trim() && c.id !== company.id)) {
+          setIcoError(t('errors.icoExists'));
+          return;
+      }
+    }
+
+    const hasUrlConflict = companies.some(c => 
+      c.id !== company.id && c.urls?.some(url => validUrls.includes(url) && url.trim() !== '')
+    );
+
+    if (hasUrlConflict) {
+      setUrlError(t('errors.urlExists', 'Tato URL adresa již existuje v systému.'));
+      return;
     }
 
     setIsSaving(true);
     try {
-      await updateCompany(company.id, formData, currentUser.id);
+      await updateCompany(company.id, {...formData, urls: validUrls}, currentUser.id);
       onSaveSuccess();
     } catch (err: any) {
       console.error(err);
       if (err.message === 'icoExists') {
         setIcoError(t('errors.icoExists'));
+      } else if (err.message === 'urlExists') {
+        setUrlError(t('errors.urlExists', 'Tato URL adresa již existuje v systému.'));
       } else if (err.message && err.message.includes('Unknown column')) {
         setIcoError(t('errors.dbColumnError'));
       } else {
@@ -145,9 +163,8 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
             <form id="company-form" onSubmit={handleSaveInfo} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')} *</label>
-                  <input type="text" value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.companyId ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : (icoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')}`} />
-                  {submitAttempted && !formData.companyId && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.ico')}</label>
+                  <input type="text" value={formData.companyId} onChange={e => setFormData({...formData, companyId: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${icoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
                   {icoError && <p className="mt-1 text-sm text-red-600">{icoError}</p>}
                 </div>
                 <div>
@@ -189,9 +206,8 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')} *</label>
-                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && !formData.email ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
-                  {submitAttempted && !formData.email && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.email')}</label>
+                  <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className={`w-full px-4 py-2 border rounded-lg focus:ring-1 border-gray-300 focus:border-indigo-500 focus:ring-indigo-500`} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.phone')}</label>
@@ -208,7 +224,7 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-medium text-gray-700">URLs</label>
+                  <label className="block text-sm font-medium text-gray-700">URLs *</label>
                   <button type="button" onClick={() => setFormData({...formData, urls: [...formData.urls, '']})} className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 font-medium"><Plus className="w-3 h-3" /> Přidat URL</button>
                 </div>
                 <div className="space-y-2">
@@ -218,7 +234,7 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                         const newUrls = [...formData.urls];
                         newUrls[i] = e.target.value;
                         setFormData({...formData, urls: newUrls});
-                      }} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500" />
+                      }} className={`flex-1 px-4 py-2 border rounded-lg focus:ring-1 ${submitAttempted && (formData.urls || []).filter(u => u.trim() !== '').length === 0 ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : (urlError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500')}`} />
                       {formData.urls.length > 1 && (
                         <button type="button" onClick={() => {
                           const newUrls = formData.urls.filter((_, idx) => idx !== i);
@@ -227,6 +243,8 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                       )}
                     </div>
                   ))}
+                  {submitAttempted && (formData.urls || []).filter(u => u.trim() !== '').length === 0 && <p className="mt-1 text-sm text-red-600">{t('errors.requiredField')}</p>}
+                  {urlError && <p className="mt-1 text-sm text-red-600">{urlError}</p>}
                 </div>
               </div>
             </form>

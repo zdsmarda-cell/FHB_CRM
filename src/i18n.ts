@@ -118,6 +118,7 @@ const resources = {
       errors: {
         dbColumnError: 'Database structure error (missing column). Please contact the administrator.',
         emailExists: 'This email already exists in the system.',
+        urlExists: 'A company with this URL already exists.',
         contactEmailExists: 'A contact with this email already exists.',
         icoExists: 'Company with this ID already exists.',
         passwordMismatch: 'Passwords do not match.',
@@ -357,6 +358,7 @@ const resources = {
       errors: {
         dbColumnError: 'Chyba databázové struktury (chybějící sloupec). Kontaktujte prosím administrátora.',
         emailExists: 'Zadaný email již v systému existuje.',
+        urlExists: 'Společnost s touto URL adresou již existuje.',
         contactEmailExists: 'Kontakt s tímto emailem již existuje.',
         icoExists: 'Společnost s tímto IČO již existuje.',
         passwordMismatch: 'Hesla se neshodují.',

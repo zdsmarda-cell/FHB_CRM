@@ -445,9 +445,22 @@ export const useStore = create<StoreState>((set, get) => {
 
   addCompanyAndDeal: async (companyData, dealCreatorId, hunterId) => {
     const state = get();
-    const existingCompany = state.companies.find(c => c.companyId === companyData.companyId);
-    if (existingCompany) {
-      throw new Error('icoExists');
+    
+    if (companyData.companyId && companyData.companyId.trim() !== '') {
+      const existingCompany = state.companies.find(c => c.companyId === companyData.companyId?.trim());
+      if (existingCompany) {
+        throw new Error('icoExists');
+      }
+    }
+
+    const validUrls = (companyData.urls || []).filter(u => u.trim() !== '');
+    if (validUrls.length > 0) {
+      const hasUrlConflict = state.companies.some(c => 
+        c.urls?.some(url => validUrls.includes(url) && url.trim() !== '')
+      );
+      if (hasUrlConflict) {
+        throw new Error('urlExists');
+      }
     }
 
     const newCompany: Company = { ...companyData, id: uuidv4(), country: companyData.country || 'Czechia' };
@@ -492,9 +505,21 @@ export const useStore = create<StoreState>((set, get) => {
     if (companyIndex === -1) return;
 
     const oldCompany = state.companies[companyIndex];
-    if (updates.companyId && updates.companyId !== oldCompany.companyId) {
-      if (state.companies.some(c => c.id !== id && c.companyId === updates.companyId)) {
+    if (updates.companyId && updates.companyId.trim() !== '' && updates.companyId !== oldCompany.companyId) {
+      if (state.companies.some(c => c.id !== id && c.companyId === updates.companyId?.trim())) {
         throw new Error('icoExists');
+      }
+    }
+
+    if (updates.urls) {
+      const validUrls = updates.urls.filter(u => u.trim() !== '');
+      if (validUrls.length > 0) {
+        const hasUrlConflict = state.companies.some(c => 
+          c.id !== id && c.urls?.some(url => validUrls.includes(url) && url.trim() !== '')
+        );
+        if (hasUrlConflict) {
+          throw new Error('urlExists');
+        }
       }
     }
 

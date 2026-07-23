@@ -64,10 +64,26 @@ export function DealDetailsView() {
     setIsEditing(true);
   };
 
-  const handleSave = () => {
-    updateCompany(company.id, formData, currentUser.id);
-    updateDeal(deal.id, dealFormData, currentUser.id);
-    setIsEditing(false);
+  const [saveError, setSaveError] = useState('');
+
+  const handleSave = async () => {
+    setSaveError('');
+    try {
+      if (formData.urls) {
+         formData.urls = formData.urls.filter(u => u.trim() !== '');
+      }
+      await updateCompany(company.id, formData, currentUser.id);
+      await updateDeal(deal.id, dealFormData, currentUser.id);
+      setIsEditing(false);
+    } catch (err: any) {
+      if (err.message === 'icoExists') {
+        setSaveError(t('errors.icoExists'));
+      } else if (err.message === 'urlExists') {
+        setSaveError(t('errors.urlExists', 'A company with this URL already exists.'));
+      } else {
+        setSaveError(err.message || t('errors.generalError'));
+      }
+    }
   };
 
   const handleCancel = () => {
@@ -141,13 +157,16 @@ export function DealDetailsView() {
           </button>
         )}
         {isEditing && (
-          <div className="flex gap-2">
-            <button onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
-              {t('common.cancel')}
-            </button>
-            <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">
-              {t('common.save')}
-            </button>
+          <div className="flex flex-col items-end gap-2">
+            {saveError && <p className="text-sm text-red-600 font-medium">{saveError}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleCancel} className="px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors">
+                {t('common.cancel')}
+              </button>
+              <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors">
+                {t('common.save')}
+              </button>
+            </div>
           </div>
         )}
       </div>
