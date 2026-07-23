@@ -1,7 +1,8 @@
 import { User, Deal, Stage, StoreState } from '../types';
 
 export const STAGES: Stage[] = [
-  'lead_opportunity',
+  'opportunity',
+  'lead',
   'discovery_proposal',
   'contracting',
   'onboarding',
@@ -24,7 +25,7 @@ export function canViewStage(user: User | null, stage: Stage): boolean {
   if (stage === 'lost') return true; // lost is visible contextually but usually if you can see the deal
   
   switch (user.role) {
-    case 'hunter': return stage === 'lead_opportunity';
+    case 'hunter': return stage === 'opportunity' || stage === 'lead';
     case 'closer': return stage === 'discovery_proposal' || stage === 'contracting' || stage === 'onboarding';
     case 'farmer': return stage === 'farming';
     default: return false;
@@ -48,7 +49,7 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
 
     // Unassigned rule: user can see deals in their allowed stages if there is no assignee for that stage
     if (canViewStage(user, deal.stage)) {
-      if (deal.stage === 'lead_opportunity' && !deal.hunterId) return true;
+      if ((deal.stage === 'opportunity' || deal.stage === 'lead') && !deal.hunterId) return true;
       if ((deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding') && !deal.closerId) return true;
       if (deal.stage === 'farming' && !deal.farmerId) return true;
       if (deal.stage === 'lost') {
@@ -57,7 +58,7 @@ export function getDealsForUser(state: StoreState, user: User | null): Deal[] {
 
         if (originalStage === 'farming') field = 'farmerId';
         else if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') field = 'closerId';
-        else if (originalStage === 'lead_opportunity') field = 'hunterId';
+        else if (originalStage === 'opportunity' || originalStage === 'lead') field = 'hunterId';
         else if (deal.farmerId !== null) field = 'farmerId';
         else if (deal.closerId !== null) field = 'closerId';
 

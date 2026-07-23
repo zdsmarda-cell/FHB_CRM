@@ -561,7 +561,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     return valid;
   };
 
-  const willAdvanceToDiscovery = deal.stage === 'lead_opportunity' &&
+  const willAdvanceToDiscovery = deal.stage === 'lead' &&
     deal.hunterId &&
     formData.leadSourceId &&
     formData.ecommercePlatformId &&
@@ -1573,7 +1573,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const handleCancelPostpone = () => {
     updateDeal(deal.id, {
-      stage: 'lead_opportunity',
+      stage: 'opportunity',
       postponedUntil: undefined,
       postponedReason: undefined,
       postponedBy: undefined,
@@ -1601,7 +1601,7 @@ function DealActionsManager({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const handleCancelLost = () => {
     updateDeal(deal.id, {
-      stage: 'lead_opportunity',
+      stage: 'opportunity',
       lostPermanently: false,
       lostReasonId: undefined,
       lostReason: undefined,

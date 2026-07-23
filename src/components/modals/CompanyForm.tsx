@@ -25,7 +25,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
 
     return users.filter(user => {
       if (!user.isActive) return false;
-      const hasStagePerm = canViewStage(user, 'lead_opportunity');
+      const hasStagePerm = canViewStage(user, 'opportunity');
       if (!hasStagePerm) return false;
 
       if (isGlobal) {

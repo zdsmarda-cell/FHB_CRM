@@ -13,7 +13,8 @@ const resources = {
         administrator: 'Administrator'
       },
       stages: {
-        lead_opportunity: 'Lead & Opportunity',
+        opportunity: 'Opportunity',
+        lead: 'Lead',
         discovery_proposal: 'Discovery & Proposal',
         contracting: 'Contracting',
         onboarding: 'Onboarding',
@@ -248,7 +249,8 @@ const resources = {
         administrator: 'Administrátor'
       },
       stages: {
-        lead_opportunity: 'Lead & Oportunita',
+        opportunity: 'Oportunita',
+        lead: 'Lead',
         discovery_proposal: 'Discovery & Ponuka',
         contracting: 'Contracting',
         onboarding: 'Onboarding',

@@ -48,7 +48,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
 
   }, [users, currentUser, currentAssigneeId, deal.stage]);
 
-  const willAdvanceToDiscovery = deal.stage === 'lead_opportunity' &&
+  const willAdvanceToDiscovery = deal.stage === 'lead' &&
     currentAssigneeField === 'hunterId' &&
     selectedUser !== '' &&
     deal.leadSourceId &&
@@ -129,7 +129,7 @@ export function ChangeAssigneeModal({ deal, onClose }: Props) {
     }
   };
 
-  const showUnassignOption = (deal.stage === 'lead_opportunity' || deal.stage === 'lost') && currentAssigneeId;
+  const showUnassignOption = (deal.stage === 'opportunity' || deal.stage === 'lead' || deal.stage === 'lost') && currentAssigneeId;
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-900/50 flex flex-col items-center justify-center p-4">

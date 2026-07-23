@@ -25,14 +25,14 @@ const AVATAR_COLORS = [
 
 export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
   const currentStage = stage || deal.stage;
-  if (currentStage === 'lead_opportunity') return deal.hunterId;
+  if (currentStage === 'opportunity' || currentStage === 'lead') return deal.hunterId;
   if (currentStage === 'discovery_proposal' || currentStage === 'contracting' || currentStage === 'onboarding') return deal.closerId;
   if (currentStage === 'farming') return deal.farmerId;
   if (currentStage === 'lost') {
     const originalStage = deal.lostFromStage;
     if (originalStage === 'farming') return deal.farmerId;
     if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') return deal.closerId;
-    if (originalStage === 'lead_opportunity') return deal.hunterId;
+    if (originalStage === 'opportunity' || originalStage === 'lead') return deal.hunterId;
     
     // Fallback if lostFromStage is missing for older deals
     if (deal.farmerId !== null) return deal.farmerId;
@@ -43,14 +43,14 @@ export const getCurrentAssigneeId = (deal: Deal, stage?: Stage) => {
 };
 
 export const getAssigneeField = (stage: Stage, deal?: Deal) => {
-  if (stage === 'lead_opportunity') return 'hunterId';
+  if (stage === 'opportunity' || stage === 'lead') return 'hunterId';
   if (stage === 'discovery_proposal' || stage === 'contracting' || stage === 'onboarding') return 'closerId';
   if (stage === 'farming') return 'farmerId';
   if (stage === 'lost' && deal) {
     const originalStage = deal.lostFromStage;
     if (originalStage === 'farming') return 'farmerId';
     if (originalStage === 'discovery_proposal' || originalStage === 'contracting' || originalStage === 'onboarding') return 'closerId';
-    if (originalStage === 'lead_opportunity') return 'hunterId';
+    if (originalStage === 'opportunity' || originalStage === 'lead') return 'hunterId';
 
     if (deal.farmerId !== null) return 'farmerId';
     if (deal.closerId !== null) return 'closerId';
@@ -178,13 +178,13 @@ export function KanbanBoard() {
       const deal = state.deals.find(d => d.id === dealId);
       if (!deal) return;
       
-      const order = ['lead_opportunity', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
+      const order = ['opportunity', 'lead', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
       const currentIdx = order.indexOf(deal.stage);
       const targetIdx = order.indexOf(stage);
       const isForwardMove = targetIdx > currentIdx && stage !== 'lost';
 
       if (isForwardMove) {
-        if (deal.stage === 'lead_opportunity') {
+        if (deal.stage === 'lead') {
           if (!deal.hunterId) {
             setAlertInfo({ isOpen: true, message: t('errors.kanban.missingHunter') });
             return;
@@ -433,7 +433,7 @@ export function KanbanBoard() {
                                     }
                                     
                                     const willAdvanceToDiscovery = 
-                                      deal.stage === 'lead_opportunity' &&
+                                      deal.stage === 'lead' &&
                                       deal.leadSourceId &&
                                       deal.ecommercePlatformId &&
                                       deal.estimatedMonthlyParcels &&

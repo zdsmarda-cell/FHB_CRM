@@ -422,7 +422,7 @@ export const useStore = create<StoreState>((set, get) => {
     const newDeal: Deal = {
       id: uuidv4(),
       companyId: newCompany.id,
-      stage: 'lead_opportunity',
+      stage: 'opportunity',
       createdBy: dealCreatorId,
       hunterId: hunterId !== undefined ? hunterId : null,
       closerId: null,
@@ -436,7 +436,7 @@ export const useStore = create<StoreState>((set, get) => {
       dealId: newDeal.id,
       field: 'stage',
       oldValue: '',
-      newValue: 'lead_opportunity',
+      newValue: 'opportunity',
       changedBy: dealCreatorId,
       timestamp: new Date().toISOString()
     };
@@ -603,7 +603,7 @@ export const useStore = create<StoreState>((set, get) => {
         hasChanges = true;
         return {
           ...deal,
-          stage: 'lead_opportunity' as Stage, // or 'opportunity', returning to 'lead'
+          stage: 'opportunity' as Stage, // returning to opportunity
           postponedUntil: undefined,
           postponedReason: undefined,
           postponedBy: undefined,

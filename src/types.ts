@@ -1,6 +1,6 @@
 export type Role = 'hunter' | 'closer' | 'farmer' | 'cso' | 'administrator';
 
-export type Stage = 'lead_opportunity' | 'discovery_proposal' | 'contracting' | 'onboarding' | 'farming' | 'lost';
+export type Stage = 'opportunity' | 'lead' | 'discovery_proposal' | 'contracting' | 'onboarding' | 'farming' | 'lost';
 
 export type Region = 'SK_CZ' | 'CEE' | 'DACH' | 'EUROPE' | 'WORLD';
 
