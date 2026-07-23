@@ -1507,7 +1507,7 @@ function ContactForm({
       </div>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Name *</label>
             <input 
@@ -1776,6 +1776,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
   const [activityType, setActivityType] = useState<ActivityType>('meeting');
+  const [duration, setDuration] = useState<number>(60);
   const [activityDate, setActivityDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   const [note, setNote] = useState('');
   const [meetingLink, setMeetingLink] = useState('');
@@ -2049,6 +2050,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const handleSave = async () => {
     if (!currentUser || !note) return;
     
+    const finalDuration = Math.max(1, Math.min(1440, duration || 60));
     let generatedMeetingLink = activityType === 'teams' ? meetingLink : undefined;
     let externalEventId: string | undefined = editingActivityId ? activities.find(a => a.id === editingActivityId)?.externalEventId : undefined;
 
@@ -2059,7 +2061,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     ];
 
     // Call backend to sync if applicable
-    if ((activityType === 'teams' || activityType === 'meeting') && (currentUser.msIntegration?.connected || currentUser.googleIntegration?.connected)) {
+    if ((activityType === 'teams' || activityType === 'meeting' || activityType === 'call') && (currentUser.msIntegration?.connected || currentUser.googleIntegration?.connected)) {
       try {
         const provider = activityType === 'teams' ? 'microsoft' : (currentUser.googleIntegration?.connected ? 'google' : 'microsoft');
         const res = await apiFetch('/api/sync/calendar', {
@@ -2074,7 +2076,8 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               date: activityDate,
               note,
               attendees,
-              externalEventId
+              externalEventId,
+              duration: finalDuration
             }
           })
         });
@@ -2102,8 +2105,9 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
          meetingSummary: activityType === 'teams' ? meetingSummary : undefined,
          participants: [...participants, ...contactEmails], // Storing email or ID
          isVisible,
-         externalEventId
-       });
+         externalEventId,
+        duration: finalDuration
+      });
     } else {
       addActivity({
         dealId: deal.id,
@@ -2116,7 +2120,8 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
         meetingSummary: activityType === 'teams' ? meetingSummary : undefined,
         participants: [...participants, ...contactEmails], // Storing email or ID
         isVisible,
-        externalEventId
+        externalEventId,
+        duration: finalDuration
       });
     }
     
@@ -2140,6 +2145,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
 
     setEditingActivityId(activity.id);
     setActivityType(activity.type);
+    setDuration(activity.duration || (activity.type === 'call' ? 15 : (activity.type === 'teams' || activity.type === 'meeting' ? 60 : 60)));
     setActivityDate(format(parseISO(activity.date || activity.createdAt), "yyyy-MM-dd'T'HH:mm"));
     setNote(activity.note);
     setMeetingLink(activity.meetingLink || '');
@@ -2196,6 +2202,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     setContactEmails([]);
     setIsVisible(true);
     setActivityType('meeting');
+    setDuration(60);
     setActivityDate(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
   };
 
@@ -2374,7 +2381,12 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.activityType', 'Typ aktivity')}</label>
               <select 
                 value={activityType}
-                onChange={(e) => setActivityType(e.target.value as ActivityType)}
+                onChange={(e) => {
+                  const newType = e.target.value as ActivityType;
+                  setActivityType(newType);
+                  if (newType === 'call') setDuration(15);
+                  else if (newType === 'teams' || newType === 'meeting') setDuration(60);
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
               >
                 <option value="meeting">{t('activities.typeMeeting', 'Osobní schůzka')}</option>
@@ -2382,6 +2394,18 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                 <option value="teams">{t('activities.typeTeams', 'Teams schůzka')}</option>
                 <option value="email">{t('activities.typeEmail', 'Email')}</option>
               </select>
+            </div>
+            
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.duration', 'Délka trvání (min)')}</label>
+              <input 
+                type="number"
+                min="1"
+                max="1440"
+                value={duration}
+                onChange={(e) => setDuration(parseInt(e.target.value) || 0)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">{t('activities.dateTime', 'Datum a čas')}</label>

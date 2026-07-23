@@ -21,6 +21,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
     role: 'hunter' as Role,
     managerId: '',
     isActive: true,
+    isTestAccount: false,
     password: '' // Only needed for new users
   });
 
@@ -32,6 +33,7 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
         role: userToEdit.role,
         managerId: userToEdit.managerId || '',
         isActive: userToEdit.isActive,
+        isTestAccount: userToEdit.isTestAccount || false,
         password: '' // Don't show existing password
       });
     }
@@ -54,6 +56,8 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
           role: formData.role,
           managerId: formData.managerId || null,
           isActive: formData.isActive,
+          isTestAccount: formData.isTestAccount,
+          isTestAccount: formData.isTestAccount,
           ...(formData.password ? { passwordHash: hashPassword(formData.password) } : {})
         });
       } else {
@@ -129,6 +133,20 @@ export function UserForm({ userToEdit, onClose }: UserFormProps) {
                 ))}
               </select>
             </div>
+          </div>
+
+          
+          <div className="flex items-center pt-2">
+            <input 
+              type="checkbox" 
+              id="isTestAccount"
+              checked={formData.isTestAccount} 
+              onChange={e => setFormData({...formData, isTestAccount: e.target.checked})} 
+              className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" 
+            />
+            <label htmlFor="isTestAccount" className="ml-2 block text-sm text-gray-900">
+              {t('admin.isTestAccount', 'Testovací účet')}
+            </label>
           </div>
 
           <div className="flex items-center pt-2">

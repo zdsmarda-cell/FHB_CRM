@@ -20,6 +20,7 @@ export interface User {
   passwordHash: string;
   resetToken?: string;
   resetTokenExpiry?: string;
+  isTestAccount?: boolean;
   googleIntegration?: { connected: boolean; tokens?: any } | null;
   msIntegration?: { connected: boolean; tokens?: any } | null;
 }
@@ -67,6 +68,7 @@ export interface Activity {
   createdBy: string;
   createdAt: string;
   meetingLink?: string;
+  duration?: number;
   transcript?: string;
   isVisible?: boolean;
   participants?: string[];

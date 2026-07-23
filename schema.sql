@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   passwordHash TEXT,
   resetToken TEXT,
   resetTokenExpiry DATETIME,
+  isTestAccount BOOLEAN DEFAULT FALSE,
   googleIntegration JSON,
   msIntegration JSON
 );
@@ -118,6 +119,7 @@ CREATE TABLE IF NOT EXISTS activities (
   transcript TEXT,
   createdBy VARCHAR(50),
   meetingLink TEXT,
+  duration INT,
   createdAt DATETIME
 );
 
