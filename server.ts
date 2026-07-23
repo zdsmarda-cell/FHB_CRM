@@ -1880,6 +1880,7 @@ async function runHourlyJob() {
           AND d.hunterId IS NOT NULL 
           AND d.hunterId != ''
           AND a.type IN ('call', 'teams', 'meeting')
+          AND a.date <= NOW()
       `);
       
       const dealsToAdvance = rows as {id: string}[];

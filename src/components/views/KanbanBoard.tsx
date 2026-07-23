@@ -191,10 +191,10 @@ export function KanbanBoard() {
             return;
           }
           const hasRelevantActivity = state.activities.some(
-            (a: any) => a.dealId === deal.id && ['call', 'teams', 'meeting'].includes(a.type)
+            (a: any) => a.dealId === deal.id && ['call', 'teams', 'meeting'].includes(a.type) && new Date(a.date) <= new Date()
           );
           if (!hasRelevantActivity) {
-            setAlertInfo({ isOpen: true, message: 'Nelze posunout: Pro posun z příležitosti musí být v historii alespoň jedna aktivita typu telefon, teams nebo osobní návštěva.' });
+            setAlertInfo({ isOpen: true, message: 'Nelze posunout: Pro posun z příležitosti musí být v historii alespoň jedna proběhlá (v minulosti) aktivita typu telefon, teams nebo osobní návštěva.' });
             return;
           }
         }
