@@ -224,6 +224,9 @@ export interface StoreState {
   deleteLeadSource: (id: string) => Promise<void>;
   updateEcommercePlatform: (id: string, updates: Partial<EcommercePlatform>) => Promise<void>;
   addEcommercePlatform: (name: string) => Promise<void>;
+  updateStorageType: (id: string, updates: Partial<StorageType>) => Promise<void>;
+  addStorageType: (name: string) => Promise<void>;
+  deleteStorageType: (id: string) => Promise<void>;
   deleteEcommercePlatform: (id: string) => Promise<void>;
   updateITIntegration: (id: string, updates: Partial<ITIntegration>) => Promise<void>;
   addITIntegration: (name: string) => Promise<void>;

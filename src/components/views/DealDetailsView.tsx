@@ -558,6 +558,13 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     setFormData({
       leadSourceId: deal.leadSourceId,
       ecommercePlatformId: deal.ecommercePlatformId,
+      storageTypeId: deal.storageTypeId,
+      estimatedYearlyParcels: deal.estimatedYearlyParcels,
+      seasonMonths: deal.seasonMonths || [],
+      skuCount: deal.skuCount,
+      productsSold: deal.productsSold,
+      codUsage: deal.codUsage || [],
+      b2cShare: deal.b2cShare ?? 50,
       deliveryCountries: deal.deliveryCountries || [],
       averageItemsPerOrder: deal.averageItemsPerOrder,
       averageParcelWeight: deal.averageParcelWeight,

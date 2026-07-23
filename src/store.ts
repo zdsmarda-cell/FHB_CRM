@@ -280,6 +280,35 @@ export const useStore = create<StoreState>((set, get) => {
         ecommercePlatforms: state.ecommercePlatforms.map(s => s.id === id ? updated : s)
       }));
     },
+    
+    addStorageType: async (name) => {
+      const newType = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ storage_types: [newType] });
+      set(state => ({ storageTypes: [...state.storageTypes, newType] }));
+    },
+    updateStorageType: async (id, updates) => {
+      const state = get();
+      const existing = state.storageTypes.find(p => p.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ storage_types: [updated] });
+      set(state => ({ storageTypes: state.storageTypes.map(p => p.id === id ? updated : p) }));
+    },
+    deleteStorageType: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'storage_types', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
+      });
+      set(state => ({
+        storageTypes: state.storageTypes.filter(s => s.id !== id)
+      }));
+    },
     deleteEcommercePlatform: async (id) => {
       await apiFetch('/api/delete-entity', {
         method: 'POST',
