@@ -83,6 +83,7 @@ export function AdminPanel() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | undefined>(undefined);
   const [newLeadSource, setNewLeadSource] = useState('');
+  const [newSegment, setNewSegment] = useState('');
   const [newEcommercePlatform, setNewEcommercePlatform] = useState('');
   const [newItIntegration, setNewItIntegration] = useState('');
   const [newLostReason, setNewLostReason] = useState('');
@@ -243,6 +244,47 @@ export function AdminPanel() {
               ))}
               {store.leadSources.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">{t('admin.noLeadSources')}</li>
+              )}
+            </ul>
+          </div>
+          
+          {/* Segments */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.segmentsTitle')}</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newSegment}
+                onChange={e => setNewSegment(e.target.value)}
+                placeholder={t('admin.newSegment')}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newSegment.trim()) {
+                    store.addSegment(newSegment.trim());
+                    setNewSegment('');
+                  }
+                }}
+                disabled={!newSegment.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {t('common.add')}
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.segments.map(s => (
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateSegment(s.id, { name })}
+                  onToggleActive={() => store.updateSegment(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteSegment(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.companies.some(c => c.segment === s.id)}
+                />
+              ))}
+              {store.segments.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">{t('admin.noSegments')}</li>
               )}
             </ul>
           </div>

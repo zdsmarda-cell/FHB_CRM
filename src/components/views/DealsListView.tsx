@@ -11,7 +11,7 @@ import { getDealsForUser, STAGES } from '../../lib/permissions';
 export function DealsListView() {
   const { t } = useTranslation();
   const store = useStore();
-  const { companies, deals, updateCompany, currentUser } = store;
+  const { companies, deals, updateCompany, currentUser, segments } = store;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -316,7 +316,7 @@ export function DealsListView() {
                     <td className="px-6 py-4 font-medium text-gray-900">{company.name}</td>
                     <td className="px-6 py-4 text-gray-500">{company.companyId}</td>
                     <td className="px-6 py-4 text-gray-500">{company.country || 'Czechia'}</td>
-                    <td className="px-6 py-4 text-gray-500">{company.segment ? company.segment.charAt(0).toUpperCase() + company.segment.slice(1) : ''}</td>
+                    <td className="px-6 py-4 text-gray-500">{company.segment ? (segments.find(s => s.id === company.segment)?.name || company.segment.charAt(0).toUpperCase() + company.segment.slice(1)) : ''}</td>
                     <td className="px-6 py-4 text-gray-900 font-medium">{t(`stages.${deal.stage}`)}</td>
                     {currentUser?.role === 'administrator' && (
                       <td className="px-6 py-4">

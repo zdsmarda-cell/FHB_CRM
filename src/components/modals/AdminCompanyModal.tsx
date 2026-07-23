@@ -14,8 +14,9 @@ interface AdminCompanyModalProps {
 
 export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminCompanyModalProps) {
   const { t } = useTranslation();
-  const { updateCompany, currentUser, companies } = useStore();
+  const { updateCompany, currentUser, companies, segments } = useStore();
   const [formData, setFormData] = useState<Company>(company);
+  const activeSegments = React.useMemo(() => segments.filter(s => s.isActive), [segments]);
   const [activeTab, setActiveTab] = useState<'info' | 'contacts'>('info');
   const [isSaving, setIsSaving] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -177,13 +178,11 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.segment')}</label>
-                  <select value={formData.segment} onChange={e => setFormData({...formData, segment: e.target.value as Segment})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                    <option value="fashion">Fashion</option>
-                    <option value="electronics">Electronics</option>
-                    <option value="toys">Toys</option>
-                    <option value="software">Software</option>
-                    <option value="services">Services</option>
-                    <option value="other">Other</option>
+                  <select value={formData.segment || ''} onChange={e => setFormData({...formData, segment: e.target.value})} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    <option value="" disabled>{t('fields.segment')}</option>
+                    {activeSegments.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>

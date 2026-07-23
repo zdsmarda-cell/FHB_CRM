@@ -12,10 +12,12 @@ interface CompanyFormProps {
 
 export function CompanyForm({ onClose }: CompanyFormProps) {
   const { t } = useTranslation();
-  const { addCompanyAndDeal, currentUser, companies, users } = useStore();
+  const { addCompanyAndDeal, currentUser, companies, users, segments } = useStore();
   const [icoError, setIcoError] = useState<string>('');
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [hunterId, setHunterId] = useState<string>('');
+
+  const activeSegments = useMemo(() => segments.filter(s => s.isActive), [segments]);
 
   const selectableUsers = useMemo(() => {
     if (!currentUser) return [];
@@ -43,7 +45,7 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
     address: '',
     country: 'Czechia',
     region: 'SK_CZ',
-    segment: 'fashion',
+    segment: activeSegments.length > 0 ? activeSegments[0].id : '',
     email: '',
     phone: '',
     phonePrefix: getDefaultPhonePrefixForCountry('Czechia'),
@@ -153,13 +155,11 @@ export function CompanyForm({ onClose }: CompanyFormProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">{t('fields.segment')}</label>
-              <select value={formData.segment} onChange={e => setFormData({...formData, segment: e.target.value as Segment})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
-                <option value="fashion">Fashion</option>
-                <option value="electronics">Electronics</option>
-                <option value="toys">Toys</option>
-                <option value="software">Software</option>
-                <option value="services">Services</option>
-                <option value="other">Other</option>
+              <select value={formData.segment || ''} onChange={e => setFormData({...formData, segment: e.target.value})} className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm">
+                <option value="" disabled>{t('fields.segment')}</option>
+                {activeSegments.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </select>
             </div>
             <div>

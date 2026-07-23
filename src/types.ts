@@ -4,7 +4,11 @@ export type Stage = 'opportunity' | 'lead' | 'discovery_proposal' | 'contracting
 
 export type Region = 'SK_CZ' | 'CEE' | 'DACH' | 'EUROPE' | 'WORLD';
 
-export type Segment = 'fashion' | 'electronics' | 'toys' | 'software' | 'services' | 'other'; // Based on GS1 categorization
+export interface Segment {
+  id: string;
+  name: string;
+  isActive?: boolean;
+}
 
 export interface User {
   id: string;
@@ -43,7 +47,7 @@ export interface Company {
   address: string;
   country?: string;
   region: Region;
-  segment: Segment;
+  segment?: string;
   email: string;
   phone: string;
   phonePrefix?: string;
@@ -186,6 +190,7 @@ export interface StoreState {
   currentUser: User | null;
   notifications: Notification[];
   leadSources: LeadSource[];
+  segments: Segment[];
   ecommercePlatforms: EcommercePlatform[];
   itIntegrations: ITIntegration[];
   lostReasons: LostReason[];
@@ -195,6 +200,9 @@ export interface StoreState {
 
   // Actions
   refreshState: () => Promise<void>;
+  updateSegment: (id: string, updates: Partial<Segment>) => Promise<void>;
+  addSegment: (name: string) => Promise<void>;
+  deleteSegment: (id: string) => Promise<void>;
   updateLeadSource: (id: string, updates: Partial<LeadSource>) => Promise<void>;
   addLeadSource: (name: string) => Promise<void>;
   deleteLeadSource: (id: string) => Promise<void>;

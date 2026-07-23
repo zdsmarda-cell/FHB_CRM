@@ -16,7 +16,7 @@ export function DealDetailsView() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const store = useStore();
-  const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal } = store;
+  const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal, segments } = store;
 
   React.useEffect(() => {
     store.refreshState();
@@ -291,6 +291,7 @@ export function DealDetailsView() {
 
 function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) {
   const { t } = useTranslation();
+  const { segments } = useStore();
 
   const handleUrlChange = (index: number, value: string) => {
     const newUrls = [...(formData.urls || [])];
@@ -347,15 +348,13 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
           <label className="block text-gray-500 mb-1">{t('fields.segment')}</label>
           <select 
             value={formData.segment || ''} 
-            onChange={e => setFormData({ ...formData, segment: e.target.value as Segment })}
+            onChange={e => setFormData({ ...formData, segment: e.target.value })}
             className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
           >
-            <option value="fashion">Fashion</option>
-            <option value="electronics">Electronics</option>
-            <option value="toys">Toys</option>
-            <option value="software">Software</option>
-            <option value="services">Services</option>
-            <option value="other">Other</option>
+            <option value="" disabled>{t('fields.segment')}</option>
+            {segments.filter(s => s.isActive || s.id === formData.segment).map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
           </select>
         </div>
         <div>
@@ -417,7 +416,7 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
       </div>
       <div>
         <span className="text-gray-500 block mb-1">{t('fields.segment')}</span>
-        <span className="font-medium text-gray-900 capitalize">{company.segment}</span>
+        <span className="font-medium text-gray-900 capitalize">{segments.find(s => s.id === company.segment)?.name || company.segment}</span>
       </div>
       <div>
         <span className="text-gray-500 block mb-1">{t('fields.email')}</span>

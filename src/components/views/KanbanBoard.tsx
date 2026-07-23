@@ -399,7 +399,7 @@ export function KanbanBoard() {
                       <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-end">
                         <div className="flex flex-col gap-2">
                           <span className="text-[11px] font-semibold text-gray-600 bg-gray-100 px-2 py-1 rounded capitalize w-fit">
-                            {company.segment}
+                            {state.segments.find(s => s.id === company.segment)?.name || company.segment}
                           </span>
                           <span className="text-[11px] text-gray-400 font-medium ml-1">
                             {format(parseISO(deal.updatedAt), 'MMM d')}

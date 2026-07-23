@@ -154,6 +154,7 @@ export const useStore = create<StoreState>((set, get) => {
             companies: data.companies || [],
             deals: data.deals || [],
             leadSources: data.leadSources || [],
+            segments: data.segments || [],
             ecommercePlatforms: data.ecommercePlatforms || [],
             itIntegrations: data.itIntegrations || [],
             lostReasons: data.lostReasons || [],
@@ -191,6 +192,7 @@ export const useStore = create<StoreState>((set, get) => {
     companies: [],
     deals: [],
     leadSources: [],
+    segments: [],
     ecommercePlatforms: [],
     itIntegrations: [],
     lostReasons: [],
@@ -202,6 +204,36 @@ export const useStore = create<StoreState>((set, get) => {
     kanbanUserFilter: null,
     setKanbanUserFilter: (userId) => set({ kanbanUserFilter: userId }),
 
+    addSegment: async (name) => {
+      const newSegment = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ segments: [newSegment] });
+      set(state => ({ segments: [...state.segments, newSegment] }));
+    },
+    updateSegment: async (id, updates) => {
+      const state = get();
+      const existing = state.segments.find(s => s.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ segments: [updated] });
+      set(state => ({
+        segments: state.segments.map(s => s.id === id ? updated : s)
+      }));
+    },
+    deleteSegment: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'segments', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const data = await res.json();
+           throw new Error(data.error || 'Failed to delete');
+        }
+        set(state => ({
+          segments: state.segments.filter(s => s.id !== id)
+        }));
+      });
+    },
     addLeadSource: async (name) => {
       const newSource = { id: uuidv4(), name, isActive: true };
       await syncToDb({ lead_sources: [newSource] });

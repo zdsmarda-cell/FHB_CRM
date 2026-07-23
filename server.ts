@@ -168,6 +168,32 @@ async function startServer() {
         }
       }
       console.log("[DB INIT] Database migrations passed successfully.");
+
+      // Seed segments if empty
+      try {
+        const [rows] = await connection.query("SELECT COUNT(*) as count FROM segments");
+        const count = (rows as any[])[0].count;
+        if (count === 0) {
+          const defaultSegments = [
+            'Textil / fashion',
+            'Obuv',
+            'Domáce potreby',
+            'Kozmetika a drogéria',
+            'Športový tovar',
+            'Elektronika',
+            'Doplnky stravy',
+            'Knihy a časopisy',
+            'Potreby pre domáce zvieratá',
+            'Hračky'
+          ];
+          for (const s of defaultSegments) {
+            await connection.query("INSERT INTO segments (id, name, isActive) VALUES (UUID(), ?, TRUE)", [s]);
+          }
+          console.log(`[DB INIT] Seeded ${defaultSegments.length} default segments.`);
+        }
+      } catch (e: any) {
+        console.error('[DB INIT] Error seeding segments:', e.message);
+      }
       
       // Retroactively fix missing DNS hostnames in login logs
       try {
@@ -1495,6 +1521,7 @@ async function startServer() {
       const [companies] = await pool.query('SELECT * FROM companies');
       const [deals] = await pool.query('SELECT * FROM deals');
       const [leadSources] = await pool.query('SELECT * FROM lead_sources');
+      const [segments] = await pool.query('SELECT * FROM segments');
       const [ecommercePlatforms] = await pool.query('SELECT * FROM ecommerce_platforms');
       const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
@@ -1523,6 +1550,7 @@ async function startServer() {
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
         deals: parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers', 'documents', 'notes']),
         leadSources: parseJsonFields(leadSources as any[], []),
+        segments: parseJsonFields(segments as any[], []),
         ecommercePlatforms: parseJsonFields(ecommercePlatforms as any[], []),
         itIntegrations: parseJsonFields(itIntegrations as any[], []),
         lostReasons: parseJsonFields(lostReasons as any[], []),
@@ -1648,13 +1676,14 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing table or id' });
       }
       
-      const allowedTables = ['lead_sources', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities'];
+      const allowedTables = ['lead_sources', 'segments', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
       }
 
       // Check if there are any deals referencing the entity
       let fkColumn = '';
+      let refTable = 'deals';
       if (table === 'lead_sources') {
         fkColumn = 'leadSourceId';
       } else if (table === 'ecommerce_platforms') {
@@ -1663,14 +1692,17 @@ async function startServer() {
         fkColumn = 'itIntegrationId';
       } else if (table === 'lost_reasons') {
         fkColumn = 'lostReasonId';
+      } else if (table === 'segments') {
+        fkColumn = 'segment';
+        refTable = 'companies';
       }
 
       if (fkColumn) {
-        const [rows] = await pool.query(`SELECT COUNT(*) as count FROM deals WHERE ${fkColumn} = ?`, [id]);
+        const [rows] = await pool.query(`SELECT COUNT(*) as count FROM ${refTable} WHERE ${fkColumn} = ?`, [id]);
         const count = (rows as any[])[0].count;
 
         if (count > 0) {
-          return res.status(400).json({ error: `Cannot delete because there are ${count} deals referencing this entity.` });
+          return res.status(400).json({ error: `Cannot delete because there are ${count} records in ${refTable} referencing this entity.` });
         }
       }
 
