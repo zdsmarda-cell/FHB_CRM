@@ -283,6 +283,10 @@ export function KanbanBoard() {
           }
         }
         if (deal.stage === 'onboarding') {
+          if (!deal.farmerId) {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingFarmer') });
+            return;
+          }
           if (!deal.itIntegrationCompletedDate || !deal.firstStockingDateActual || !deal.integrationTestingCompletedDate) {
             setAlertInfo({ isOpen: true, message: t('errors.kanban.missingOnboardingAttributes', 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.') });
             return;
@@ -404,13 +408,13 @@ export function KanbanBoard() {
 
       {viewMode === 'list' ? (
         <div className="flex-1 overflow-hidden">
-          <DealsListView />
+          <DealsListView showUnassignedOnly={showUnassignedOnly} />
         </div>
       ) : (
         <div className="flex flex-col flex-1 overflow-hidden">
           <div 
             ref={topScrollRef} 
-            className="overflow-x-auto overflow-y-hidden shrink-0"
+            className="overflow-x-auto overflow-y-hidden shrink-0 custom-scrollbar pb-1"
             onScroll={handleTopScroll}
           >
             <div style={{ width: boardScrollWidth, height: 1 }}></div>
@@ -420,7 +424,7 @@ export function KanbanBoard() {
             onDragOver={handleContainerDragOver}
             onDragLeave={stopAutoScroll}
             onScroll={handleBottomScroll}
-            className="overflow-x-auto pb-4 flex-1 mt-1"
+            className="overflow-x-auto pb-4 flex-1 mt-1 custom-scrollbar"
           >
             <div 
               className="flex gap-6 items-start h-full w-max"

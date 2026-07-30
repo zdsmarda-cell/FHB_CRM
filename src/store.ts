@@ -815,6 +815,7 @@ export const useStore = create<StoreState>((set, get) => {
           const localFutureExternal = currentActivities.filter(a => 
             a.type !== 'email' && 
             a.externalEventId && 
+            a.createdBy === state.currentUser?.id &&
             new Date(a.date || a.createdAt) > new Date()
           );
 

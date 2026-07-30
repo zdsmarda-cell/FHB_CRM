@@ -14,7 +14,7 @@ interface AdminCompanyModalProps {
 
 export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminCompanyModalProps) {
   const { t } = useTranslation();
-  const { updateCompany, currentUser, companies, segments } = useStore();
+  const { updateCompany, currentUser, companies, segments, deals } = useStore();
   const [formData, setFormData] = useState<Company>(company);
   const activeSegments = React.useMemo(() => segments.filter(s => s.isActive), [segments]);
   const [activeTab, setActiveTab] = useState<'info' | 'contacts'>('info');
@@ -50,6 +50,14 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
     const validUrls = (formData.urls || []).filter(u => u.trim() !== '');
 
     if (!formData.name || !formData.address || validUrls.length === 0) {
+      return;
+    }
+
+    const companyDeals = deals.filter(d => d.companyId === company.id);
+    const isPastOpportunity = companyDeals.some(d => d.stage !== 'opportunity' && !(d.stage === 'lost' && d.lostFromStage === 'opportunity'));
+    
+    if (isPastOpportunity && (!formData.companyId || formData.companyId.trim() === '')) {
+      setIcoError(t('errors.icoRequiredFromLead'));
       return;
     }
 

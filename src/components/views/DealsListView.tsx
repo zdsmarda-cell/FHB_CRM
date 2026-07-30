@@ -7,8 +7,9 @@ import { AlertModal } from '../modals/AlertModal';
 import { COUNTRIES } from '../../lib/countryMapping';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getDealsForUser, STAGES } from '../../lib/permissions';
+import { getCurrentAssigneeId } from './KanbanBoard';
 
-export function DealsListView() {
+export function DealsListView({ showUnassignedOnly = false }: { showUnassignedOnly?: boolean }) {
   const { t } = useTranslation();
   const store = useStore();
   const { companies, deals, updateCompany, currentUser, segments } = store;
@@ -89,6 +90,10 @@ export function DealsListView() {
       );
     }
 
+    if (showUnassignedOnly) {
+      userDeals = userDeals.filter(d => !getCurrentAssigneeId(d));
+    }
+
     return userDeals.filter(d => {
       const c = companies.find(c => c.id === d.companyId);
       if (!c) return false;
@@ -106,7 +111,7 @@ export function DealsListView() {
 
       return matchesSearch && matchesCountry && matchesStage;
     });
-  }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages]);
+  }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages, showUnassignedOnly]);
 
   const sortedDeals = useMemo(() => {
     let sortableDeals = [...filteredDeals];

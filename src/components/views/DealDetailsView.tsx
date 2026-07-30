@@ -69,6 +69,31 @@ export function DealDetailsView() {
   const handleSave = async () => {
     setSaveError('');
     try {
+      const STAGE_ORDER = ['opportunity', 'lead', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
+      const getStageIdx = (st: string) => STAGE_ORDER.indexOf(st) >= 0 ? STAGE_ORDER.indexOf(st) : 0;
+      const effectiveStage = deal.stage === 'lost' ? (deal.lostFromStage || 'opportunity') : deal.stage;
+      const currentIdx = getStageIdx(effectiveStage);
+
+      if (currentIdx >= getStageIdx('lead') && (!formData.companyId || formData.companyId.trim() === '')) {
+        setSaveError(t('errors.icoRequiredFromLead'));
+        return;
+      }
+
+      if (currentIdx >= getStageIdx('lead') && !dealFormData.hunterId) {
+        setSaveError(t('errors.kanban.hunterRequired', 'Atribut Hunter je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.'));
+        return;
+      }
+
+      if (currentIdx >= getStageIdx('contracting') && !dealFormData.closerId) {
+        setSaveError(t('errors.kanban.closerRequired', 'Atribut Closer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.'));
+        return;
+      }
+
+      if (currentIdx >= getStageIdx('farming') && !dealFormData.farmerId) {
+        setSaveError(t('errors.kanban.farmerRequired', 'Atribut Farmer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.'));
+        return;
+      }
+
       const validUrls = (formData.urls || company.urls || []).filter(u => u.trim() !== '');
       if (validUrls.length === 0) {
         setSaveError(t('errors.requiredField'));
@@ -489,6 +514,18 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
 
   const confirmDeleteOffer = async () => {
     if (!offerToDelete) return;
+
+    const STAGE_ORDER = ['opportunity', 'lead', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
+    const getStageIdx = (st: string) => STAGE_ORDER.indexOf(st) >= 0 ? STAGE_ORDER.indexOf(st) : 0;
+    const effectiveStage = deal.stage === 'lost' ? (deal.lostFromStage || 'opportunity') : deal.stage;
+    const currentIdx = getStageIdx(effectiveStage);
+
+    if (currentIdx >= getStageIdx('contracting') && deal.pricingOffers && deal.pricingOffers.length <= 1) {
+      setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.closerAttributesRequired') });
+      setOfferToDelete(null);
+      return;
+    }
+
     try {
       if (offerToDelete.url) {
         const token = localStorage.getItem('jwt_token');
@@ -639,6 +676,41 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const handleSave = () => {
     if (!currentUser) return;
     
+    const isCleared = (val: any) => val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
+    const STAGE_ORDER = ['opportunity', 'lead', 'discovery_proposal', 'contracting', 'onboarding', 'farming', 'lost'];
+    const getStageIdx = (st: string) => STAGE_ORDER.indexOf(st) >= 0 ? STAGE_ORDER.indexOf(st) : 0;
+    const effectiveStage = deal.stage === 'lost' ? (deal.lostFromStage || 'opportunity') : deal.stage;
+    const currentIdx = getStageIdx(effectiveStage);
+
+    if (currentIdx >= getStageIdx('discovery_proposal')) {
+      if (isCleared(formData.leadSourceId) || isCleared(formData.ecommercePlatformId)) {
+        setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.attributesRequired') });
+        return;
+      }
+      if (!parcelsStr || Number(parcelsStr) <= 0) {
+        setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.attributesRequired') });
+        return;
+      }
+    }
+
+    if (currentIdx >= getStageIdx('contracting')) {
+      if (isCleared(formData.deliveryCountries)) {
+        setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.closerAttributesRequired') });
+        return;
+      }
+      if (!itemsStr || Number(itemsStr) <= 0 || !weightStr || Number(weightStr) <= 0 || !volumeStr || Number(volumeStr) <= 0) {
+        setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.closerAttributesRequired') });
+        return;
+      }
+    }
+
+    if (currentIdx >= getStageIdx('farming')) {
+      if (isCleared(formData.itIntegrationCompletedDate) || isCleared(formData.firstStockingDateActual) || isCleared(formData.integrationTestingCompletedDate)) {
+        setAppAlert({ isOpen: true, title: t('common.error', 'Chyba'), message: t('errors.kanban.onboardingAttributesRequired') });
+        return;
+      }
+    }
+
     if (parcelsStr) {
       const num = Number(parcelsStr);
       if (!Number.isInteger(num) || num <= 0) {
@@ -2190,18 +2262,24 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                  useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
                }
              } else {
-               // Fallback: match by subject/date if externalEventId is empty
+               // Fallback: match by subject/date to avoid duplicates from multiple users
                const existingFallback = activities.find(a => 
-                 a.type !== 'email' && a.dealId === deal.id && !a.externalEventId &&
-                 a.note === ev.subject && a.date && new Date(a.date) > new Date()
+                 a.type !== 'email' && a.dealId === deal.id &&
+                 a.note === ev.subject && a.date && new Date(a.date).getTime() === new Date(ev.date).getTime()
                );
                if (existingFallback && ev.date) {
                  if (new Date(existingFallback.date).getTime() !== new Date(ev.date).getTime() || existingFallback.meetingLink !== ev.link) {
-                   updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link, externalEventId: ev.id });
+                   if (!existingFallback.externalEventId) {
+                     updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link, externalEventId: ev.id });
+                   } else {
+                     updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link });
+                   }
                    useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
                  } else {
-                   // Just save the mapping
-                   updateActivity(existingFallback.id, { externalEventId: ev.id });
+                   // Just save the mapping if not mapped yet
+                   if (!existingFallback.externalEventId) {
+                     updateActivity(existingFallback.id, { externalEventId: ev.id });
+                   }
                  }
                } else if (ev.date) {
                  // Create new activity from calendar!
