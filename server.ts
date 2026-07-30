@@ -894,11 +894,15 @@ async function startServer() {
       }
       
       // Filter if relevantEmails provided
-      if (relevantEmails && relevantEmails.length > 0) {
+      if (relevantEmails !== undefined) {
+        if (relevantEmails.length === 0) {
+          events = [];
+        } else {
           const emailsLower = relevantEmails.map((e: string) => e.toLowerCase());
           events = events.filter(ev => {
              return ev.attendees.some((attObj: string) => emailsLower.includes((attObj || '').toLowerCase()));
           });
+        }
       }
       
       res.json({ events });

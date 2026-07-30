@@ -67,6 +67,14 @@ export function KanbanBoard() {
   const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
   const [lostDealId, setLostDealId] = useState<string | null>(null);
   const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string; }>({ isOpen: false, message: '' });
+  const [showUnassignedOnly, setShowUnassignedOnly] = useState(() => {
+    return localStorage.getItem('kanban_unassigned') === 'true';
+  });
+  
+  useEffect(() => {
+    localStorage.setItem('kanban_unassigned', showUnassignedOnly.toString());
+  }, [showUnassignedOnly]);
+
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('kanban_zoom');
     return saved ? parseFloat(saved) : 1;
@@ -75,6 +83,46 @@ export function KanbanBoard() {
     return (localStorage.getItem('board_view_mode') as 'kanban' | 'list') || 'kanban';
   });
   const navigate = useNavigate();
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [boardScrollWidth, setBoardScrollWidth] = useState(0);
+  const isSyncingTop = useRef(false);
+  const isSyncingBottom = useRef(false);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (scrollContainerRef.current) {
+        setBoardScrollWidth(scrollContainerRef.current.scrollWidth);
+      }
+    };
+    updateWidth();
+    const t = setTimeout(updateWidth, 150);
+    return () => clearTimeout(t);
+  });
+
+  const handleTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingTop.current) {
+      isSyncingTop.current = false;
+      return;
+    }
+    if (scrollContainerRef.current) {
+      isSyncingBottom.current = true;
+      scrollContainerRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
+  const handleBottomScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isSyncingBottom.current) {
+      isSyncingBottom.current = false;
+      return;
+    }
+    if (topScrollRef.current) {
+      isSyncingTop.current = true;
+      topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  };
+
 
   useEffect(() => {
     localStorage.setItem('kanban_zoom', zoomLevel.toString());
@@ -97,6 +145,9 @@ export function KanbanBoard() {
       return company ? company.isVisible !== false : true;
     });
 
+    if (showUnassignedOnly) {
+      deals = deals.filter(d => !getCurrentAssigneeId(d));
+    }
     if (state.kanbanUserFilter) {
       deals = deals.filter(d => 
         d.hunterId === state.kanbanUserFilter || 
@@ -114,7 +165,6 @@ export function KanbanBoard() {
     stage === 'lost'
   );
 
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollIntervalRef = useRef<number | null>(null);
 
   const startAutoScroll = (direction: 'left' | 'right') => {
@@ -187,14 +237,21 @@ export function KanbanBoard() {
 
         if (deal.stage === 'opportunity') {
           if (!deal.hunterId) {
-            setAlertInfo({ isOpen: true, message: 'Nelze posunout: Chybí přiřazený Hunter.' });
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingHunter') });
             return;
           }
+
+          const company = state.companies.find(c => c.id === deal.companyId);
+          if (!company?.companyId || company.companyId.trim() === '') {
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingIco') });
+            return;
+          }
+
           const hasRelevantActivity = state.activities.some(
             (a: any) => a.dealId === deal.id && ['call', 'teams', 'meeting'].includes(a.type) && new Date(a.date) <= new Date()
           );
           if (!hasRelevantActivity) {
-            setAlertInfo({ isOpen: true, message: 'Nelze posunout: Pro posun z příležitosti musí být v historii alespoň jedna proběhlá (v minulosti) aktivita typu telefon, teams nebo osobní návštěva.' });
+            setAlertInfo({ isOpen: true, message: t('errors.kanban.missingActivity') });
             return;
           }
         }
@@ -309,6 +366,15 @@ export function KanbanBoard() {
             <span className="text-xs font-medium w-10 text-center text-gray-700">{Math.round(zoomLevel * 100)}%</span>
             <button onClick={() => setZoomLevel(z => Math.min(1.5, z + 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">+</button>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer ml-4">
+            <input 
+              type="checkbox" 
+              checked={showUnassignedOnly}
+              onChange={(e) => setShowUnassignedOnly(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+            />
+            {t('common.unassignedDeals', 'Nepřiřazené příležitosti')}
+          </label>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -341,14 +407,23 @@ export function KanbanBoard() {
           <DealsListView />
         </div>
       ) : (
-        <div 
-          ref={scrollContainerRef}
-          onDragOver={handleContainerDragOver}
-          onDragLeave={stopAutoScroll}
-          className="overflow-x-auto pb-4 flex-1"
-        >
-        <div 
-          className="flex gap-6 items-start h-full"
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div 
+            ref={topScrollRef} 
+            className="overflow-x-auto overflow-y-hidden shrink-0"
+            onScroll={handleTopScroll}
+          >
+            <div style={{ width: boardScrollWidth, height: 1 }}></div>
+          </div>
+          <div 
+            ref={scrollContainerRef}
+            onDragOver={handleContainerDragOver}
+            onDragLeave={stopAutoScroll}
+            onScroll={handleBottomScroll}
+            className="overflow-x-auto pb-4 flex-1 mt-1"
+          >
+            <div 
+              className="flex gap-6 items-start h-full w-max"
           style={{ zoom: zoomLevel } as any}
         >
           {visibleStages.map(stage => {
@@ -522,8 +597,9 @@ export function KanbanBoard() {
             </div>
           )
         })}
+            </div>
+          </div>
         </div>
-      </div>
       )}
 
       {isFormOpen && (

@@ -547,6 +547,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
   const [yearlyParcelsStr, setYearlyParcelsStr] = useState<string>(deal.estimatedYearlyParcels?.toString() || '');
   const [skuCountStr, setSkuCountStr] = useState<string>(deal.skuCount?.toString() || '');
   const [skuCountError, setSkuCountError] = useState<boolean>(false);
+  const [yearlyParcelsError, setYearlyParcelsError] = useState<boolean>(false);
   const [parcelsError, setParcelsError] = useState<boolean>(false);
   
   const [itemsStr, setItemsStr] = useState<string>(deal.averageItemsPerOrder?.toString() || '');
@@ -582,6 +583,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     setSkuCountStr(deal.skuCount?.toString() || '');
     setSkuCountError(false);
     setParcelsError(false);
+    setYearlyParcelsError(false);
     
     setItemsStr(deal.averageItemsPerOrder?.toString() || '');
     setWeightStr(deal.averageParcelWeight?.toString() || '');
@@ -645,6 +647,22 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
       }
     }
     
+    if (yearlyParcelsStr) {
+      const num = Number(yearlyParcelsStr);
+      if (!Number.isInteger(num) || num <= 0) {
+        setYearlyParcelsError(true);
+        return;
+      }
+    }
+    
+    if (skuCountStr) {
+      const num = Number(skuCountStr);
+      if (!Number.isInteger(num) || num <= 0) {
+        setSkuCountError(true);
+        return;
+      }
+    }
+    
     const validItems = validateDecimal(itemsStr, 'items');
     const validWeight = validateDecimal(weightStr, 'weight');
     const validVolume = validateDecimal(volumeStr, 'volume', false);
@@ -675,6 +693,8 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
     updateDeal(deal.id, {
       ...formData,
       estimatedMonthlyParcels: parcelsStr ? Number(parcelsStr) : undefined,
+      estimatedYearlyParcels: yearlyParcelsStr ? Number(yearlyParcelsStr) : undefined,
+      skuCount: skuCountStr ? Number(skuCountStr) : undefined,
       averageItemsPerOrder: itemsStr ? Number(itemsStr) : undefined,
       averageParcelWeight: weightStr ? Number(weightStr) : undefined,
       averageParcelVolume: volumeStr ? Number(volumeStr) : undefined,
@@ -853,13 +873,24 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
           </div>
 
           <div>
-            <label className="block text-gray-500 mb-1">{t('deal.attributes.estimatedYearlyParcels', 'Odhadovaný počet balíků ročně')}</label>
+            <label className="block text-gray-500 mb-1">{t('deal.attributes.estimatedYearlyParcels', 'Odhadovaný počet objednávek ročně')}</label>
             <input 
               type="text"
               value={yearlyParcelsStr} 
-              onChange={e => setYearlyParcelsStr(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-colors"
+              onChange={e => {
+                setYearlyParcelsStr(e.target.value);
+                const num = Number(e.target.value);
+                if (e.target.value && (!Number.isInteger(num) || num <= 0)) {
+                  setYearlyParcelsError(true);
+                } else {
+                  setYearlyParcelsError(false);
+                }
+              }}
+              className={'w-full px-3 py-2 border rounded outline-none transition-colors ' + (yearlyParcelsError ? 'border-red-500 focus:border-red-600 focus:ring-1 focus:ring-red-600' : 'border-gray-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500')}
             />
+            {yearlyParcelsError && (
+              <p className="mt-1 text-xs text-red-600">{t('deal.attributes.enterValidInteger')}</p>
+            )}
           </div>
 
           <div>
@@ -1164,7 +1195,7 @@ function DealAttributesForm({ deal, canEdit }: { deal: Deal, canEdit: boolean })
             <span className="text-gray-900 font-medium">{stName}</span>
           </div>
           <div>
-            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.estimatedParcelsMonthlyYearly', 'Odhadovaný počet balíků (měsíčně / ročně)')}</span>
+            <span className="text-gray-500 block text-xs uppercase tracking-wider mb-0.5">{t('deal.attributes.estimatedParcelsMonthlyYearly', 'Odhadovaný počet objednávek (měsíčně / ročně)')}</span>
             <span className="text-gray-900 font-medium">{deal.estimatedMonthlyParcels || '-'} / {deal.estimatedYearlyParcels || '-'}</span>
           </div>
           <div>
@@ -2098,6 +2129,11 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
         company.email
       ].filter(Boolean);
 
+      if (relevantEmails.length === 0) {
+        useStore.getState().addNotification(t('deal.activities.noEmailsToSync', 'Nelze synchronizovat aktivity, není zadán e-mail (ani u příležitosti, ani u kontaktu).'), 'info');
+        return;
+      }
+      
       // Sync Emails
       const resEmails = await apiFetch('/api/sync/emails', {
         method: 'POST',

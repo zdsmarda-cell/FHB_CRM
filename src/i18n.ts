@@ -127,7 +127,9 @@ const resources = {
         emailOrPhoneRequired: 'Email or phone is required.',
         kanban: {
           missingHunter: 'First you must assign a hunter before moving to the next stage.',
-          missingAttributes: 'First you must fill in the attributes (Lead source, E-commerce platform, Estimated monthly parcels > 0) before moving to the next stage.',
+          missingIco: 'First you must fill in the Company ID (IČ) before moving to the next stage.',
+          missingActivity: 'First you must have at least one past activity (call, teams, meeting) before moving to the next stage.',
+          missingAttributes: 'First you must fill in the attributes (Lead source, E-commerce platform, Estimated monthly orders > 0) before moving to the next stage.',
           missingCloser: 'First you must assign a closer before moving to the next stage.',
           missingCloserAttributes: 'First you must fill in the product attributes (Delivery countries, items, weight, volume) and add a pricing offer before moving to the next stage.',
           missingFarmer: 'First you must assign a farmer before moving to the next stage.',
@@ -186,12 +188,12 @@ const resources = {
         attributes: {
 
           currentStorage: 'Current storage',
-          estimatedYearlyParcels: 'Estimated yearly parcels',
+          estimatedYearlyParcels: 'Estimated yearly orders',
           seasonMonths: 'Season months',
           totalSku: 'Total SKU',
           productsSold: 'Products sold',
           codUsage: 'COD usage',
-          estimatedParcelsMonthlyYearly: 'Estimated parcels (monthly / yearly)',
+          estimatedParcelsMonthlyYearly: 'Estimated orders (monthly / yearly)',
           selectMonth: '-- Select month --',
           selectCountry: '-- Select country --',
           months: {
@@ -210,7 +212,7 @@ const resources = {
           },
           leadSource: 'Lead source',
           ecommercePlatform: 'E-commerce platform',
-          estimatedParcels: 'Estimated monthly parcels',
+          estimatedParcels: 'Estimated monthly orders',
           deliveryCountries: 'Delivery countries',
           averageItems: 'Average items per order',
           averageWeight: 'Average parcel weight (kg)',
@@ -396,7 +398,9 @@ const resources = {
         emailOrPhoneRequired: 'Zadejte email nebo telefon.',
         kanban: {
           missingHunter: 'Prvně musíte přiřadit huntera (hunter), než můžete posunout do dalšího stavu.',
-          missingAttributes: 'Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet balíků větší jak 0) než můžete posunout do dalšího stavu.',
+          missingIco: 'Před posunem z příležitosti musí být vyplněno IČ (IČO) společnosti.',
+          missingActivity: 'Před posunem z příležitosti musí být v historii alespoň jedna proběhlá (v minulosti) aktivita typu telefon, teams nebo osobní návštěva.',
+          missingAttributes: 'Prvně musíte vyplnit atributy (Zdroj leadu, e-commerce platforma, Odhadovaný měsíční počet objednávek větší jak 0) než můžete posunout do dalšího stavu.',
           missingCloser: 'Prvně musíte přiřadit closera (closer), než můžete posunout do dalšího stavu.',
           missingCloserAttributes: 'Prvně musíte vyplnit atributy produktu (země doručení, počet ks, hmotnost, objem balíku) a přidat cenovou nabídku, než můžete posunout do dalšího stavu.',
           missingFarmer: 'Prvně musíte přiřadit farmera (farmer), než můžete posunout do dalšího stavu.',
@@ -454,12 +458,12 @@ const resources = {
       deal: {
         attributes: {
           currentStorage: 'Stávající skladování',
-          estimatedYearlyParcels: 'Odhadovaný počet balíků ročně',
+          estimatedYearlyParcels: 'Odhadovaný počet objednávek ročně',
           seasonMonths: 'Měsíce sezóny',
           totalSku: 'Celkový počet SKU',
           productsSold: 'Produkty, které zákazník prodává',
           codUsage: 'Používání COD',
-          estimatedParcelsMonthlyYearly: 'Odhadovaný počet balíků (měsíčně / ročně)',
+          estimatedParcelsMonthlyYearly: 'Odhadovaný počet objednávek (měsíčně / ročně)',
           selectMonth: '-- Vyberte měsíc --',
           selectCountry: '-- Vyberte zemi --',
           months: {
@@ -478,7 +482,7 @@ const resources = {
           },
           leadSource: 'Zdroj leadu',
           ecommercePlatform: 'E-commerce platforma',
-          estimatedParcels: 'Odhadovaný měsíční počet balíků',
+          estimatedParcels: 'Odhadovaný měsíční počet objednávek',
           deliveryCountries: 'Země doručení',
           averageItems: 'Průměrný počet ks v objednávce',
           averageWeight: 'Průměrná hmotnost zásilky (kg)',
