@@ -679,7 +679,7 @@ async function startServer() {
       const { tokens } = await oAuth2Client.getToken(code);
       res.json({ tokens });
     } catch (err: any) {
-      console.error(err);
+      console.error('Calendar error:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
@@ -737,7 +737,11 @@ async function startServer() {
           })
         });
         const newTokens = await response.json();
-        if (newTokens.error) throw new Error(newTokens.error_description || newTokens.error);
+        if (newTokens.error) {
+          // Invalidate the MS integration in the database if the refresh token is revoked/invalid
+          await pool.query('UPDATE users SET msIntegration = NULL WHERE id = ?', [userId]);
+          throw new Error('Microsoft authentication expired or revoked. Please sign in again. (' + (newTokens.error_description || newTokens.error) + ')');
+        }
         const mergedTokens = { ...currentTokens, ...newTokens };
         
         // Update user in DB
