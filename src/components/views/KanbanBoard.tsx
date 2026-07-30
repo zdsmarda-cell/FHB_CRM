@@ -156,7 +156,7 @@ export function KanbanBoard() {
       );
     }
     return deals;
-  }, [state, currentUser]);
+  }, [state, currentUser, showUnassignedOnly]);
 
   const visibleStages = STAGES.filter(stage => 
     currentUser?.role === 'administrator' || 
