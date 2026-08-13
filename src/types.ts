@@ -31,6 +31,14 @@ export interface ContactPosition {
   isActive?: boolean;
 }
 
+export interface StageReminder {
+  id: string;
+  stage: Stage;
+  days: number;
+  action?: '' | 'email';
+  color: 'none' | 'yellow' | 'orange' | 'red';
+}
+
 export interface Contact {
   id: string;
   name: string;
@@ -217,6 +225,7 @@ export interface StoreState {
   itIntegrations: ITIntegration[];
   lostReasons: LostReason[];
   contactPositions: ContactPosition[];
+  stageReminders: StageReminder[];
   
   kanbanUserFilter: string | null;
   setKanbanUserFilter: (userId: string | null) => void;
@@ -251,6 +260,10 @@ export interface StoreState {
   updateContactPosition: (id: string, updates: Partial<ContactPosition>) => Promise<void>;
   addContactPosition: (name: string) => Promise<void>;
   deleteContactPosition: (id: string) => Promise<void>;
+  addStageReminder: (reminder: Omit<StageReminder, 'id'>) => Promise<void>;
+  updateStageReminder: (id: string, updates: Partial<StageReminder>) => Promise<void>;
+  deleteStageReminder: (id: string) => Promise<void>;
+  runRemindersCronNow: () => Promise<{ checked: number; sent: number }>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;

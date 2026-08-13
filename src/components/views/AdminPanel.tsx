@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Edit2, UserPlus, CheckCircle2, XCircle, Mail } from 'lucide-react';
+import { Edit2, UserPlus, CheckCircle2, XCircle, Mail, Bell, Play, Trash2, Clock, Plus } from 'lucide-react';
 import { UserForm } from '../modals/UserForm';
-import { User } from '../../types';
+import { User, Stage } from '../../types';
 import { EmailLogsTable } from './EmailLogsTable';
 import { LoginLogsTable } from './LoginLogsTable';
 
@@ -66,13 +66,242 @@ const EditableAttributeItem: React.FC<{
   );
 };
 
+const ReminderSection: React.FC = () => {
+  const { t } = useTranslation();
+  const store = useStore();
+  const { stageReminders, addStageReminder, deleteStageReminder, runRemindersCronNow } = store;
+
+  const [selectedStage, setSelectedStage] = useState<Stage>('opportunity');
+  const [daysInput, setDaysInput] = useState<string>('');
+  const [actionInput, setActionInput] = useState<'' | 'email'>('');
+  const [colorInput, setColorInput] = useState<'none' | 'yellow' | 'orange' | 'red'>('yellow');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [cronStatus, setCronStatus] = useState<string | null>(null);
+  const [isCronRunning, setIsCronRunning] = useState<boolean>(false);
+
+  const stages: { key: Stage; label: string }[] = [
+    { key: 'opportunity', label: '1. Oportunita' },
+    { key: 'lead', label: '2. Lead' },
+    { key: 'discovery_proposal', label: '3. Discovery & Ponuka' },
+    { key: 'contracting', label: '4. Contracting' },
+    { key: 'onboarding', label: '5. Onboarding' },
+    { key: 'farming', label: '6. Farming' },
+  ];
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const days = parseInt(daysInput, 10);
+    if (isNaN(days) || days <= 0) {
+      setErrorMsg('Zadejte platné celé číslo dní větší než 0.');
+      return;
+    }
+
+    const exists = stageReminders.some(r => r.stage === selectedStage && r.days === days);
+    if (exists) {
+      setErrorMsg(t('admin.duplicateDaysError'));
+      return;
+    }
+
+    await addStageReminder({
+      stage: selectedStage,
+      days,
+      action: actionInput,
+      color: colorInput
+    });
+
+    setDaysInput('');
+    setActionInput('');
+    setColorInput('yellow');
+  };
+
+  const handleRunCron = async () => {
+    setIsCronRunning(true);
+    setCronStatus(null);
+    try {
+      const res = await runRemindersCronNow();
+      setCronStatus(`Test spuštěn: Zkontrolováno ${res.checked} příležitostí, odesláno ${res.sent} e-mailů.`);
+    } catch (err: any) {
+      setCronStatus(`Chyba při spuštění cronu: ${err.message}`);
+    } finally {
+      setIsCronRunning(false);
+    }
+  };
+
+  const getColorBadge = (color: string) => {
+    switch (color) {
+      case 'yellow':
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-yellow-100 text-yellow-800 border border-yellow-400">Žlutá</span>;
+      case 'orange':
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-orange-100 text-orange-800 border border-orange-400">Oranžová</span>;
+      case 'red':
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-red-100 text-red-800 border border-red-400">Červená</span>;
+      default:
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-gray-100 text-gray-600 border border-gray-300">Žádná</span>;
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <div>
+          <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-indigo-600" />
+            {t('admin.remindersTitle')}
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {t('admin.remindersDesc')}
+          </p>
+        </div>
+        <button
+          onClick={handleRunCron}
+          disabled={isCronRunning}
+          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
+        >
+          <Play className="w-4 h-4 fill-current" />
+          {isCronRunning ? 'Probíhá kontrola...' : t('admin.runCronNow')}
+        </button>
+      </div>
+
+      {cronStatus && (
+        <div className={`p-4 rounded-lg text-sm font-medium border ${cronStatus.includes('Chyba') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
+          {cronStatus}
+        </div>
+      )}
+
+      {/* Add New Reminder Form */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h4 className="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <Plus className="w-4 h-4 text-indigo-600" />
+          {t('admin.addReminder')}
+        </h4>
+        <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Stav (Fáze)</label>
+            <select
+              value={selectedStage}
+              onChange={e => setSelectedStage(e.target.value as Stage)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {stages.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.daysCount')}</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={daysInput}
+              onChange={e => setDaysInput(e.target.value)}
+              placeholder="Např. 7"
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.action')}</label>
+            <select
+              value={actionInput}
+              onChange={e => setActionInput(e.target.value as any)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">{t('admin.actionNone')}</option>
+              <option value="email">{t('admin.actionEmail')}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.color')}</label>
+            <select
+              value={colorInput}
+              onChange={e => setColorInput(e.target.value as any)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="none">{t('admin.colorNone')}</option>
+              <option value="yellow">{t('admin.colorYellow')}</option>
+              <option value="orange">{t('admin.colorOrange')}</option>
+              <option value="red">{t('admin.colorRed')}</option>
+            </select>
+          </div>
+
+          <div>
+            <button
+              type="submit"
+              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm py-2 px-4 rounded-md transition"
+            >
+              {t('common.add')}
+            </button>
+          </div>
+        </form>
+
+        {errorMsg && (
+          <p className="text-xs text-red-600 mt-2 font-medium">{errorMsg}</p>
+        )}
+      </div>
+
+      {/* Rules list per stage */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {stages.map(stg => {
+          const rules = stageReminders.filter(r => r.stage === stg.key).sort((a, b) => a.days - b.days);
+          return (
+            <div key={stg.key} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
+              <h5 className="font-bold text-gray-800 pb-3 border-b border-gray-100 flex items-center justify-between">
+                <span>{stg.label}</span>
+                <span className="text-xs font-normal text-gray-500">Pravidel: {rules.length}</span>
+              </h5>
+
+              {rules.length === 0 ? (
+                <p className="text-xs text-gray-400 py-4 text-center">Pro tento stav nebyly definovány žádné připomínky.</p>
+              ) : (
+                <ul className="divide-y divide-gray-100 mt-2">
+                  {rules.map(rule => (
+                    <li key={rule.id} className="py-3 flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <div>
+                          <div className="font-semibold text-gray-800">
+                            Po {rule.days} dnech
+                          </div>
+                          <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                            <span>Akce: {rule.action === 'email' ? 'Odeslat e-mail' : 'Žádná'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        {getColorBadge(rule.color)}
+                        <button
+                          onClick={() => deleteStageReminder(rule.id)}
+                          className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition"
+                          title="Smazat pravidlo"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export function AdminPanel() {
   const { t } = useTranslation();
   const store = useStore();
   const { users, currentUser } = store;
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTabDefault = searchParams.get('tab') as 'users' | 'emails' | 'logins' | 'settings' || 'users';
+  const activeTabDefault = (searchParams.get('tab') as 'users' | 'emails' | 'logins' | 'reminders' | 'settings') || 'users';
   const activeTab = activeTabDefault;
   const setActiveTab = (tab: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -138,6 +367,12 @@ export function AdminPanel() {
           className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'logins' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
         >
           {t('admin.loginLogs', 'Přihlášení')}
+        </button>
+        <button
+          onClick={() => setActiveTab('reminders')}
+          className={`pb-3 px-1 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'reminders' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+        >
+          {t('admin.remindersTab', 'Upozornění (Reminder)')}
         </button>
         <button
           onClick={() => setActiveTab('settings')}
@@ -207,6 +442,8 @@ export function AdminPanel() {
         <EmailLogsTable />
       ) : activeTab === 'logins' ? (
         <LoginLogsTable />
+      ) : activeTab === 'reminders' ? (
+        <ReminderSection />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Lead Sources */}

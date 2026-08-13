@@ -165,6 +165,7 @@ async function startServer() {
         "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;",
         "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
+        "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
       ];
       for (const m of migrations) {
         try {
@@ -260,6 +261,25 @@ async function startServer() {
         }
       } catch (e: any) {
         console.error('[DB INIT] Error seeding/migrating contact_positions:', e.message);
+      }
+
+      // Seed stage_reminders if empty
+      try {
+        const [remRows] = await connection.query("SELECT COUNT(*) as count FROM stage_reminders");
+        if ((remRows as any[])[0].count === 0) {
+          const defaultReminders = [
+            { id: uuidv4(), stage: 'opportunity', days: 7, action: '', color: 'yellow' },
+            { id: uuidv4(), stage: 'opportunity', days: 14, action: 'email', color: 'orange' },
+            { id: uuidv4(), stage: 'lead', days: 7, action: '', color: 'yellow' },
+            { id: uuidv4(), stage: 'lead', days: 14, action: 'email', color: 'orange' },
+          ];
+          for (const r of defaultReminders) {
+            await connection.query("INSERT INTO stage_reminders (id, stage, days, action, color) VALUES (?, ?, ?, ?, ?)", [r.id, r.stage, r.days, r.action, r.color]);
+          }
+          console.log(`[DB INIT] Seeded default stage reminders.`);
+        }
+      } catch (e: any) {
+        console.error('[DB INIT] Error seeding stage_reminders:', e.message);
       }
       
       // Retroactively fix missing DNS hostnames in login logs
@@ -1856,6 +1876,7 @@ async function startServer() {
       const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
       const [contactPositions] = await pool.query('SELECT * FROM contact_positions');
+      const [stageReminders] = await pool.query('SELECT * FROM stage_reminders');
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -1887,6 +1908,7 @@ async function startServer() {
         itIntegrations: parseJsonFields(itIntegrations as any[], []),
         lostReasons: parseJsonFields(lostReasons as any[], []),
         contactPositions: parseJsonFields(contactPositions as any[], []),
+        stageReminders: parseJsonFields(stageReminders as any[], []),
         auditLogs: [],
         activities: []
       });
@@ -2009,7 +2031,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing table or id' });
       }
       
-      const allowedTables = ['lead_sources', 'segments', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities', 'storage_types', 'contact_positions'];
+      const allowedTables = ['lead_sources', 'segments', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities', 'storage_types', 'contact_positions', 'stage_reminders'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
       }
@@ -2425,6 +2447,252 @@ setTimeout(() => {
   };
 
   startTeamsActivityWorker();
+
+  // Stage Reminders Processor
+  async function processStageReminders() {
+    console.log('[STAGE REMINDERS] Starting stage reminders check...');
+    const connection = await pool.getConnection();
+    try {
+      const [remindersRows] = await connection.query('SELECT * FROM stage_reminders');
+      const reminders = remindersRows as any[];
+      if (reminders.length === 0) {
+        console.log('[STAGE REMINDERS] No stage reminders configured.');
+        return { checked: 0, sent: 0 };
+      }
+
+      const [dealsRows] = await connection.query('SELECT * FROM deals WHERE stage != "lost"');
+      const deals = dealsRows as any[];
+      if (deals.length === 0) {
+        return { checked: 0, sent: 0 };
+      }
+
+      const [companiesRows] = await connection.query('SELECT * FROM companies');
+      const companies = companiesRows as any[];
+      const [usersRows] = await connection.query('SELECT * FROM users');
+      const users = usersRows as any[];
+      const [leadSourcesRows] = await connection.query('SELECT * FROM lead_sources');
+      const leadSources = leadSourcesRows as any[];
+      const [ecomRows] = await connection.query('SELECT * FROM ecommerce_platforms');
+      const ecomPlatforms = ecomRows as any[];
+      const [storageRows] = await connection.query('SELECT * FROM storage_types');
+      const storageTypes = storageRows as any[];
+      const [itRows] = await connection.query('SELECT * FROM it_integrations');
+      const itIntegrations = itRows as any[];
+      const [segmentsRows] = await connection.query('SELECT * FROM segments');
+      const segments = segmentsRows as any[];
+
+      const companiesMap = new Map(companies.map((c: any) => {
+        let urls = c.urls;
+        if (typeof urls === 'string') { try { urls = JSON.parse(urls); } catch (e) {} }
+        let contacts = c.contacts;
+        if (typeof contacts === 'string') { try { contacts = JSON.parse(contacts); } catch (e) {} }
+        return [c.id, { ...c, urls, contacts }];
+      }));
+
+      const [auditRows] = await connection.query("SELECT * FROM audit_logs WHERE field = 'stage' ORDER BY timestamp DESC");
+      const stageAuditLogs = auditRows as any[];
+
+      const stageLabels: Record<string, string> = {
+        opportunity: '1. Oportunita',
+        lead: '2. Lead',
+        discovery_proposal: '3. Discovery & Ponuka',
+        contracting: '4. Contracting',
+        onboarding: '5. Onboarding',
+        farming: '6. Farming',
+        lost: '7. Lost'
+      };
+
+      let checkedCount = 0;
+      let sentCount = 0;
+      const now = new Date();
+
+      for (const deal of deals) {
+        checkedCount++;
+        const stage = deal.stage;
+        const stageReminders = reminders.filter((r: any) => r.stage === stage);
+        if (stageReminders.length === 0) continue;
+
+        const lastStageLog = stageAuditLogs.find((a: any) => a.dealId === deal.id && (a.newValue === stage || a.field === 'stage'));
+        const stageEntryTime = lastStageLog ? new Date(lastStageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
+        const daysInStage = Math.max(0, Math.floor((now.getTime() - stageEntryTime) / (1000 * 60 * 60 * 24)));
+
+        const matchingEmailRules = stageReminders.filter((r: any) => r.action === 'email' && daysInStage >= r.days);
+        if (matchingEmailRules.length === 0) continue;
+
+        matchingEmailRules.sort((a: any, b: any) => b.days - a.days);
+        const activeRule = matchingEmailRules[0];
+
+        const [existingLogs] = await connection.query(
+          "SELECT id FROM activities WHERE dealId = ? AND type = 'email' AND createdBy = 'System Cron' AND createdAt >= DATE_SUB(NOW(), INTERVAL 20 HOUR)",
+          [deal.id]
+        );
+        if ((existingLogs as any[]).length > 0) {
+          continue;
+        }
+
+        let assignedUserIds: string[] = [];
+        if (stage === 'opportunity' || stage === 'lead') {
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+        } else if (stage === 'discovery_proposal') {
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+        } else if (stage === 'contracting') {
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+        } else if (stage === 'onboarding' || stage === 'farming') {
+          if (deal.farmerId) assignedUserIds.push(deal.farmerId);
+        }
+
+        if (assignedUserIds.length === 0) {
+          if (deal.createdBy) assignedUserIds.push(deal.createdBy);
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+          if (deal.farmerId) assignedUserIds.push(deal.farmerId);
+        }
+
+        assignedUserIds = Array.from(new Set(assignedUserIds));
+        const recipientUsers = users.filter((u: any) => assignedUserIds.includes(u.id) && u.email && u.isActive);
+        if (recipientUsers.length === 0) {
+          console.log(`[STAGE REMINDERS] No active recipient users for deal ${deal.id}`);
+          continue;
+        }
+
+        const company = companiesMap.get(deal.companyId) || { name: 'Neznámá společnost' };
+        const stageName = stageLabels[stage] || stage;
+        const hunterUser = users.find((u: any) => u.id === deal.hunterId);
+        const closerUser = users.find((u: any) => u.id === deal.closerId);
+        const farmerUser = users.find((u: any) => u.id === deal.farmerId);
+        const leadSource = leadSources.find((ls: any) => ls.id === deal.leadSourceId)?.name || '-';
+        const ecommercePlatform = ecomPlatforms.find((e: any) => e.id === deal.ecommercePlatformId)?.name || '-';
+        const storageType = storageTypes.find((s: any) => s.id === deal.storageTypeId)?.name || '-';
+        const itIntegration = itIntegrations.find((it: any) => it.id === deal.itIntegrationId)?.name || '-';
+        const segment = segments.find((s: any) => s.id === company.segment)?.name || company.segment || '-';
+
+        const contactsText = Array.isArray(company.contacts) && company.contacts.length > 0
+          ? company.contacts.map((c: any) => `${c.name}${c.email ? ' <' + c.email + '>' : ''}${c.phone ? ' (' + c.phone + ')' : ''}`).join(', ')
+          : '-';
+
+        const subject = `[Upozornění] Příležitost ${company.name} je ve fázi "${stageName}" již ${daysInStage} dní`;
+
+        const htmlContent = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; color: #1f2937; background-color: #ffffff;">
+            <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 20px;">
+              <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">Upozornění na neaktivitu příležitosti</h2>
+            </div>
+            <p style="font-size: 15px; line-height: 1.5; margin-bottom: 16px;">
+              Dobrý den,<br/>
+              uplynulo <strong style="color: #dc2626; font-size: 16px;">${daysInStage} dnů</strong> od vložení / přesunu příležitosti <strong>${company.name}</strong> do fáze <strong>${stageName}</strong>, aniž by se posunula do dalšího stavu.
+            </p>
+            <div style="background-color: #f3f4f6; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4b5563; margin-bottom: 24px;">
+              <strong>Aktivované pravidlo:</strong> ${activeRule.days} dní bez posunu (Fáze: ${stageName})
+            </div>
+
+            <h3 style="margin-bottom: 12px; color: #111827; font-size: 16px; border-bottom: 1px solid #f3f4f6; padding-bottom: 6px;">Detail příležitosti:</h3>
+            <table style="width: 100%; text-align: left; font-size: 14px; border-collapse: collapse;">
+              <tbody>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280; width: 190px;">Společnost:</td><td style="padding: 6px 0; font-weight: 600; color: #111827;">${company.name}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">IČO:</td><td style="padding: 6px 0;">${company.companyId || '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Region / Segment:</td><td style="padding: 6px 0;">${company.region || '-'} / ${segment}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Adresa:</td><td style="padding: 6px 0;">${company.address || '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">E-mail / Telefon:</td><td style="padding: 6px 0;">${company.email || '-'} / ${company.phone || '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Webové stránky:</td><td style="padding: 6px 0;">${Array.isArray(company.urls) ? company.urls.join(', ') : '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Kontaktní osoby:</td><td style="padding: 6px 0;">${contactsText}</td></tr>
+                <tr style="border-top: 1px dashed #e5e7eb;"><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Aktuální fáze:</td><td style="padding: 6px 0; font-weight: 600; color: #4f46e5;">${stageName}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Zdroj leadu:</td><td style="padding: 6px 0;">${leadSource}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">E-commerce platforma:</td><td style="padding: 6px 0;">${ecommercePlatform}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Typ skladování:</td><td style="padding: 6px 0;">${storageType}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">IT Integrace:</td><td style="padding: 6px 0;">${itIntegration}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Odhad balíků (měs./rok):</td><td style="padding: 6px 0;">${deal.estimatedMonthlyParcels || '-'} / ${deal.estimatedYearlyParcels || '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Hunter / Closer / Farmer:</td><td style="padding: 6px 0;">${hunterUser?.name || '-'} / ${closerUser?.name || '-'} / ${farmerUser?.name || '-'}</td></tr>
+                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Datum vložení:</td><td style="padding: 6px 0;">${deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('cs-CZ') : '-'}</td></tr>
+              </tbody>
+            </table>
+
+            <div style="border-top: 1px solid #e5e7eb; margin-top: 24px; padding-top: 16px; font-size: 12px; color: #9ca3af; text-align: center;">
+              Tato zpráva byla automaticky vygenerována systémem připomínek.
+            </div>
+          </div>
+        `;
+
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'localhost',
+          port: parseInt(process.env.SMTP_PORT || '1025', 10),
+          secure: process.env.SMTP_SECURE === 'true',
+          auth: process.env.SMTP_USER ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS || ''
+          } : undefined
+        });
+
+        for (const recipientUser of recipientUsers) {
+          try {
+            const mailOptions = {
+              from: process.env.SMTP_FROM || 'noreply@crm-system.cz',
+              to: recipientUser.email,
+              subject: subject,
+              html: htmlContent
+            };
+
+            await transporter.sendMail(mailOptions);
+            sentCount++;
+
+            await connection.query(
+              'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
+              [uuidv4(), recipientUser.email, subject, 'sent', null]
+            );
+          } catch (mailErr: any) {
+            console.error(`[STAGE REMINDERS] Error sending mail to ${recipientUser.email}:`, mailErr.message);
+            await connection.query(
+              'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
+              [uuidv4(), recipientUser.email, subject, 'error', mailErr.message || String(mailErr)]
+            );
+          }
+        }
+
+        const recipientNames = recipientUsers.map((u: any) => `${u.name} (${u.email})`).join(', ');
+        const activityNote = `Automatické upozornění (Připomínka ${activeRule.days} dní): Uplynulo ${daysInStage} dnů ve fázi "${stageName}". E-mail odeslán na: ${recipientNames}`;
+        
+        await connection.query(
+          "INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt) VALUES (?, ?, 'email', NOW(), ?, 'System Cron', NOW())",
+          [uuidv4(), deal.id, activityNote]
+        );
+
+        await connection.query(
+          "INSERT INTO audit_logs (id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp) VALUES (?, ?, ?, 'reminder_email', '', ?, 'System Cron', NOW())",
+          [uuidv4(), deal.id, deal.companyId, `Email sent for stage reminder (${daysInStage} days in ${stageName}) to ${recipientNames}`]
+        );
+      }
+
+      console.log(`[STAGE REMINDERS] Finished check. Checked: ${checkedCount}, Sent emails: ${sentCount}`);
+      return { checked: checkedCount, sent: sentCount };
+    } finally {
+      connection.release();
+    }
+  }
+
+  app.post('/api/run-reminders-cron', authMiddleware, async (req, res) => {
+    try {
+      const result = await processStageReminders();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error('Run reminders cron failed:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  let lastCronRunDay = -1;
+  setInterval(async () => {
+    const now = new Date();
+    const currentDay = now.getDate();
+    if (now.getHours() === 0 && now.getMinutes() === 1 && lastCronRunDay !== currentDay) {
+      lastCronRunDay = currentDay;
+      console.log('[CRON] Executing scheduled daily stage reminders check at 00:01...');
+      try {
+        await processStageReminders();
+      } catch (err: any) {
+        console.error('[CRON] Scheduled stage reminders check failed:', err);
+      }
+    }
+  }, 60000);
 }
 
 startServer().catch(console.error);

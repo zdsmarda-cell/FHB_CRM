@@ -163,6 +163,7 @@ export const useStore = create<StoreState>((set, get) => {
             itIntegrations: data.itIntegrations || [],
             lostReasons: data.lostReasons || [],
             contactPositions: data.contactPositions || [],
+            stageReminders: data.stageReminders || [],
             auditLogs: data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : state.auditLogs,
             activities: data.activities && data.activities.length > 0 ? data.activities : state.activities,
             currentUser: data.me || null // keep matching data.me
@@ -203,6 +204,7 @@ export const useStore = create<StoreState>((set, get) => {
     itIntegrations: [],
     lostReasons: [],
     contactPositions: [],
+    stageReminders: [],
     auditLogs: [],
     activities: [],
     notifications: [],
@@ -431,6 +433,47 @@ export const useStore = create<StoreState>((set, get) => {
       set(state => ({
         contactPositions: state.contactPositions.filter(s => s.id !== id)
       }));
+    },
+
+    addStageReminder: async (reminderData) => {
+      const newReminder = { id: uuidv4(), ...reminderData };
+      await syncToDb({ stage_reminders: [newReminder] });
+      set(state => ({ stageReminders: [...state.stageReminders, newReminder] }));
+    },
+    updateStageReminder: async (id, updates) => {
+      const state = get();
+      const existing = state.stageReminders.find(r => r.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ stage_reminders: [updated] });
+      set(state => ({
+        stageReminders: state.stageReminders.map(r => r.id === id ? updated : r)
+      }));
+    },
+    deleteStageReminder: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'stage_reminders', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
+      });
+      set(state => ({
+        stageReminders: state.stageReminders.filter(s => s.id !== id)
+      }));
+    },
+    runRemindersCronNow: async () => {
+      const res = await apiFetch('/api/run-reminders-cron', { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to run cron');
+      }
+      const data = await res.json();
+      await get().refreshState();
+      return { checked: data.checked || 0, sent: data.sent || 0 };
     },
 
     login: async (email, passwordHash) => {

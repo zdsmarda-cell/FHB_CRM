@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
-import { Stage, User, Deal } from '../../types';
+import { Stage, User, Deal, StageReminder, AuditLog } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -58,6 +58,23 @@ export const getAssigneeField = (stage: Stage, deal?: Deal) => {
     return 'hunterId';
   }
   return 'hunterId';
+};
+
+export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[], auditLogs: AuditLog[]) => {
+  if (!stageReminders || stageReminders.length === 0 || deal.stage === 'lost') return 'none';
+  const rules = stageReminders.filter(r => r.stage === deal.stage);
+  if (rules.length === 0) return 'none';
+
+  const stageLog = (auditLogs || []).find(a => a.dealId === deal.id && (a.newValue === deal.stage || a.field === 'stage'));
+  const stageEntryTime = stageLog ? new Date(stageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
+  const now = Date.now();
+  const daysInStage = Math.max(0, Math.floor((now - stageEntryTime) / (1000 * 60 * 60 * 24)));
+
+  const matchingRules = rules.filter(r => daysInStage >= r.days);
+  if (matchingRules.length === 0) return 'none';
+
+  matchingRules.sort((a, b) => b.days - a.days);
+  return matchingRules[0].color || 'none';
 };
 
 export function KanbanBoard() {
@@ -601,6 +618,13 @@ export function KanbanBoard() {
                   const curId = getCurrentAssigneeId(deal);
                   const ownerInfo = curId ? userInitialsAndColors[curId] : null;
 
+                  const reminderColor = getDealReminderColor(deal, state.stageReminders, state.auditLogs);
+                  let cardBorderStyle = 'border-gray-200';
+                  if (reminderColor === 'yellow') cardBorderStyle = 'border-2 border-yellow-400 bg-yellow-50/30';
+                  else if (reminderColor === 'orange') cardBorderStyle = 'border-2 border-orange-500 bg-orange-50/30';
+                  else if (reminderColor === 'red') cardBorderStyle = 'border-2 border-red-500 bg-red-50/30';
+                  else cardBorderStyle = 'border border-gray-200';
+
                   return (
                     <div 
                       key={deal.id}
@@ -608,7 +632,7 @@ export function KanbanBoard() {
                       onDragStart={(e) => handleDragStart(e, deal.id)}
                       onDragEnd={handleDragEnd}
                       onClick={() => navigate(`/deal/${deal.id}`)}
-                      className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group"
+                      className={`bg-white p-4 rounded-xl shadow-sm ${cardBorderStyle} cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600 group-hover:bg-indigo-100 transition-colors">
