@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Edit2, UserPlus, CheckCircle2, XCircle, Mail, Bell, Play, Trash2, Clock, Plus } from 'lucide-react';
+import { Edit2, UserPlus, CheckCircle2, XCircle, Mail, Bell, Play, Trash2, Clock, Plus, X } from 'lucide-react';
 import { UserForm } from '../modals/UserForm';
-import { User, Stage } from '../../types';
+import { User, Stage, StageReminder } from '../../types';
 import { EmailLogsTable } from './EmailLogsTable';
 import { LoginLogsTable } from './LoginLogsTable';
 
@@ -66,10 +66,173 @@ const EditableAttributeItem: React.FC<{
   );
 };
 
+interface EditReminderModalProps {
+  rule: StageReminder | null;
+  onClose: () => void;
+  onSave: (id: string, updates: Partial<StageReminder>) => Promise<void>;
+  existingReminders: StageReminder[];
+}
+
+const EditReminderModal: React.FC<EditReminderModalProps> = ({ rule, onClose, onSave, existingReminders }) => {
+  const { t } = useTranslation();
+  const [stage, setStage] = useState<Stage>(rule?.stage || 'opportunity');
+  const [days, setDays] = useState<string>(rule?.days.toString() || '7');
+  const [action, setAction] = useState<'' | 'email'>(rule?.action || '');
+  const [color, setColor] = useState<'none' | 'yellow' | 'orange' | 'red'>(rule?.color || 'yellow');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (rule) {
+      setStage(rule.stage);
+      setDays(rule.days.toString());
+      setAction(rule.action || '');
+      setColor(rule.color || 'yellow');
+      setErrorMsg(null);
+    }
+  }, [rule]);
+
+  if (!rule) return null;
+
+  const stages: { key: Stage; label: string }[] = [
+    { key: 'opportunity', label: `1. ${t('stages.opportunity')}` },
+    { key: 'lead', label: `2. ${t('stages.lead')}` },
+    { key: 'discovery_proposal', label: `3. ${t('stages.discovery_proposal')}` },
+    { key: 'contracting', label: `4. ${t('stages.contracting')}` },
+    { key: 'onboarding', label: `5. ${t('stages.onboarding')}` },
+    { key: 'farming', label: `6. ${t('stages.farming')}` },
+  ];
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    const parsedDays = parseInt(days, 10);
+    if (isNaN(parsedDays) || parsedDays <= 0) {
+      setErrorMsg(t('admin.daysInvalidError'));
+      return;
+    }
+
+    const isDuplicate = existingReminders.some(
+      r => r.id !== rule.id && r.stage === stage && r.days === parsedDays
+    );
+    if (isDuplicate) {
+      setErrorMsg(t('admin.duplicateDaysError'));
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave(rule.id, {
+        stage,
+        days: parsedDays,
+        action,
+        color
+      });
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err.message || t('errors.generalError'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4 relative">
+        <div className="flex justify-between items-center border-b pb-3">
+          <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-indigo-600" />
+            {t('admin.editReminder')}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.stage')}</label>
+            <select
+              value={stage}
+              onChange={e => setStage(e.target.value as Stage)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              {stages.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.daysCount')}</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={days}
+              onChange={e => setDays(e.target.value)}
+              placeholder={t('admin.daysPlaceholder')}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.action')}</label>
+            <select
+              value={action}
+              onChange={e => setAction(e.target.value as any)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">{t('admin.actionNone')}</option>
+              <option value="email">{t('admin.actionEmail')}</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.color')}</label>
+            <select
+              value={color}
+              onChange={e => setColor(e.target.value as any)}
+              className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="none">{t('admin.colorNone')}</option>
+              <option value="yellow">{t('admin.colorYellow')}</option>
+              <option value="orange">{t('admin.colorOrange')}</option>
+              <option value="red">{t('admin.colorRed')}</option>
+            </select>
+          </div>
+
+          {errorMsg && (
+            <p className="text-xs text-red-600 font-medium">{errorMsg}</p>
+          )}
+
+          <div className="flex justify-end gap-3 pt-3 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 transition disabled:opacity-50"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const ReminderSection: React.FC = () => {
   const { t } = useTranslation();
   const store = useStore();
-  const { stageReminders, addStageReminder, deleteStageReminder, runRemindersCronNow } = store;
+  const { stageReminders, addStageReminder, updateStageReminder, deleteStageReminder, runRemindersCronNow } = store;
 
   const [selectedStage, setSelectedStage] = useState<Stage>('opportunity');
   const [daysInput, setDaysInput] = useState<string>('');
@@ -79,13 +242,15 @@ const ReminderSection: React.FC = () => {
   const [cronStatus, setCronStatus] = useState<string | null>(null);
   const [isCronRunning, setIsCronRunning] = useState<boolean>(false);
 
+  const [editingRule, setEditingRule] = useState<StageReminder | null>(null);
+
   const stages: { key: Stage; label: string }[] = [
-    { key: 'opportunity', label: '1. Oportunita' },
-    { key: 'lead', label: '2. Lead' },
-    { key: 'discovery_proposal', label: '3. Discovery & Ponuka' },
-    { key: 'contracting', label: '4. Contracting' },
-    { key: 'onboarding', label: '5. Onboarding' },
-    { key: 'farming', label: '6. Farming' },
+    { key: 'opportunity', label: `1. ${t('stages.opportunity')}` },
+    { key: 'lead', label: `2. ${t('stages.lead')}` },
+    { key: 'discovery_proposal', label: `3. ${t('stages.discovery_proposal')}` },
+    { key: 'contracting', label: `4. ${t('stages.contracting')}` },
+    { key: 'onboarding', label: `5. ${t('stages.onboarding')}` },
+    { key: 'farming', label: `6. ${t('stages.farming')}` },
   ];
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -93,7 +258,7 @@ const ReminderSection: React.FC = () => {
     setErrorMsg(null);
     const days = parseInt(daysInput, 10);
     if (isNaN(days) || days <= 0) {
-      setErrorMsg('Zadejte platné celé číslo dní větší než 0.');
+      setErrorMsg(t('admin.daysInvalidError'));
       return;
     }
 
@@ -120,9 +285,9 @@ const ReminderSection: React.FC = () => {
     setCronStatus(null);
     try {
       const res = await runRemindersCronNow();
-      setCronStatus(`Test spuštěn: Zkontrolováno ${res.checked} příležitostí, odesláno ${res.sent} e-mailů.`);
+      setCronStatus(t('admin.cronTestResult', { checked: res.checked, sent: res.sent }));
     } catch (err: any) {
-      setCronStatus(`Chyba při spuštění cronu: ${err.message}`);
+      setCronStatus(t('admin.cronError', { error: err.message }));
     } finally {
       setIsCronRunning(false);
     }
@@ -131,18 +296,27 @@ const ReminderSection: React.FC = () => {
   const getColorBadge = (color: string) => {
     switch (color) {
       case 'yellow':
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-yellow-100 text-yellow-800 border border-yellow-400">Žlutá</span>;
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-yellow-100 text-yellow-800 border border-yellow-400">{t('admin.colorYellow')}</span>;
       case 'orange':
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-orange-100 text-orange-800 border border-orange-400">Oranžová</span>;
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-orange-100 text-orange-800 border border-orange-400">{t('admin.colorOrange')}</span>;
       case 'red':
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-red-100 text-red-800 border border-red-400">Červená</span>;
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-red-100 text-red-800 border border-red-400">{t('admin.colorRed')}</span>;
       default:
-        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-gray-100 text-gray-600 border border-gray-300">Žádná</span>;
+        return <span className="px-2 py-0.5 text-xs font-semibold rounded bg-gray-100 text-gray-600 border border-gray-300">{t('admin.colorNone')}</span>;
     }
   };
 
   return (
     <div className="space-y-6">
+      {editingRule && (
+        <EditReminderModal
+          rule={editingRule}
+          onClose={() => setEditingRule(null)}
+          onSave={updateStageReminder}
+          existingReminders={stageReminders}
+        />
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
         <div>
           <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -156,15 +330,15 @@ const ReminderSection: React.FC = () => {
         <button
           onClick={handleRunCron}
           disabled={isCronRunning}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm disabled:opacity-50"
+          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md font-medium text-sm transition-colors shadow-sm disabled:opacity-50 shrink-0"
         >
           <Play className="w-4 h-4 fill-current" />
-          {isCronRunning ? 'Probíhá kontrola...' : t('admin.runCronNow')}
+          {isCronRunning ? t('admin.runningCron') : t('admin.runCronNow')}
         </button>
       </div>
 
       {cronStatus && (
-        <div className={`p-4 rounded-lg text-sm font-medium border ${cronStatus.includes('Chyba') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
+        <div className={`p-4 rounded-lg text-sm font-medium border ${cronStatus.includes('Error') || cronStatus.includes('Chyba') ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'}`}>
           {cronStatus}
         </div>
       )}
@@ -177,7 +351,7 @@ const ReminderSection: React.FC = () => {
         </h4>
         <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Stav (Fáze)</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">{t('admin.stage')}</label>
             <select
               value={selectedStage}
               onChange={e => setSelectedStage(e.target.value as Stage)}
@@ -197,7 +371,7 @@ const ReminderSection: React.FC = () => {
               step="1"
               value={daysInput}
               onChange={e => setDaysInput(e.target.value)}
-              placeholder="Např. 7"
+              placeholder={t('admin.daysPlaceholder')}
               className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
               required
             />
@@ -252,33 +426,44 @@ const ReminderSection: React.FC = () => {
             <div key={stg.key} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
               <h5 className="font-bold text-gray-800 pb-3 border-b border-gray-100 flex items-center justify-between">
                 <span>{stg.label}</span>
-                <span className="text-xs font-normal text-gray-500">Pravidel: {rules.length}</span>
+                <span className="text-xs font-normal text-gray-500">{t('admin.rulesCount', { count: rules.length })}</span>
               </h5>
 
               {rules.length === 0 ? (
-                <p className="text-xs text-gray-400 py-4 text-center">Pro tento stav nebyly definovány žádné připomínky.</p>
+                <p className="text-xs text-gray-400 py-4 text-center">{t('admin.noRulesForStage')}</p>
               ) : (
                 <ul className="divide-y divide-gray-100 mt-2">
                   {rules.map(rule => (
                     <li key={rule.id} className="py-3 flex items-center justify-between text-sm">
                       <div className="flex items-center gap-3">
-                        <Clock className="w-4 h-4 text-gray-400" />
+                        <Clock className="w-4 h-4 text-gray-400 shrink-0" />
                         <div>
                           <div className="font-semibold text-gray-800">
-                            Po {rule.days} dnech
+                            {t('admin.afterXDays', { days: rule.days })}
                           </div>
                           <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                            <span>Akce: {rule.action === 'email' ? 'Odeslat e-mail' : 'Žádná'}</span>
+                            <span>
+                              {t('admin.actionLabel', {
+                                action: rule.action === 'email' ? t('admin.actionEmailShort') : t('admin.actionNoneShort')
+                              })}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
                         {getColorBadge(rule.color)}
                         <button
+                          onClick={() => setEditingRule(rule)}
+                          className="text-gray-400 hover:text-indigo-600 p-1.5 rounded-md hover:bg-indigo-50 transition"
+                          title={t('admin.editRule')}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => deleteStageReminder(rule.id)}
-                          className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition"
-                          title="Smazat pravidlo"
+                          className="text-gray-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-50 transition"
+                          title={t('admin.deleteRule')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
