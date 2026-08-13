@@ -16,7 +16,7 @@ export function DealDetailsView() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const store = useStore();
-  const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal, segments } = store;
+  const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal, segments, contactPositions } = store;
 
   React.useEffect(() => {
     store.refreshState();
@@ -1466,7 +1466,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
   const [newContact, setNewContact] = useState<Partial<Contact>>({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const { updateCompany, currentUser, users, companies } = useStore();
+  const { updateCompany, currentUser, users, companies, contactPositions } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [showAllContacts, setShowAllContacts] = useState(false);
@@ -1724,7 +1724,9 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">{contact.position}</p>
+                <p className="text-sm text-gray-500">
+                  {contactPositions.find(p => p.id === contact.position || p.name === contact.position)?.name || contact.position}
+                </p>
                 <div className="mt-2 text-sm text-gray-600 flex flex-col gap-1">
                   {contact.email && (
                     <div className="flex items-center gap-2 relative w-fit">
@@ -1817,6 +1819,7 @@ function ContactForm({
   defaultPrefix,
   emailError
 }: any) {
+  const { contactPositions } = useStore();
   const missingEmailPhone = submitAttempted && !contact.email && !contact.phone;
 
   // Initialize phonePrefix if needed
@@ -1859,11 +1862,16 @@ function ContactForm({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Position *</label>
-            <input 
+            <select 
               value={contact.position || ''} 
               onChange={e => setContact({...contact, position: e.target.value})} 
-              className={`w-full px-3 py-2 border ${submitAttempted && !contact.position ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
-            />
+              className={`w-full px-3 py-2 border ${submitAttempted && !contact.position ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none bg-white`} 
+            >
+              <option value="">-- Vyberte pozici --</option>
+              {contactPositions.filter((p: any) => p.isActive || p.id === contact.position || p.name === contact.position).map((p: any) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
             {submitAttempted && !contact.position && <p className="mt-1 text-xs text-red-600">{t('errors.requiredField')}</p>}
           </div>
         </div>

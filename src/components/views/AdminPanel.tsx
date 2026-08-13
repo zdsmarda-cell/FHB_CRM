@@ -88,6 +88,7 @@ export function AdminPanel() {
   const [newStorageType, setNewStorageType] = useState('');
   const [newItIntegration, setNewItIntegration] = useState('');
   const [newLostReason, setNewLostReason] = useState('');
+  const [newContactPosition, setNewContactPosition] = useState('');
 
   React.useEffect(() => {
     store.refreshState();
@@ -450,6 +451,47 @@ export function AdminPanel() {
               ))}
               {store.lostReasons.length === 0 && (
                 <li className="py-3 text-sm text-gray-500">{t('admin.noLostReasons')}</li>
+              )}
+            </ul>
+          </div>
+
+          {/* Contact Positions */}
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">{t('admin.contactPositionsTitle')}</h3>
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={newContactPosition}
+                onChange={e => setNewContactPosition(e.target.value)}
+                placeholder={t('admin.newContactPosition')}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"
+              />
+              <button 
+                onClick={() => {
+                  if (newContactPosition.trim()) {
+                    store.addContactPosition(newContactPosition.trim());
+                    setNewContactPosition('');
+                  }
+                }}
+                disabled={!newContactPosition.trim()}
+                className="px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {t('common.add')}
+              </button>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {store.contactPositions.map(s => (
+                <EditableAttributeItem
+                  key={s.id}
+                  item={s}
+                  onUpdateName={(name) => store.updateContactPosition(s.id, { name })}
+                  onToggleActive={() => store.updateContactPosition(s.id, { isActive: !s.isActive })}
+                  onDelete={() => store.deleteContactPosition(s.id).catch(err => alert(err.message))}
+                  isDeleteDisabled={store.companies.some(c => (c.contacts || []).some(contact => contact.position === s.id))}
+                />
+              ))}
+              {store.contactPositions.length === 0 && (
+                <li className="py-3 text-sm text-gray-500">{t('admin.noContactPositions')}</li>
               )}
             </ul>
           </div>

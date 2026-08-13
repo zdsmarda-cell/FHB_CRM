@@ -110,6 +110,7 @@ export const useStore = create<StoreState>((set, get) => {
           storageTypes: data.storageTypes || [],
           itIntegrations: data.itIntegrations || [],
           lostReasons: data.lostReasons || [],
+          contactPositions: data.contactPositions || [],
           auditLogs: data.auditLogs || [],
           activities: data.activities || [],
           currentUser: data.me || null
@@ -161,6 +162,7 @@ export const useStore = create<StoreState>((set, get) => {
             storageTypes: data.storageTypes || [],
             itIntegrations: data.itIntegrations || [],
             lostReasons: data.lostReasons || [],
+            contactPositions: data.contactPositions || [],
             auditLogs: data.auditLogs && data.auditLogs.length > 0 ? data.auditLogs : state.auditLogs,
             activities: data.activities && data.activities.length > 0 ? data.activities : state.activities,
             currentUser: data.me || null // keep matching data.me
@@ -200,6 +202,7 @@ export const useStore = create<StoreState>((set, get) => {
   storageTypes: [],
     itIntegrations: [],
     lostReasons: [],
+    contactPositions: [],
     auditLogs: [],
     activities: [],
     notifications: [],
@@ -397,6 +400,36 @@ export const useStore = create<StoreState>((set, get) => {
       });
       set(state => ({
         lostReasons: state.lostReasons.filter(s => s.id !== id)
+      }));
+    },
+    addContactPosition: async (name) => {
+      const newPosition = { id: uuidv4(), name, isActive: true };
+      await syncToDb({ contact_positions: [newPosition] });
+      set(state => ({ contactPositions: [...state.contactPositions, newPosition] }));
+    },
+    updateContactPosition: async (id, updates) => {
+      const state = get();
+      const existing = state.contactPositions.find(p => p.id === id);
+      if (!existing) return;
+      const updated = { ...existing, ...updates };
+      await syncToDb({ contact_positions: [updated] });
+      set(state => ({
+        contactPositions: state.contactPositions.map(p => p.id === id ? updated : p)
+      }));
+    },
+    deleteContactPosition: async (id) => {
+      await apiFetch('/api/delete-entity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ table: 'contact_positions', id })
+      }).then(async (res) => {
+        if (!res.ok) {
+           const err = await res.json();
+           throw new Error(err.error || 'Failed to delete');
+        }
+      });
+      set(state => ({
+        contactPositions: state.contactPositions.filter(s => s.id !== id)
       }));
     },
 

@@ -163,7 +163,8 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN b2cShare INT;",
 
         "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;",
-              "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
+        "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
+        "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
       ];
       for (const m of migrations) {
         try {
@@ -214,6 +215,51 @@ async function startServer() {
         }
       } catch (e: any) {
         console.error('[DB INIT] Error seeding segments:', e.message);
+      }
+
+      // Seed contact_positions if empty & clear positions of existing contacts
+      try {
+        const [rows] = await connection.query("SELECT COUNT(*) as count FROM contact_positions");
+        const count = (rows as any[])[0].count;
+        if (count === 0) {
+          const defaultPositions = [
+            'CEO / Majitel',
+            'C-Level / Ředitel',
+            'Logistický manažer',
+            'E-commerce Manager',
+            'Nákupčí / Sourcing Manager',
+            'IT / Provozní manažer',
+            'Finanční ředitel / CFO',
+            'Ostatní'
+          ];
+          for (const p of defaultPositions) {
+            await connection.query("INSERT INTO contact_positions (id, name, isActive) VALUES (UUID(), ?, TRUE)", [p]);
+          }
+          console.log(`[DB INIT] Seeded ${defaultPositions.length} default contact positions.`);
+        }
+
+        // Clear position attribute for existing contacts in companies table
+        const [comps] = await connection.query("SELECT id, contacts FROM companies");
+        for (const comp of comps as any[]) {
+          if (comp.contacts) {
+            let contactsArr = typeof comp.contacts === 'string' ? JSON.parse(comp.contacts) : comp.contacts;
+            if (Array.isArray(contactsArr) && contactsArr.length > 0) {
+              let modified = false;
+              contactsArr = contactsArr.map((c: any) => {
+                if (c.position !== undefined && c.position !== '') {
+                  modified = true;
+                  return { ...c, position: '' };
+                }
+                return c;
+              });
+              if (modified) {
+                await connection.query("UPDATE companies SET contacts = ? WHERE id = ?", [JSON.stringify(contactsArr), comp.id]);
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        console.error('[DB INIT] Error seeding/migrating contact_positions:', e.message);
       }
       
       // Retroactively fix missing DNS hostnames in login logs
@@ -1650,67 +1696,67 @@ async function startServer() {
               </thead>
               <tbody>
                 <tr>
-                  <td><b>Identifikace firmy (IČO)</b></td>
+                  <td><b>${isCS ? 'Identifikace firmy (IČO)' : 'Company ID (IČO)'}</b></td>
                   <td><code>companyId</code></td>
                   <td>${isCS ? 'Identifikační číslo firmy. Povinné pro posun z Opportunity.' : 'Company registration ID. Required to advance from Opportunity.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Zdroj leadu</b></td>
+                  <td><b>${isCS ? 'Zdroj leadu' : 'Lead Source'}</b></td>
                   <td><code>leadSourceId</code></td>
                   <td>${isCS ? 'Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinné pro Lead.' : 'Acquisition source. Required for Lead stage.'}</td>
                 </tr>
                 <tr>
-                  <td><b>E-commerce platforma</b></td>
+                  <td><b>${isCS ? 'E-commerce platforma' : 'E-commerce Platform'}</b></td>
                   <td><code>ecommercePlatformId</code></td>
                   <td>${isCS ? 'E-shopové řešení (Shoptet, WooCommerce, Custom API). Povinné pro Lead.' : 'E-commerce platform. Required for Lead stage.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Měsíční počet balíků</b></td>
+                  <td><b>${isCS ? 'Měsíční počet balíků' : 'Estimated Monthly Parcels'}</b></td>
                   <td><code>estimatedMonthlyParcels</code></td>
                   <td>${isCS ? 'Odhadovaný měsíční objem zásilek (>0). Povinné pro Lead.' : 'Estimated monthly parcel volume (>0). Required for Lead stage.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Doručovací země</b></td>
+                  <td><b>${isCS ? 'Doručovací země' : 'Delivery Countries'}</b></td>
                   <td><code>deliveryCountries</code></td>
                   <td>${isCS ? 'Cílové země doručování (multi-select). Povinné pro Discovery.' : 'Target delivery countries (multi-select). Required for Discovery.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Kusovost na objednávku</b></td>
+                  <td><b>${isCS ? 'Kusovost na objednávku' : 'Average Items Per Order'}</b></td>
                   <td><code>averageItemsPerOrder</code></td>
                   <td>${isCS ? 'Průměrný počet kusů v balíku. Povinné pro Discovery.' : 'Average items per order. Required for Discovery.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Váha & Objem balíku</b></td>
+                  <td><b>${isCS ? 'Váha & Objem balíku' : 'Parcel Weight & Volume'}</b></td>
                   <td><code>averageParcelWeight / Volume</code></td>
                   <td>${isCS ? 'Průměrná váha (kg) a objem (m³). Povinné pro Discovery.' : 'Average weight (kg) and volume (m³). Required for Discovery.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Cenová nabídka (Offers)</b></td>
+                  <td><b>${isCS ? 'Cenová nabídka (Offers)' : 'Pricing Offers'}</b></td>
                   <td><code>pricingOffers</code></td>
                   <td>${isCS ? 'Nahraný PDF dokument nabídky. Povinné pro Discovery.' : 'Uploaded offer PDF document. Required for Discovery.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Smluvní data</b></td>
+                  <td><b>${isCS ? 'Smluvní data' : 'Contract Dates'}</b></td>
                   <td><code>contractSignedDate / pricingUploadedDate</code></td>
                   <td>${isCS ? 'Datum podpisu smlouvy a nahraní ceníku. Povinné pro Contracting.' : 'Contract signed & pricing upload dates. Required for Contracting.'}</td>
                 </tr>
                 <tr>
-                  <td><b>IT Integrace ID</b></td>
+                  <td><b>${isCS ? 'IT Integrace ID' : 'IT Integration ID'}</b></td>
                   <td><code>itIntegrationId</code></td>
                   <td>${isCS ? 'Typ IT propojení ze systémového číselníku. Povinné pro Contracting.' : 'Selected IT integration type. Required for Contracting.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Dokončení IT & Naskladnění</b></td>
+                  <td><b>${isCS ? 'Dokončení IT & Naskladnění' : 'IT Completion & First Stocking'}</b></td>
                   <td><code>itIntegrationCompletedDate / firstStockingDateActual</code></td>
                   <td>${isCS ? 'Skutečná data dokončení integrace a 1. naskladnění. Povinné pro Farming.' : 'Actual IT completion and first stocking dates. Required for Farming.'}</td>
                 </tr>
                 <tr>
-                  <td><b>UAT Testování</b></td>
+                  <td><b>${isCS ? 'UAT Testování' : 'UAT Testing'}</b></td>
                   <td><code>integrationTestingCompletedDate</code></td>
                   <td>${isCS ? 'Potvrzení o dokončení testování zkušebních zakázek. Povinné pro Farming.' : 'Confirmed completion of UAT order testing. Required for Farming.'}</td>
                 </tr>
                 <tr>
-                  <td><b>Kontaktní osoby & DNC</b></td>
+                  <td><b>${isCS ? 'Kontaktní osoby & DNC' : 'Contacts & DNC Status'}</b></td>
                   <td><code>contacts / doNotContact</code></td>
                   <td>${isCS ? 'E-maily, telefony a prvek "Nechce kontaktovat (DNC)" s časovým razítkem.' : 'Emails, phone numbers, and "Do Not Contact (DNC)" status with timestamp.'}</td>
                 </tr>
@@ -1809,6 +1855,7 @@ async function startServer() {
       const [storageTypes] = await pool.query('SELECT * FROM storage_types');
       const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
+      const [contactPositions] = await pool.query('SELECT * FROM contact_positions');
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -1839,6 +1886,7 @@ async function startServer() {
         storageTypes: parseJsonFields(storageTypes as any[], []),
         itIntegrations: parseJsonFields(itIntegrations as any[], []),
         lostReasons: parseJsonFields(lostReasons as any[], []),
+        contactPositions: parseJsonFields(contactPositions as any[], []),
         auditLogs: [],
         activities: []
       });
@@ -1961,7 +2009,7 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing table or id' });
       }
       
-      const allowedTables = ['lead_sources', 'segments', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities', 'storage_types'];
+      const allowedTables = ['lead_sources', 'segments', 'ecommerce_platforms', 'it_integrations', 'lost_reasons', 'activities', 'storage_types', 'contact_positions'];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: 'Deletion not allowed for this table' });
       }

@@ -106,6 +106,9 @@ const resources = {
         lostReasonsTitle: 'Loss Reasons',
         newLostReason: 'New loss reason',
         noLostReasons: 'No loss reasons yet.',
+        contactPositionsTitle: 'Contact Positions',
+        newContactPosition: 'New contact position',
+        noContactPositions: 'No contact positions yet.',
         tableDateAndTime: 'Date & Time',
         tableRecipient: 'Recipient',
         tableSubject: 'Subject',
@@ -140,7 +143,8 @@ const resources = {
           hunterRequired: 'Hunter is mandatory for the current stage and cannot be removed.',
           closerRequired: 'Closer is mandatory for the current stage and cannot be removed.',
           farmerRequired: 'Farmer is mandatory for the current stage and cannot be removed.',
-          missingOnboardingAttributes: 'First you must fill in the IT integration data and 1st stocking date before moving to the Farming stage.'
+          missingOnboardingAttributes: 'First you must fill in the IT integration data and 1st stocking date before moving to the Farming stage.',
+          searchCompanyPlaceholder: 'Search company...'
         }
       },
       common: {
@@ -153,6 +157,10 @@ const resources = {
         user: 'Acting User',
         userFilter: 'Filter by user:',
         all: '-- All --',
+        filters: 'Filters',
+        allUsers: 'All users',
+        clearFilters: 'Clear filters',
+        noUrl: 'No URL',
         error: 'Error',
                 notes: 'Notes',
         newNote: 'New note...',
@@ -384,6 +392,9 @@ const resources = {
         lostReasonsTitle: 'Důvody ztráty',
         newLostReason: 'Nový důvod ztráty',
         noLostReasons: 'Zatím žádné důvody ztráty.',
+        contactPositionsTitle: 'Pozice kontaktů',
+        newContactPosition: 'Nová pozice',
+        noContactPositions: 'Zatím žádné pozice kontaktů.',
         tableDateAndTime: 'Datum a čas',
         tableRecipient: 'Příjemce',
         tableSubject: 'Předmět',
@@ -418,7 +429,8 @@ const resources = {
           hunterRequired: 'Atribut Hunter je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.',
           closerRequired: 'Atribut Closer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.',
           farmerRequired: 'Atribut Farmer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.',
-          missingOnboardingAttributes: 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.'
+          missingOnboardingAttributes: 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.',
+          searchCompanyPlaceholder: 'Hledat společnost...'
         }
       },
       common: {
@@ -431,6 +443,10 @@ const resources = {
         user: 'Zastupující Uživatel',
         userFilter: 'Filtr dle uživatele:',
         all: '-- Všichni --',
+        filters: 'Filtry',
+        allUsers: 'Všichni uživatelé',
+        clearFilters: 'Vymazat filtry',
+        noUrl: 'Bez URL',
         error: 'Chyba',
                 notes: 'Poznámky',
         newNote: 'Nová poznámka...',

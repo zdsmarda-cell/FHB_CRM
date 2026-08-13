@@ -14,7 +14,7 @@ interface AdminCompanyModalProps {
 
 export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminCompanyModalProps) {
   const { t } = useTranslation();
-  const { updateCompany, currentUser, companies, segments, deals } = useStore();
+  const { updateCompany, currentUser, companies, segments, deals, contactPositions } = useStore();
   const [formData, setFormData] = useState<Company>(company);
   const activeSegments = React.useMemo(() => segments.filter(s => s.isActive), [segments]);
   const [activeTab, setActiveTab] = useState<'info' | 'contacts'>('info');
@@ -268,7 +268,16 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                   </div>
                   <div className="flex-1 w-full">
                     <label className="block text-xs font-medium text-gray-600 mb-1">Pozice</label>
-                    <input type="text" value={newContactPosition} onChange={e => setNewContactPosition(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                    <select 
+                      value={newContactPosition} 
+                      onChange={e => setNewContactPosition(e.target.value)} 
+                      className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none bg-white"
+                    >
+                      <option value="">-- Vyberte pozici --</option>
+                      {contactPositions.filter(p => p.isActive || p.id === newContactPosition).map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex-1 w-full">
                     <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
@@ -296,7 +305,14 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                   contacts.map(c => (
                     <li key={c.id} className="p-4 flex gap-4 items-center bg-white hover:bg-gray-50">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900 truncate">{c.name} {c.position && <span className="text-xs text-gray-500 font-normal ml-2">({c.position})</span>}</div>
+                        <div className="font-medium text-gray-900 truncate">
+                          {c.name}{' '}
+                          {c.position && (
+                            <span className="text-xs text-gray-500 font-normal ml-2">
+                              ({contactPositions.find(p => p.id === c.position || p.name === c.position)?.name || c.position})
+                            </span>
+                          )}
+                        </div>
                         <div className="text-sm text-gray-500 truncate flex gap-4">
                           {c.email && <span>{c.email}</span>}
                           {c.phone && <span>{c.phone}</span>}

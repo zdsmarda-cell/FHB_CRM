@@ -25,10 +25,16 @@ export interface User {
   msIntegration?: { connected: boolean; tokens?: any } | null;
 }
 
+export interface ContactPosition {
+  id: string;
+  name: string;
+  isActive?: boolean;
+}
+
 export interface Contact {
   id: string;
   name: string;
-  position: string;
+  position?: string;
   email: string;
   phone: string;
   phonePrefix?: string;
@@ -210,6 +216,7 @@ export interface StoreState {
   storageTypes: StorageType[];
   itIntegrations: ITIntegration[];
   lostReasons: LostReason[];
+  contactPositions: ContactPosition[];
   
   kanbanUserFilter: string | null;
   setKanbanUserFilter: (userId: string | null) => void;
@@ -241,6 +248,9 @@ export interface StoreState {
   updateLostReason: (id: string, updates: Partial<LostReason>) => Promise<void>;
   addLostReason: (name: string) => Promise<void>;
   deleteLostReason: (id: string) => Promise<void>;
+  updateContactPosition: (id: string, updates: Partial<ContactPosition>) => Promise<void>;
+  addContactPosition: (name: string) => Promise<void>;
+  deleteContactPosition: (id: string) => Promise<void>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
