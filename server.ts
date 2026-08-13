@@ -2512,7 +2512,7 @@ setTimeout(() => {
         const stageReminders = reminders.filter((r: any) => r.stage === stage);
         if (stageReminders.length === 0) continue;
 
-        const lastStageLog = stageAuditLogs.find((a: any) => a.dealId === deal.id && (a.newValue === stage || a.field === 'stage'));
+        const lastStageLog = stageAuditLogs.find((a: any) => a.dealId === deal.id && a.field === 'stage' && a.newValue === stage);
         const stageEntryTime = lastStageLog ? new Date(lastStageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
         const daysInStage = Math.max(0, Math.floor((now.getTime() - stageEntryTime) / (1000 * 60 * 60 * 24)));
 

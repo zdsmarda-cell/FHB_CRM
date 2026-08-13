@@ -3,7 +3,7 @@ import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
 import { Stage, User, Deal, StageReminder, AuditLog } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -65,8 +65,15 @@ export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[]
   const rules = stageReminders.filter(r => r.stage === deal.stage);
   if (rules.length === 0) return 'none';
 
-  const stageLog = (auditLogs || []).find(a => a.dealId === deal.id && (a.newValue === deal.stage || a.field === 'stage'));
-  const stageEntryTime = stageLog ? new Date(stageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
+  const relevantLogs = (auditLogs || [])
+    .filter(a => a.dealId === deal.id && a.field === 'stage' && a.newValue === deal.stage)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const mostRecentStageLog = relevantLogs[0];
+  const stageEntryTime = mostRecentStageLog
+    ? new Date(mostRecentStageLog.timestamp).getTime()
+    : new Date(deal.createdAt || Date.now()).getTime();
+
   const now = Date.now();
   const daysInStage = Math.max(0, Math.floor((now - stageEntryTime) / (1000 * 60 * 60 * 24)));
 
@@ -92,6 +99,14 @@ export function KanbanBoard() {
   useEffect(() => {
     localStorage.setItem('kanban_unassigned', showUnassignedOnly.toString());
   }, [showUnassignedOnly]);
+
+  const [reminderColorFilter, setReminderColorFilter] = useState<string>(() => {
+    return localStorage.getItem('kanban_reminder_color') || 'all';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('kanban_reminder_color', reminderColorFilter);
+  }, [reminderColorFilter]);
 
   const [zoomLevel, setZoomLevel] = useState(() => {
     const saved = localStorage.getItem('kanban_zoom');
@@ -189,6 +204,13 @@ export function KanbanBoard() {
       deals = deals.filter(d => !getCurrentAssigneeId(d));
     }
 
+    if (reminderColorFilter && reminderColorFilter !== 'all') {
+      deals = deals.filter(d => {
+        const color = getDealReminderColor(d, state.stageReminders, state.auditLogs);
+        return color === reminderColorFilter;
+      });
+    }
+
     if (state.kanbanUserFilter) {
       deals = deals.filter(d => 
         d.hunterId === state.kanbanUserFilter || 
@@ -231,6 +253,9 @@ export function KanbanBoard() {
     state.companies,
     currentUser,
     showUnassignedOnly,
+    reminderColorFilter,
+    state.stageReminders,
+    state.auditLogs,
     state.kanbanUserFilter,
     state.kanbanCompanySearch,
     state.kanbanCountryFilter,
@@ -444,20 +469,28 @@ export function KanbanBoard() {
     state.kanbanCompanySearch ||
     state.kanbanCountryFilter.length > 0 ||
     state.kanbanSegmentFilter.length > 0 ||
-    state.kanbanUserFilter
+    state.kanbanUserFilter ||
+    reminderColorFilter !== 'all' ||
+    showUnassignedOnly
   );
+
+  const handleClearFilters = () => {
+    state.resetKanbanFilters();
+    setReminderColorFilter('all');
+    setShowUnassignedOnly(false);
+  };
 
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 flex-wrap">
           <h2 className="text-2xl font-bold text-gray-800">{t('menu.board')}</h2>
           <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm">
             <button onClick={() => setZoomLevel(z => Math.max(0.5, z - 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">-</button>
             <span className="text-xs font-medium w-10 text-center text-gray-700">{Math.round(zoomLevel * 100)}%</span>
             <button onClick={() => setZoomLevel(z => Math.min(1.5, z + 0.1))} className="text-gray-500 hover:text-gray-800 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-50 font-medium">+</button>
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer ml-4">
+          <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer ml-2">
             <input 
               type="checkbox" 
               checked={showUnassignedOnly}
@@ -466,6 +499,23 @@ export function KanbanBoard() {
             />
             {t('common.unassignedDeals', 'Nepřiřazené příležitosti')}
           </label>
+
+          {/* Reminder Color Filter */}
+          <div className="flex items-center gap-2 text-sm text-gray-700 pl-3 border-l border-gray-200">
+            <Bell className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span className="text-xs font-semibold text-gray-600 hidden sm:inline">{t('common.reminderColorFilter', 'Barva upozornění')}:</span>
+            <select
+              value={reminderColorFilter}
+              onChange={(e) => setReminderColorFilter(e.target.value)}
+              className="px-2.5 py-1 text-xs font-medium border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+            >
+              <option value="all">{t('common.allColors', 'Všechny barvy')}</option>
+              <option value="yellow">🟡 {t('admin.colorYellow', 'Žlutá')}</option>
+              <option value="orange">🟠 {t('admin.colorOrange', 'Oranžová')}</option>
+              <option value="red">🔴 {t('admin.colorRed', 'Červená')}</option>
+              <option value="none">⚪ {t('admin.colorNone', 'Žádná')}</option>
+            </select>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-gray-100 p-1 rounded-lg">
@@ -558,7 +608,7 @@ export function KanbanBoard() {
         {/* Clear all filters */}
         {hasActiveFilters && (
           <button
-            onClick={state.resetKanbanFilters}
+            onClick={handleClearFilters}
             className="text-xs text-red-600 hover:text-red-800 font-medium ml-auto flex items-center gap-1 hover:underline px-2 py-1"
           >
             <X className="w-3.5 h-3.5" />
@@ -569,7 +619,7 @@ export function KanbanBoard() {
 
       {viewMode === 'list' ? (
         <div className="flex-1 overflow-hidden">
-          <DealsListView showUnassignedOnly={showUnassignedOnly} />
+          <DealsListView showUnassignedOnly={showUnassignedOnly} reminderColorFilter={reminderColorFilter} />
         </div>
       ) : (
         <div className="flex flex-col flex-1 overflow-hidden">

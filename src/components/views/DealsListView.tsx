@@ -7,9 +7,15 @@ import { AlertModal } from '../modals/AlertModal';
 import { COUNTRIES } from '../../lib/countryMapping';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getDealsForUser, STAGES } from '../../lib/permissions';
-import { getCurrentAssigneeId } from './KanbanBoard';
+import { getCurrentAssigneeId, getDealReminderColor } from './KanbanBoard';
 
-export function DealsListView({ showUnassignedOnly = false }: { showUnassignedOnly?: boolean }) {
+export function DealsListView({ 
+  showUnassignedOnly = false,
+  reminderColorFilter = 'all'
+}: { 
+  showUnassignedOnly?: boolean;
+  reminderColorFilter?: string;
+}) {
   const { t } = useTranslation();
   const store = useStore();
   const { companies, deals, updateCompany, currentUser, segments } = store;
@@ -94,6 +100,13 @@ export function DealsListView({ showUnassignedOnly = false }: { showUnassignedOn
       userDeals = userDeals.filter(d => !getCurrentAssigneeId(d));
     }
 
+    if (reminderColorFilter && reminderColorFilter !== 'all') {
+      userDeals = userDeals.filter(d => {
+        const color = getDealReminderColor(d, store.stageReminders, store.auditLogs);
+        return color === reminderColorFilter;
+      });
+    }
+
     return userDeals.filter(d => {
       const c = companies.find(c => c.id === d.companyId);
       if (!c) return false;
@@ -118,7 +131,7 @@ export function DealsListView({ showUnassignedOnly = false }: { showUnassignedOn
 
       return matchesSearch && matchesCountry && matchesSegment && matchesStage;
     });
-  }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages, showUnassignedOnly]);
+  }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages, showUnassignedOnly, reminderColorFilter, store.stageReminders, store.auditLogs]);
 
   const sortedDeals = useMemo(() => {
     let sortableDeals = [...filteredDeals];
