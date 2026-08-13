@@ -2178,7 +2178,10 @@ async function sendAssignmentEmail(hunterId: string, dealId: string, companyName
       auth: process.env.SMTP_USER ? {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
-      } : undefined
+      } : undefined,
+      tls: {
+        rejectUnauthorized: false
+      }
     });
     
     const appUrl = process.env.VITE_APP_URL || 'http://localhost:3000';
@@ -2506,6 +2509,8 @@ setTimeout(() => {
       let sentCount = 0;
       const now = new Date();
 
+      const itemsToNotify: any[] = [];
+
       for (const deal of deals) {
         checkedCount++;
         const stage = deal.stage;
@@ -2522,9 +2527,20 @@ setTimeout(() => {
         matchingEmailRules.sort((a: any, b: any) => b.days - a.days);
         const activeRule = matchingEmailRules[0];
 
+        const stageEntryDate = new Date(stageEntryTime);
+
+        // Check if an email reminder for this specific rule has already been sent during this stay in current stage
         const [existingLogs] = await connection.query(
-          "SELECT id FROM activities WHERE dealId = ? AND type = 'email' AND createdBy = 'System Cron' AND createdAt >= DATE_SUB(NOW(), INTERVAL 20 HOUR)",
-          [deal.id]
+          `SELECT id FROM activities 
+           WHERE dealId = ? AND type = 'email' AND createdBy = 'System Cron' AND createdAt >= ? 
+           AND (note LIKE ? OR note LIKE ? OR note LIKE ?)`,
+          [
+            deal.id,
+            stageEntryDate,
+            `%Připomínka ${activeRule.days} dní%`,
+            `%Připomínka ${activeRule.days} dnů%`,
+            `%ruleId:${activeRule.id}%`
+          ]
         );
         if ((existingLogs as any[]).length > 0) {
           continue;
@@ -2571,41 +2587,111 @@ setTimeout(() => {
           ? company.contacts.map((c: any) => `${c.name}${c.email ? ' <' + c.email + '>' : ''}${c.phone ? ' (' + c.phone + ')' : ''}`).join(', ')
           : '-';
 
-        const subject = `[Upozornění] Příležitost ${company.name} je ve fázi "${stageName}" již ${daysInStage} dní`;
+        itemsToNotify.push({
+          deal,
+          company,
+          stage,
+          stageName,
+          daysInStage,
+          activeRule,
+          recipientUsers,
+          hunterUser,
+          closerUser,
+          farmerUser,
+          leadSource,
+          ecommercePlatform,
+          storageType,
+          itIntegration,
+          segment,
+          contactsText
+        });
+      }
+
+      // Group items by user recipient so each user gets 1 consolidated email
+      const userNotificationsMap = new Map<string, { user: any; items: any[] }>();
+
+      for (const item of itemsToNotify) {
+        for (const recipientUser of item.recipientUsers) {
+          if (!userNotificationsMap.has(recipientUser.id)) {
+            userNotificationsMap.set(recipientUser.id, { user: recipientUser, items: [] });
+          }
+          userNotificationsMap.get(recipientUser.id)!.items.push(item);
+        }
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'localhost',
+        port: parseInt(process.env.SMTP_PORT || '1025', 10),
+        secure: process.env.SMTP_SECURE === 'true',
+        auth: process.env.SMTP_USER ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS || ''
+        } : undefined,
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+
+      for (const [userId, { user, items }] of userNotificationsMap.entries()) {
+        if (items.length === 0) continue;
+
+        let subject = '';
+        let introText = '';
+
+        if (items.length === 1) {
+          const item = items[0];
+          subject = `[Upozornění] Příležitost ${item.company.name} je ve fázi "${item.stageName}" již ${item.daysInStage} dní`;
+          introText = `uplynulo <strong style="color: #dc2626; font-size: 16px;">${item.daysInStage} dnů</strong> od vložení / přesunu příležitosti <strong>${item.company.name}</strong> do fáze <strong>${item.stageName}</strong>, aniž by se posunula do dalšího stavu.`;
+        } else {
+          subject = `[Upozornění] Souhrn neaktivních příležitostí (${items.length})`;
+          introText = `v systému evidujeme <strong style="color: #dc2626; font-size: 16px;">${items.length} neaktivních příležitostí</strong>, které vyžadují vaši pozornost a posun do dalšího stavu:`;
+        }
+
+        const itemsHtml = items.map((item: any) => `
+          <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px; background-color: #fafafa;">
+            <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0; font-size: 16px; color: #111827;">${item.company.name}</h3>
+              <span style="font-size: 12px; font-weight: 600; color: #dc2626; background-color: #fee2e2; padding: 4px 8px; border-radius: 4px;">
+                ${item.daysInStage} dní ve fázi (${item.stageName})
+              </span>
+            </div>
+            <div style="background-color: #f3f4f6; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #4b5563; margin-bottom: 12px;">
+              <strong>Aktivované pravidlo:</strong> ${item.activeRule.days} dní bez posunu (Fáze: ${item.stageName})
+            </div>
+
+            <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
+              <tbody>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280; width: 190px;">Společnost:</td><td style="padding: 4px 0; font-weight: 600; color: #111827;">${item.company.name}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">IČO:</td><td style="padding: 4px 0;">${item.company.companyId || '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Region / Segment:</td><td style="padding: 4px 0;">${item.company.region || '-'} / ${item.segment}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Adresa:</td><td style="padding: 4px 0;">${item.company.address || '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">E-mail / Telefon:</td><td style="padding: 4px 0;">${item.company.email || '-'} / ${item.company.phone || '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Webové stránky:</td><td style="padding: 4px 0;">${Array.isArray(item.company.urls) ? item.company.urls.join(', ') : '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Kontaktní osoby:</td><td style="padding: 4px 0;">${item.contactsText}</td></tr>
+                <tr style="border-top: 1px dashed #e5e7eb;"><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Aktuální fáze:</td><td style="padding: 4px 0; font-weight: 600; color: #4f46e5;">${item.stageName}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Zdroj leadu:</td><td style="padding: 4px 0;">${item.leadSource}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">E-commerce platforma:</td><td style="padding: 4px 0;">${item.ecommercePlatform}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Typ skladování:</td><td style="padding: 4px 0;">${item.storageType}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">IT Integrace:</td><td style="padding: 4px 0;">${item.itIntegration}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Odhad balíků (měs./rok):</td><td style="padding: 4px 0;">${item.deal.estimatedMonthlyParcels || '-'} / ${item.deal.estimatedYearlyParcels || '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Hunter / Closer / Farmer:</td><td style="padding: 4px 0;">${item.hunterUser?.name || '-'} / ${item.closerUser?.name || '-'} / ${item.farmerUser?.name || '-'}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Datum vložení:</td><td style="padding: 4px 0;">${item.deal.createdAt ? new Date(item.deal.createdAt).toLocaleDateString('cs-CZ') : '-'}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        `).join('');
 
         const htmlContent = `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; color: #1f2937; background-color: #ffffff;">
             <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 20px;">
-              <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">Upozornění na neaktivitu příležitosti</h2>
+              <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">Upozornění na neaktivitu příležitostí</h2>
             </div>
-            <p style="font-size: 15px; line-height: 1.5; margin-bottom: 16px;">
-              Dobrý den,<br/>
-              uplynulo <strong style="color: #dc2626; font-size: 16px;">${daysInStage} dnů</strong> od vložení / přesunu příležitosti <strong>${company.name}</strong> do fáze <strong>${stageName}</strong>, aniž by se posunula do dalšího stavu.
+            <p style="font-size: 15px; line-height: 1.5; margin-bottom: 20px;">
+              Dobrý den ${user.name || ''},<br/>
+              ${introText}
             </p>
-            <div style="background-color: #f3f4f6; padding: 12px 16px; border-radius: 8px; font-size: 13px; color: #4b5563; margin-bottom: 24px;">
-              <strong>Aktivované pravidlo:</strong> ${activeRule.days} dní bez posunu (Fáze: ${stageName})
-            </div>
 
-            <h3 style="margin-bottom: 12px; color: #111827; font-size: 16px; border-bottom: 1px solid #f3f4f6; padding-bottom: 6px;">Detail příležitosti:</h3>
-            <table style="width: 100%; text-align: left; font-size: 14px; border-collapse: collapse;">
-              <tbody>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280; width: 190px;">Společnost:</td><td style="padding: 6px 0; font-weight: 600; color: #111827;">${company.name}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">IČO:</td><td style="padding: 6px 0;">${company.companyId || '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Region / Segment:</td><td style="padding: 6px 0;">${company.region || '-'} / ${segment}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Adresa:</td><td style="padding: 6px 0;">${company.address || '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">E-mail / Telefon:</td><td style="padding: 6px 0;">${company.email || '-'} / ${company.phone || '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Webové stránky:</td><td style="padding: 6px 0;">${Array.isArray(company.urls) ? company.urls.join(', ') : '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Kontaktní osoby:</td><td style="padding: 6px 0;">${contactsText}</td></tr>
-                <tr style="border-top: 1px dashed #e5e7eb;"><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Aktuální fáze:</td><td style="padding: 6px 0; font-weight: 600; color: #4f46e5;">${stageName}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Zdroj leadu:</td><td style="padding: 6px 0;">${leadSource}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">E-commerce platforma:</td><td style="padding: 6px 0;">${ecommercePlatform}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Typ skladování:</td><td style="padding: 6px 0;">${storageType}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">IT Integrace:</td><td style="padding: 6px 0;">${itIntegration}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Odhad balíků (měs./rok):</td><td style="padding: 6px 0;">${deal.estimatedMonthlyParcels || '-'} / ${deal.estimatedYearlyParcels || '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Hunter / Closer / Farmer:</td><td style="padding: 6px 0;">${hunterUser?.name || '-'} / ${closerUser?.name || '-'} / ${farmerUser?.name || '-'}</td></tr>
-                <tr><td style="padding: 6px 0; font-weight: 600; color: #6b7280;">Datum vložení:</td><td style="padding: 6px 0;">${deal.createdAt ? new Date(deal.createdAt).toLocaleDateString('cs-CZ') : '-'}</td></tr>
-              </tbody>
-            </table>
+            ${itemsHtml}
 
             <div style="border-top: 1px solid #e5e7eb; margin-top: 24px; padding-top: 16px; font-size: 12px; color: #9ca3af; text-align: center;">
               Tato zpráva byla automaticky vygenerována systémem připomínek.
@@ -2613,52 +2699,43 @@ setTimeout(() => {
           </div>
         `;
 
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST || 'localhost',
-          port: parseInt(process.env.SMTP_PORT || '1025', 10),
-          secure: process.env.SMTP_SECURE === 'true',
-          auth: process.env.SMTP_USER ? {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS || ''
-          } : undefined
-        });
+        try {
+          const mailOptions = {
+            from: process.env.SMTP_FROM || 'noreply@crm-system.cz',
+            to: user.email,
+            subject: subject,
+            html: htmlContent
+          };
 
-        for (const recipientUser of recipientUsers) {
-          try {
-            const mailOptions = {
-              from: process.env.SMTP_FROM || 'noreply@crm-system.cz',
-              to: recipientUser.email,
-              subject: subject,
-              html: htmlContent
-            };
+          await transporter.sendMail(mailOptions);
+          sentCount++;
 
-            await transporter.sendMail(mailOptions);
-            sentCount++;
-
-            await connection.query(
-              'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
-              [uuidv4(), recipientUser.email, subject, 'sent', null]
-            );
-          } catch (mailErr: any) {
-            console.error(`[STAGE REMINDERS] Error sending mail to ${recipientUser.email}:`, mailErr.message);
-            await connection.query(
-              'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
-              [uuidv4(), recipientUser.email, subject, 'error', mailErr.message || String(mailErr)]
-            );
-          }
+          await connection.query(
+            'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
+            [uuidv4(), user.email, subject, 'sent', null]
+          );
+        } catch (mailErr: any) {
+          console.error(`[STAGE REMINDERS] Error sending mail to ${user.email}:`, mailErr.message);
+          await connection.query(
+            'INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())',
+            [uuidv4(), user.email, subject, 'error', mailErr.message || String(mailErr)]
+          );
         }
+      }
 
-        const recipientNames = recipientUsers.map((u: any) => `${u.name} (${u.email})`).join(', ');
-        const activityNote = `Automatické upozornění (Připomínka ${activeRule.days} dní): Uplynulo ${daysInStage} dnů ve fázi "${stageName}". E-mail odeslán na: ${recipientNames}`;
-        
+      // Record activity and audit logs for each deal item processed
+      for (const item of itemsToNotify) {
+        const recipientNames = item.recipientUsers.map((u: any) => `${u.name} (${u.email})`).join(', ');
+        const activityNote = `Automatické upozornění (Připomínka ${item.activeRule.days} dní, ruleId:${item.activeRule.id}): Uplynulo ${item.daysInStage} dnů ve fázi "${item.stageName}". E-mail odeslán na: ${recipientNames}`;
+
         await connection.query(
           "INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt) VALUES (?, ?, 'email', NOW(), ?, 'System Cron', NOW())",
-          [uuidv4(), deal.id, activityNote]
+          [uuidv4(), item.deal.id, activityNote]
         );
 
         await connection.query(
           "INSERT INTO audit_logs (id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp) VALUES (?, ?, ?, 'reminder_email', '', ?, 'System Cron', NOW())",
-          [uuidv4(), deal.id, deal.companyId, `Email sent for stage reminder (${daysInStage} days in ${stageName}) to ${recipientNames}`]
+          [uuidv4(), item.deal.id, item.deal.companyId, `Email sent for stage reminder (${item.daysInStage} days in ${item.stageName}) to ${recipientNames}`]
         );
       }
 

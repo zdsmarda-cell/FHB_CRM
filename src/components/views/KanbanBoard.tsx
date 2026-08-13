@@ -3,7 +3,7 @@ import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
 import { Stage, User, Deal, StageReminder, AuditLog } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -60,11 +60,7 @@ export const getAssigneeField = (stage: Stage, deal?: Deal) => {
   return 'hunterId';
 };
 
-export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[], auditLogs: AuditLog[]) => {
-  if (!stageReminders || stageReminders.length === 0 || deal.stage === 'lost') return 'none';
-  const rules = stageReminders.filter(r => r.stage === deal.stage);
-  if (rules.length === 0) return 'none';
-
+export const getDealDaysInStage = (deal: Deal, auditLogs: AuditLog[]): number => {
   const relevantLogs = (auditLogs || [])
     .filter(a => a.dealId === deal.id && a.field === 'stage' && a.newValue === deal.stage)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -75,7 +71,15 @@ export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[]
     : new Date(deal.createdAt || Date.now()).getTime();
 
   const now = Date.now();
-  const daysInStage = Math.max(0, Math.floor((now - stageEntryTime) / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.floor((now - stageEntryTime) / (1000 * 60 * 60 * 24)));
+};
+
+export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[], auditLogs: AuditLog[]) => {
+  if (!stageReminders || stageReminders.length === 0 || deal.stage === 'lost') return 'none';
+  const rules = stageReminders.filter(r => r.stage === deal.stage);
+  if (rules.length === 0) return 'none';
+
+  const daysInStage = getDealDaysInStage(deal, auditLogs);
 
   const matchingRules = rules.filter(r => daysInStage >= r.days);
   if (matchingRules.length === 0) return 'none';
@@ -669,6 +673,7 @@ export function KanbanBoard() {
                   const ownerInfo = curId ? userInitialsAndColors[curId] : null;
 
                   const reminderColor = getDealReminderColor(deal, state.stageReminders, state.auditLogs);
+                  const daysInStage = getDealDaysInStage(deal, state.auditLogs);
                   let cardBorderStyle = 'border-gray-200';
                   if (reminderColor === 'yellow') cardBorderStyle = 'border-2 border-yellow-400 bg-yellow-50/30';
                   else if (reminderColor === 'orange') cardBorderStyle = 'border-2 border-orange-500 bg-orange-50/30';
@@ -684,46 +689,58 @@ export function KanbanBoard() {
                       onClick={() => navigate(`/deal/${deal.id}`)}
                       className={`bg-white p-4 rounded-xl shadow-sm ${cardBorderStyle} cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all group`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600 group-hover:bg-indigo-100 transition-colors">
-                          <Building2 className="w-5 h-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-gray-900 leading-tight truncate">
-                            {company.name}
-                          </h4>
-                          <p className="text-xs text-gray-500 mt-1 truncate flex items-center gap-1.5">
-                            <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                            {company.urls && company.urls.filter(u => u && u.trim() !== '').length > 0 ? (
-                              <a
-                                href={
-                                  company.urls.find(u => u && u.trim() !== '')?.startsWith('http')
-                                    ? company.urls.find(u => u && u.trim() !== '')
-                                    : `https://${company.urls.find(u => u && u.trim() !== '')}`
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-indigo-600 hover:text-indigo-800 hover:underline truncate"
-                                title={company.urls.filter(u => u && u.trim() !== '').join(', ')}
-                              >
-                                {company.urls.find(u => u && u.trim() !== '')}
-                              </a>
-                            ) : (
-                              <span className="text-gray-400 italic">{t('common.noUrl', 'Bez URL')}</span>
-                            )}
-                          </p>
-                        </div>
-                        {deal.stage === 'lost' && deal.postponedUntil && (
-                          <div title={`Postponed until: ${format(parseISO(deal.postponedUntil), 'MMM d, yyyy')}\nReason: ${deal.postponedReason}`} className="text-orange-500 bg-orange-50 p-1.5 rounded-lg flex-shrink-0 cursor-help">
-                            <Calendar className="w-4 h-4" />
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600 group-hover:bg-indigo-100 transition-colors shrink-0">
+                            <Building2 className="w-5 h-5" />
                           </div>
-                        )}
-                        {deal.stage === 'lost' && deal.lostPermanently && (
-                          <div title={`Reason: ${deal.lostReason}`} className="text-red-500 bg-red-50 p-1.5 rounded-lg flex-shrink-0 cursor-help">
-                            <Ban className="w-4 h-4" />
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 leading-tight truncate">
+                              {company.name}
+                            </h4>
+                            <p className="text-xs text-gray-500 mt-1 truncate flex items-center gap-1.5">
+                              <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                              {company.urls && company.urls.filter(u => u && u.trim() !== '').length > 0 ? (
+                                <a
+                                  href={
+                                    company.urls.find(u => u && u.trim() !== '')?.startsWith('http')
+                                      ? company.urls.find(u => u && u.trim() !== '')
+                                      : `https://${company.urls.find(u => u && u.trim() !== '')}`
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-indigo-600 hover:text-indigo-800 hover:underline truncate"
+                                  title={company.urls.filter(u => u && u.trim() !== '').join(', ')}
+                                >
+                                  {company.urls.find(u => u && u.trim() !== '')}
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 italic">{t('common.noUrl', 'Bez URL')}</span>
+                              )}
+                            </p>
                           </div>
-                        )}
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span 
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200/80"
+                            title={`${daysInStage} ${daysInStage === 1 ? 'den' : daysInStage >= 2 && daysInStage <= 4 ? 'dni' : 'dní'} v tomto stavu`}
+                          >
+                            <Clock className="w-3 h-3 text-gray-400" />
+                            {daysInStage}d
+                          </span>
+                          {deal.stage === 'lost' && deal.postponedUntil && (
+                            <div title={`Postponed until: ${format(parseISO(deal.postponedUntil), 'MMM d, yyyy')}\nReason: ${deal.postponedReason}`} className="text-orange-500 bg-orange-50 p-1.5 rounded-lg flex-shrink-0 cursor-help">
+                              <Calendar className="w-4 h-4" />
+                            </div>
+                          )}
+                          {deal.stage === 'lost' && deal.lostPermanently && (
+                            <div title={`Reason: ${deal.lostReason}`} className="text-red-500 bg-red-50 p-1.5 rounded-lg flex-shrink-0 cursor-help">
+                              <Ban className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
                       </div>
                       
                       <div className="mt-4 pt-3 border-t border-gray-50 flex justify-between items-end">
