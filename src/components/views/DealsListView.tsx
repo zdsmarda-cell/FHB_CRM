@@ -98,18 +98,25 @@ export function DealsListView({ showUnassignedOnly = false }: { showUnassignedOn
       const c = companies.find(c => c.id === d.companyId);
       if (!c) return false;
 
-      const searchLower = searchTerm.toLowerCase();
-      const matchesSearch = !searchTerm || 
+      const effectiveSearch = searchTerm || store.kanbanCompanySearch || '';
+      const searchLower = effectiveSearch.toLowerCase();
+      const matchesSearch = !effectiveSearch || 
         c.name.toLowerCase().includes(searchLower) || 
         c.companyId.toLowerCase().includes(searchLower);
       
-      const matchesCountry = selectedCountries.length === 0 || 
-        selectedCountries.includes(c.country || 'Czechia');
+      const effectiveCountries = selectedCountries.length > 0 ? selectedCountries : store.kanbanCountryFilter;
+      const compCountry = c.country || 'Czechia';
+      const delCountries = d.deliveryCountries || [];
+      const matchesCountry = effectiveCountries.length === 0 || 
+        effectiveCountries.some(sc => sc === compCountry || delCountries.includes(sc));
+
+      const matchesSegment = store.kanbanSegmentFilter.length === 0 ||
+        store.kanbanSegmentFilter.includes(c.segment || '');
 
       const matchesStage = selectedStages.length === 0 ||
         selectedStages.includes(d.stage);
 
-      return matchesSearch && matchesCountry && matchesStage;
+      return matchesSearch && matchesCountry && matchesSegment && matchesStage;
     });
   }, [store, currentUser, companies, searchTerm, selectedCountries, selectedStages, showUnassignedOnly]);
 

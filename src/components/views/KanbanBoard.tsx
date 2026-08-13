@@ -3,7 +3,7 @@ import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
 import { Stage, User, Deal } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -11,7 +11,8 @@ import { LostDealModal } from '../modals/LostDealModal';
 import { useNavigate } from 'react-router-dom';
 import { AlertModal } from '../modals/AlertModal';
 import { DealsListView } from './DealsListView';
-import { List, Kanban } from 'lucide-react';
+import { MultiSelectPopover } from '../common/MultiSelectPopover';
+import { COUNTRIES } from '../../lib/countryMapping';
 
 const AVATAR_COLORS = [
   'bg-blue-500',
@@ -136,6 +137,28 @@ export function KanbanBoard() {
     state.refreshState();
   }, []);
 
+  const countryOptions = useMemo(() => {
+    const presentCountries = new Set<string>();
+    companies.forEach(c => {
+      if (c.country) presentCountries.add(c.country);
+    });
+    state.deals.forEach(d => {
+      d.deliveryCountries?.forEach(dc => presentCountries.add(dc));
+    });
+    COUNTRIES.forEach(c => presentCountries.add(c));
+    return Array.from(presentCountries).sort().map(c => ({
+      id: c,
+      label: c
+    }));
+  }, [companies, state.deals]);
+
+  const segmentOptions = useMemo(() => {
+    return state.segments.filter(s => s.isActive).map(s => ({
+      id: s.id,
+      label: s.name
+    }));
+  }, [state.segments]);
+
   const visibleDeals = useMemo(() => {
     let deals = getDealsForUser(state, currentUser);
     
@@ -148,6 +171,7 @@ export function KanbanBoard() {
     if (showUnassignedOnly) {
       deals = deals.filter(d => !getCurrentAssigneeId(d));
     }
+
     if (state.kanbanUserFilter) {
       deals = deals.filter(d => 
         d.hunterId === state.kanbanUserFilter || 
@@ -155,8 +179,46 @@ export function KanbanBoard() {
         d.farmerId === state.kanbanUserFilter
       );
     }
+
+    if (state.kanbanCompanySearch && state.kanbanCompanySearch.trim() !== '') {
+      const searchLower = state.kanbanCompanySearch.trim().toLowerCase();
+      deals = deals.filter(d => {
+        const company = state.companies.find(c => c.id === d.companyId);
+        return company && company.name.toLowerCase().includes(searchLower);
+      });
+    }
+
+    if (state.kanbanCountryFilter && state.kanbanCountryFilter.length > 0) {
+      deals = deals.filter(d => {
+        const company = state.companies.find(c => c.id === d.companyId);
+        if (!company) return false;
+        const compCountry = company.country || 'Czechia';
+        const delCountries = d.deliveryCountries || [];
+        return state.kanbanCountryFilter.some(selected => 
+          selected === compCountry || delCountries.includes(selected)
+        );
+      });
+    }
+
+    if (state.kanbanSegmentFilter && state.kanbanSegmentFilter.length > 0) {
+      deals = deals.filter(d => {
+        const company = state.companies.find(c => c.id === d.companyId);
+        if (!company) return false;
+        return state.kanbanSegmentFilter.includes(company.segment || '');
+      });
+    }
+
     return deals;
-  }, [state, currentUser, showUnassignedOnly]);
+  }, [
+    state.deals,
+    state.companies,
+    currentUser,
+    showUnassignedOnly,
+    state.kanbanUserFilter,
+    state.kanbanCompanySearch,
+    state.kanbanCountryFilter,
+    state.kanbanSegmentFilter
+  ]);
 
   const visibleStages = STAGES.filter(stage => 
     currentUser?.role === 'administrator' || 
@@ -360,9 +422,17 @@ export function KanbanBoard() {
     return false;
   };
 
+  const canFilterUsers = currentUser?.role === 'administrator' || currentUser?.role === 'cso' || getSubordinateIds(users, currentUser?.id || '').length > 0;
+  const hasActiveFilters = Boolean(
+    state.kanbanCompanySearch ||
+    state.kanbanCountryFilter.length > 0 ||
+    state.kanbanSegmentFilter.length > 0 ||
+    state.kanbanUserFilter
+  );
+
   return (
     <div className="p-6 h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-6">
           <h2 className="text-2xl font-bold text-gray-800">{t('menu.board')}</h2>
           <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-gray-200 shadow-sm">
@@ -404,6 +474,80 @@ export function KanbanBoard() {
             {t('menu.newDeal')}
           </button>
         </div>
+      </div>
+
+      {/* Filter Toolbar */}
+      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 uppercase tracking-wider pr-2 border-r border-gray-200">
+          <Filter className="w-3.5 h-3.5 text-indigo-600" />
+          <span>{t('common.filters', 'Filtry')}</span>
+        </div>
+
+        {/* Fulltext Company Search */}
+        <div className="relative min-w-[200px] flex-1 max-w-xs">
+          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder={t('kanban.searchCompanyPlaceholder', 'Hledat společnost...')}
+            value={state.kanbanCompanySearch}
+            onChange={(e) => state.setKanbanCompanySearch(e.target.value)}
+            className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"
+          />
+          {state.kanbanCompanySearch && (
+            <button 
+              onClick={() => state.setKanbanCompanySearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        {/* Multi-option Country */}
+        <MultiSelectPopover
+          label={t('fields.country', 'Země')}
+          icon={Globe}
+          options={countryOptions}
+          selectedValues={state.kanbanCountryFilter}
+          onChange={state.setKanbanCountryFilter}
+        />
+
+        {/* Multi-option Segment */}
+        <MultiSelectPopover
+          label={t('fields.segment', 'Segment')}
+          icon={Tag}
+          options={segmentOptions}
+          selectedValues={state.kanbanSegmentFilter}
+          onChange={state.setKanbanSegmentFilter}
+        />
+
+        {/* User Filter */}
+        {canFilterUsers && (
+          <div className="flex items-center gap-2 border-l border-gray-200 pl-3">
+            <UserIcon className="w-4 h-4 text-gray-400" />
+            <select
+              value={state.kanbanUserFilter || ''}
+              onChange={(e) => state.setKanbanUserFilter(e.target.value || null)}
+              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white min-w-[180px]"
+            >
+              <option value="">{t('common.allUsers', 'Všichni uživatelé')}</option>
+              {users.filter(u => u.isActive).map(user => (
+                <option key={user.id} value={user.id}>{user.name} ({user.role})</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Clear all filters */}
+        {hasActiveFilters && (
+          <button
+            onClick={state.resetKanbanFilters}
+            className="text-xs text-red-600 hover:text-red-800 font-medium ml-auto flex items-center gap-1 hover:underline px-2 py-1"
+          >
+            <X className="w-3.5 h-3.5" />
+            {t('common.clearFilters', 'Vymazat filtry')}
+          </button>
+        )}
       </div>
 
       {viewMode === 'list' ? (
@@ -474,8 +618,26 @@ export function KanbanBoard() {
                           <h4 className="font-semibold text-gray-900 leading-tight truncate">
                             {company.name}
                           </h4>
-                          <p className="text-xs text-gray-500 mt-1 truncate">
-                            {t('fields.ico')}: {company.companyId}
+                          <p className="text-xs text-gray-500 mt-1 truncate flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                            {company.urls && company.urls.filter(u => u && u.trim() !== '').length > 0 ? (
+                              <a
+                                href={
+                                  company.urls.find(u => u && u.trim() !== '')?.startsWith('http')
+                                    ? company.urls.find(u => u && u.trim() !== '')
+                                    : `https://${company.urls.find(u => u && u.trim() !== '')}`
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-indigo-600 hover:text-indigo-800 hover:underline truncate"
+                                title={company.urls.filter(u => u && u.trim() !== '').join(', ')}
+                              >
+                                {company.urls.find(u => u && u.trim() !== '')}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400 italic">{t('common.noUrl', 'Bez URL')}</span>
+                            )}
                           </p>
                         </div>
                         {deal.stage === 'lost' && deal.postponedUntil && (

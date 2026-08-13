@@ -684,6 +684,30 @@ async function startServer() {
     }
   });
 
+  // Helper for fetch with timeout and retries
+  const fetchWithRetry = async (url: string, options: any = {}, retries = 2, delayMs = 1000, timeoutMs = 15000): Promise<Response> => {
+    let lastError: any;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timer);
+        return response;
+      } catch (err: any) {
+        clearTimeout(timer);
+        lastError = err;
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+        }
+      }
+    }
+    const msg = lastError?.name === 'AbortError' 
+      ? `Connection timeout after ${timeoutMs}ms (${url})` 
+      : (lastError?.message || String(lastError));
+    throw new Error(msg);
+  };
+
   app.post('/api/auth/microsoft/exchange', authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
@@ -696,7 +720,7 @@ async function startServer() {
 
       const origin = req.headers['x-forwarded-host'] ? `https://${req.headers['x-forwarded-host']}` : `http://${req.headers.host}`;
       const redirectUri = `${origin}/api/auth/microsoft/callback`;
-      const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      const response = await fetchWithRetry('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -711,7 +735,7 @@ async function startServer() {
       if (tokens.error) throw new Error(tokens.error_description || tokens.error);
       res.json({ tokens });
     } catch (err: any) {
-      console.error(err);
+      console.error('Microsoft exchange error:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
@@ -724,21 +748,36 @@ async function startServer() {
       const client = GraphClient.init({ authProvider: (done) => done(null, currentTokens.access_token) });
       return await apiCall(client);
     } catch (e: any) {
-      if (e.statusCode === 401 || (e.message && (e.message.includes('expired') || e.message.includes('InvalidAuthenticationToken')))) {
+      const isAuthError = e.statusCode === 401 || 
+        (e.message && (
+          e.message.includes('expired') || 
+          e.message.includes('InvalidAuthenticationToken') || 
+          e.message.includes('Access token has expired') ||
+          e.message.includes('token is expired')
+        ));
+
+      if (isAuthError) {
         if (!currentTokens.refresh_token) throw new Error('Missing Microsoft refresh token');
-        const response = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({
-            client_id: process.env.MS_CLIENT_ID || '',
-            client_secret: process.env.MS_CLIENT_SECRET || '',
-            refresh_token: currentTokens.refresh_token,
-            grant_type: 'refresh_token'
-          })
-        });
+        
+        let response: Response;
+        try {
+          response = await fetchWithRetry('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: process.env.MS_CLIENT_ID || '',
+              client_secret: process.env.MS_CLIENT_SECRET || '',
+              refresh_token: currentTokens.refresh_token,
+              grant_type: 'refresh_token'
+            })
+          }, 2, 1000, 15000);
+        } catch (fetchErr: any) {
+          throw new Error(`Microsoft token endpoint unreachable (${fetchErr.message || fetchErr})`);
+        }
+
         const newTokens = await response.json();
         if (newTokens.error) {
-          // Invalidate the MS integration in the database if the refresh token is revoked/invalid
+          // Invalidate the MS integration in the database if the refresh token is revoked/invalid/expired
           await pool.query('UPDATE users SET msIntegration = NULL WHERE id = ?', [userId]);
           throw new Error('Microsoft authentication expired or revoked. Please sign in again. (' + (newTokens.error_description || newTokens.error) + ')');
         }
@@ -758,6 +797,18 @@ async function startServer() {
         const retryClient = GraphClient.init({ authProvider: (done) => done(null, mergedTokens.access_token) });
         return await apiCall(retryClient);
       }
+
+      // Handle transient network errors on initial Graph call with a single retry
+      if (e.message && (e.message.includes('fetch failed') || e.message.includes('UND_ERR') || e.message.includes('timeout'))) {
+        try {
+          await new Promise(r => setTimeout(r, 1000));
+          const retryClient = GraphClient.init({ authProvider: (done) => done(null, currentTokens.access_token) });
+          return await apiCall(retryClient);
+        } catch (retryErr: any) {
+          throw new Error(`Microsoft Graph request failed (network error): ${retryErr.message || retryErr}`);
+        }
+      }
+
       throw e;
     }
   };
@@ -1107,76 +1158,239 @@ async function startServer() {
       const lang = req.query.lang === 'cs' ? 'cs' : 'en';
       const isCS = lang === 'cs';
       
-      const stages = isCS ? [
-        { name: 'Lead & Opportunita', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
-        { name: 'Discovery & Proposal', requirements: 'Pro přechod do této fáze musí Hunter provézt úvodní schůzku. Zde probíhá komunikace, odesílají se nabídky.' },
-        { name: 'Contracting (Smlouvání)', requirements: 'Klíčový přechod. Nutno vyplnit: Doručovací země (Delivery countries), Průměrný počet kusů v objednávce (Items), Váha (Weight), Objem (Volume). Nutno nahrát cenovou nabídku.' },
-        { name: 'Onboarding', requirements: 'Smlouva je podepsána. Vyžadovaná pole pro přechod: Datum podpisu smlouvy (Contract Signed Date), Datum nahrání ceníku, Preferovaný začátek IT integrace a Očekávané první naskladnění.' },
-        { name: 'Farming (Živý provoz)', requirements: 'Konečná fáze. Vyžaduje: Potvrzení o dokončení IT integrace, Ostré datum prvního naskladnění (Actual First Stocking) a dokončené UAT testování.' },
-        { name: 'Lost & Postponed', requirements: 'Z jakékoliv fáze lze přejít do rozeznání ztráty (Lost - vyžaduje vybrání důvodu úbytku ze sdíleného číselníku) nebo Odložení (Postponed - vyžaduje zadání data připomenutí a důvodu odložení).' }
+      const stagesDetailed = isCS ? [
+        {
+          id: 'opportunity',
+          name: '1. Opportunity (Oportunita / Zájemce)',
+          role: 'Hunter',
+          color: '#3b82f6',
+          desc: 'Úvodní zachycení potenciálního klienta do obchodního potrubí.',
+          reqs: [
+            'Přiřazení garanta z rolí Hunter (Hunter ID).',
+            'Vyplněné IČO v profilu společnosti (Identifikační číslo firmy).',
+            'Alespoň 1 realizovaná aktivita (Telefonní hovor, MS Teams nebo Osobní schůzka) s datem v minulosti nebo přítomnosti.'
+          ]
+        },
+        {
+          id: 'lead',
+          name: '2. Lead (Kvalifikovaný lead)',
+          role: 'Hunter',
+          color: '#6366f1',
+          desc: 'Prověřený zájemce s potvrzeným obchodním potenciálem a kvalifikovaným profilem.',
+          reqs: [
+            'Přiřazení garanta z rolí Hunter (Hunter ID).',
+            'Vyplněný Zdroj leadu (Lead Source) - výběr ze systémového číselníku.',
+            'Vyplněná E-commerce platforma (Shoptet, WooCommerce, Shopify, Custom API apod.).',
+            'Kladný odhadovaný měsíční počet zásilek (Estimated Monthly Parcels > 0).'
+          ]
+        },
+        {
+          id: 'discovery_proposal',
+          name: '3. Discovery & Proposal (Objevování & Nabídka)',
+          role: 'Closer',
+          color: '#8b5cf6',
+          desc: 'Sběr technických parametrů zásilek, logistické specifikace a tvorba schválené cenové nabídky.',
+          reqs: [
+            'Přiřazení garanta z rolí Closer (Closer ID).',
+            'Výběr doručovacích zemí (Delivery Countries - alespoň 1 země v multi-select poli).',
+            'Průměrný počet kusů na objednávku (Average Items Per Order > 0).',
+            'Průměrná váha balíku v kg (Average Parcel Weight > 0 kg).',
+            'Průměrný objem balíku v m³ (Average Parcel Volume > 0 m³).',
+            'Nahraná alespoň 1 cenová nabídka ve formátu PDF v sekci Cenové nabídky (Pricing Offers).'
+          ]
+        },
+        {
+          id: 'contracting',
+          name: '4. Contracting (Smluvní jednání)',
+          role: 'Closer',
+          color: '#ec4899',
+          desc: 'Příprava a podpis smluvní dokumentace, dojednání garancí a výběr IT napojení.',
+          reqs: [
+            'Přiřazení garanta z rolí Closer (Closer ID).',
+            'Vyplněné datum podpisu smlouvy (Contract Signed Date).',
+            'Vyplněné datum nahrání schváleného ceníku (Pricing Uploaded Date).',
+            'Vybraný systém IT integrace (IT Integration ID z číselníku).',
+            'Vyplněné očekávané datum 1. naskladnění (Expected First Stocking Date).'
+          ]
+        },
+        {
+          id: 'onboarding',
+          name: '5. Onboarding (Integrace & Naskladňování)',
+          role: 'Farmer',
+          color: '#f59e0b',
+          desc: 'Technické napojení systémů, fyzický přejímkový proces zboží na sklad a testování.',
+          reqs: [
+            'Skutečné datum dokončení IT integrace (IT Integration Completed Date).',
+            'Skutečné datum prvního naskladnění zboží (Actual First Stocking Date).',
+            'Skutečné datum dokončení akceptačního testování UAT (Integration Testing Completed Date).'
+          ]
+        },
+        {
+          id: 'farming',
+          name: '6. Farming (Živý provoz)',
+          role: 'Farmer',
+          color: '#10b981',
+          desc: 'Plný ostrý fulfillment provoz zákazníka, dlouhodobá péče, rozvoj účtu a sledování spokojenosti.',
+          reqs: [
+            'Konečná produkční fáze. Klient generuje živé objednávky v systému.'
+          ]
+        },
+        {
+          id: 'lost_postponed',
+          name: '7. Lost (Ztraceno) & Postponed (Odloženo)',
+          role: 'Všichni',
+          color: '#ef4444',
+          desc: 'Mimořádné stavy dostupné z jakékoliv fáze pipeline.',
+          reqs: [
+            'Ztraceno (Lost): Vyžaduje vybrání Důvodu ztráty ze systémového číselníku (Lost Reason) a nepovinný komentář. Ukládá původní stav (Lost From Stage) pro možnost pozdějšího obnovení.',
+            'Odloženo (Postponed): Vyžaduje datum obnovení jednání (Postponed Until) a zdůvodnění odložení.'
+          ]
+        }
       ] : [
-        { name: 'Lead & Opportunity', requirements: 'Only requires creation via Kanban board. Fully operated by Hunter.' },
-        { name: 'Discovery & Proposal', requirements: 'Transitioned by Hunter after initial meeting. Used for communication and proposals.' },
-        { name: 'Contracting', requirements: 'Critical transition. Mandatory attributes: Delivery countries, Average Items, Weight, Volume. Must upload a pricing offer.' },
-        { name: 'Onboarding', requirements: 'Contract signed. Required fields: Contract Signed Date, Pricing Upload Date, IT Integration ID/Start, and Expected First Stocking Date.' },
-        { name: 'Farming (Live operations)', requirements: 'Final stage. Requires: IT Integration Completed Date, Actual First Stocking Date, and Testing Completed Date.' },
-        { name: 'Lost & Postponed', requirements: 'Can be transitioned to from any stage. Lost requires a reason from enumerations. Postponed requires resume date and reason.' }
+        {
+          id: 'opportunity',
+          name: '1. Opportunity',
+          role: 'Hunter',
+          color: '#3b82f6',
+          desc: 'Initial entry of a potential client into the sales pipeline.',
+          reqs: [
+            'Assigned Hunter (Hunter ID).',
+            'Company ID / Registration Number filled in Company profile.',
+            'At least 1 completed activity (Call, MS Teams, or Meeting) dated present or past.'
+          ]
+        },
+        {
+          id: 'lead',
+          name: '2. Qualified Lead',
+          role: 'Hunter',
+          color: '#6366f1',
+          desc: 'Vetted lead with confirmed commercial potential.',
+          reqs: [
+            'Assigned Hunter (Hunter ID).',
+            'Selected Lead Source from system enumeration.',
+            'Selected E-commerce Platform (Shoptet, WooCommerce, Custom API, etc.).',
+            'Positive Estimated Monthly Parcels count (> 0).'
+          ]
+        },
+        {
+          id: 'discovery_proposal',
+          name: '3. Discovery & Proposal',
+          role: 'Closer',
+          color: '#8b5cf6',
+          desc: 'Gathering logistics metrics, defining delivery matrix, and issuing pricing offers.',
+          reqs: [
+            'Assigned Closer (Closer ID).',
+            'Selected Delivery Countries (at least 1 country in multi-select).',
+            'Average Items Per Order (> 0).',
+            'Average Parcel Weight (> 0 kg).',
+            'Average Parcel Volume (> 0 m³).',
+            'Uploaded at least 1 Pricing Offer PDF in the Offers section.'
+          ]
+        },
+        {
+          id: 'contracting',
+          name: '4. Contracting',
+          role: 'Closer',
+          color: '#ec4899',
+          desc: 'Preparing and signing contracts, agreeing SLAs, selecting IT integration.',
+          reqs: [
+            'Assigned Closer (Closer ID).',
+            'Contract Signed Date.',
+            'Pricing Upload Date.',
+            'Selected IT Integration system from enumeration.',
+            'Expected First Stocking Date.'
+          ]
+        },
+        {
+          id: 'onboarding',
+          name: '5. Onboarding',
+          role: 'Farmer',
+          color: '#f59e0b',
+          desc: 'Technical IT integration, inventory intake, and order testing.',
+          reqs: [
+            'IT Integration Completed Date.',
+            'Actual First Stocking Date.',
+            'UAT Testing Completed Date.'
+          ]
+        },
+        {
+          id: 'farming',
+          name: '6. Farming (Live operations)',
+          role: 'Farmer',
+          color: '#10b981',
+          desc: 'Full live fulfillment operation, account management, and growth.',
+          reqs: [
+            'Final production stage. Live orders processing.'
+          ]
+        },
+        {
+          id: 'lost_postponed',
+          name: '7. Lost & Postponed',
+          role: 'All Roles',
+          color: '#ef4444',
+          desc: 'Special states accessible from any stage.',
+          reqs: [
+            'Lost: Requires selecting a Lost Reason from enumeration and optional note. Preserves Lost From Stage.',
+            'Postponed: Requires Postponed Until date and reason.'
+          ]
+        }
       ];
 
       const rolesCS = [
         {
           name: 'Hunter',
-          privileges: 'Operuje primárně v začátcích (Lead & Opportunita -> Proposal).',
+          privileges: 'Fokus na začátek obchodního cyklu (Opportunity & Lead).',
           actions: [
-            'Vytváření nových Dealů (Company Name, IČO, Zdroj).',
-            'Vyplňování základních e-commerce platforem a Lead Sources.',
-            'Zadávání a správa kontaktních osob dané firmy (titul, jméno, email, telefon).',
-            'Vytváření meetingů a logování historie (i když později přebírá někdo jiný, Hunter má read-only).'
+            'Zadává nové zájemce a společnosti (Název, IČO, Adresa, Kontakty).',
+            'Doplňuje Zdroje leadů a E-commerce platformy.',
+            'Plánuje a realizuje úvodní schůzky a telefonáty pro kvalifikaci.',
+            'Garantuje přechod z Opportunity do Lead a následně do Discovery & Proposal.'
           ]
         },
         {
           name: 'Closer',
-          privileges: 'Přijímá Deal po fázi Proposal, zaměřuje se na vykouzlení Contractu.',
+          privileges: 'Přebírá obchod ve fázi Discovery & Proposal a Contracting.',
           actions: [
-            'Správa atributů balíků (Váha [Weight], Objem [Volume], Počet).',
-            'Určování doručovacích zemí (Delivery countries - z multi-select výběru).',
-            'Může provádět DNC (Do Not Contact) označení klienta v případě nespokojenosti.',
-            'Kliknutím na "Add Offer" nahrává k dealu historicky nezničitelné cenové nabídky (v PDF).'
+            'Definuje doručovací země, průměrnou váhu, objem a kusovost balíků.',
+            'Nahrává a spravuje závazné Cenové nabídky v PDF.',
+            'Dojednává smluvní podmínky, termíny podpisů a ceníků.',
+            'Označuje kontakty příznakem DNC (Do Not Contact) v případě odmítnutí.'
           ]
         },
         {
           name: 'Farmer (Account Manager)',
-          privileges: 'Stará se o živého (Farming) a onboardujícího klienta.',
+          privileges: 'Odpovídá za Onboarding a dlouhodobý Živý provoz (Farming).',
           actions: [
-            'Komunikuje s IT pro doplnění datumu "IT Integration Completed".',
-            'Identifikuje reálný start obchodu a přepisuje odhady.',
-            'Přiřazuje klientským kontaktům tag "Inactive", pokud daná osoba opustila firmu.'
+            'Dohlíží na IT integraci a zaznamenává data dokončení a testování UAT.',
+            'Eviduje ostrý start 1. naskladnění zboží.',
+            'Spravuje živý účet klienta, řeší rozvoj a označuje neaktivní kontakty.'
           ]
         },
         {
-          name: 'Vedoucí',
-          privileges: 'Nadřízený k rolím (Hunter/Closer/Farmer).',
+          name: 'Vedoucí (Manager)',
+          privileges: 'Nadřízený týmu (Hunter / Closer / Farmer).',
           actions: [
-            'Vidí Dealy vlastněné těmi podřízenými skrz celý systém Kanbanu.',
-            'Z pohledu úprav získává stejná práva (Může editovat, psát poznámky).',
-            'Monitoruje Email logy a kalendář.'
+            'Přístup ke všem obchodům svých podřízených napříč všemi fázemi.',
+            'Plná práva úprav, psaní poznámek a posunu fází u podřízených dealů.',
+            'Sledování auditních logů, kalendářů a e-mailové komunikace.'
           ]
         },
         {
           name: 'CSO (Chief Sales Officer)',
-          privileges: 'Absolutní přístup k Sales potrubí (Pipeline).',
+          privileges: 'Globální dohled nad celým obchodním potrubím (Sales Pipeline).',
           actions: [
-            'U libovolného Dealu může v záložce "Company Details" měnit aktuální přiřazení v reálném čase.',
-            'Označením záznamu "Visible: false" je může utajit před nižšími rolemi.'
+            'Vidí a upravuje jakýkoliv deal v systému bez ohledu na garanta.',
+            'Přiřazuje a mění garanty (Hunter, Closer, Farmer) v reálném čase.',
+            'Možnost skrývat citlivé aktivity (Visible: false).'
           ]
         },
         {
-          name: 'Admin',
-          privileges: 'Zajišťuje technický chod aplikace.',
+          name: 'Administrátor (Admin)',
+          privileges: 'Správa uživatelů, systémových číselníků a technického chodu.',
           actions: [
-            'Sekce "Admin Panel": Zakládá ostatní uživatele, resetuje hesla.',
-            'Mění konstantní číselníky: "Lead Sources", "Lost Reasons", atd.',
-            'Spravuje tabulky s podrobnými Login logy (historie přihlášení).'
+            'Správa uživatelských účtů, reset hesla, nastavování rolí a manažerů.',
+            'Editace globálních číselníků (Důvody ztráty, Zdroje leadů, IT Integrace, Segmenty, Skladování).',
+            'Prohlížení přihlašovacích logů (Login logs) a provádění e-mailového auditu nad Workspace/M365.'
           ]
         }
       ];
@@ -1184,57 +1398,58 @@ async function startServer() {
       const rolesEN = [
         {
           name: 'Hunter',
-          privileges: 'Operates primarily in the early stages (Lead & Opportunity -> Proposal).',
+          privileges: 'Focus on early pipeline (Opportunity & Lead).',
           actions: [
-            'Creates new Deals (Company Name, ID, Source).',
-            'Fills basic e-commerce platforms and Lead Sources.',
-            'Enters and manages contact persons for the company.',
-            'Creates meetings and logs history (read-only for others later).'
+            'Enters new deals and companies (Name, Company ID, Address, Contacts).',
+            'Fills Lead Sources and E-commerce Platforms.',
+            'Schedules and conducts initial qualification meetings/calls.',
+            'Guarantees transition from Opportunity to Lead and Discovery.'
           ]
         },
         {
           name: 'Closer',
-          privileges: 'Receives the Deal after Proposal, focuses on Contracting.',
+          privileges: 'Takes over during Discovery & Proposal and Contracting.',
           actions: [
-            'Manages parcel attributes (Weight, Volume, Items).',
-            'Defines delivery countries (Delivery countries multi-select).',
-            'Can mark client contacts as DNC (Do Not Contact).',
-            'Uploads pricing offers (PDFs) clicking "Add Offer".'
+            'Defines delivery countries, average weight, volume, and items per order.',
+            'Uploads and manages binding Pricing Offer PDFs.',
+            'Negotiates terms, contract signed dates, and pricing upload dates.',
+            'Can mark contacts as DNC (Do Not Contact) if needed.'
           ]
         },
         {
           name: 'Farmer (Account Manager)',
-          privileges: 'Handles live (Farming) and onboarding clients.',
+          privileges: 'Responsible for Onboarding and live Farming.',
           actions: [
-            'Communicates with IT to log "IT Integration Completed" dates.',
-            'Identifies actual launch metadata and overrides estimates.',
-            'Can tag client contacts as "Inactive" if they leave their company.'
+            'Oversees IT integration, logs completion and UAT testing dates.',
+            'Records actual first stocking date.',
+            'Manages live customer accounts and marks inactive contacts.'
           ]
         },
         {
           name: 'Manager',
-          privileges: 'Supervisor of Hunter/Closer/Farmer roles.',
+          privileges: 'Supervisor of team members (Hunter / Closer / Farmer).',
           actions: [
-            'Sees Deals owned by their subordinates across the Kanban board.',
-            'Inherits edit permissions for subordinate deals.',
-            'Monitors Email logs and synced calendars.'
+            'Full visibility over all deals owned by subordinates across all stages.',
+            'Inherits full editing, note-taking, and stage advancement rights.',
+            'Monitors audit logs, calendars, and email communications.'
           ]
         },
         {
           name: 'CSO (Chief Sales Officer)',
-          privileges: 'Absolute access to the Sales Pipeline.',
+          privileges: 'Global oversight over the entire Sales Pipeline.',
           actions: [
-            'Can change role assignments (Hunter, Closer, Farmer) in real-time via the "Company Details" tab.',
-            'Can hide sensitive activities (Visible: false) from lower roles.'
+            'Views and edits any deal in the system regardless of ownership.',
+            'Reassigns stage owners (Hunter, Closer, Farmer) in real-time.',
+            'Can toggle visibility of sensitive activities.'
           ]
         },
         {
-          name: 'Admin',
-          privileges: 'Ensures technical operation.',
+          name: 'Administrator (Admin)',
+          privileges: 'User management, enumerations, and technical audit.',
           actions: [
-            '"Admin Panel": Creates users, resets passwords.',
-            'Manages enumerations: "Lead Sources", "Lost Reasons", etc.',
-            'Manages Login logs and the full audit trail (tracking all field changes).'
+            'Manages user accounts, password resets, role assignments.',
+            'Edits global enumerations (Lost Reasons, Lead Sources, IT Integrations, Storage Types).',
+            'Inspects Login Logs and performs M365/Google Workspace Email Audits.'
           ]
         }
       ];
@@ -1248,47 +1463,129 @@ async function startServer() {
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Manual - FHB CRM</title>
-          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
           <style>
+            * { box-sizing: border-box; }
             body { 
               font-family: 'Roboto', 'Helvetica', sans-serif; 
               line-height: 1.6; 
-              padding: 40px; 
-              max-width: 800px; 
+              padding: 30px; 
+              max-width: 900px; 
               margin: 0 auto; 
-              color: #333; 
-              background-color: #fcfcfc;
+              color: #1f2937; 
+              background-color: #f8fafc;
             }
             .content-wrapper {
               background-color: white;
               padding: 40px;
-              border-radius: 8px;
-              box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-              border: 1px solid #eee;
+              border-radius: 12px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+              border: 1px solid #e2e8f0;
             }
-            h1, h2, h3 { color: #111; }
-            h1 { text-align: center; margin-bottom: 20px; font-size: 28px; }
-            .subtitle { text-align: justify; margin-bottom: 40px; color: #555; }
+            h1 { text-align: center; margin-bottom: 12px; font-size: 26px; color: #0f172a; }
+            .subtitle { text-align: center; margin-bottom: 32px; color: #64748b; font-size: 14px; }
             h2 { 
-              margin-top: 40px; 
-              border-bottom: 2px solid #eee; 
+              margin-top: 36px; 
+              border-bottom: 2px solid #cbd5e1; 
               padding-bottom: 8px; 
-              font-size: 20px;
+              font-size: 18px;
+              color: #1e293b;
             }
-            .role { background: #f9fafb; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e5e7eb; page-break-inside: avoid; }
-            .role-name { margin-top: 0; color: #2563eb; font-size: 18px; }
-            .role-privilege { font-style: italic; color: #4b5563; margin-bottom: 12px; }
-            ul { padding-left: 24px; margin-top: 8px; }
-            li { margin-bottom: 8px; }
-            .screenshot { width: 100%; max-width: 600px; display: block; margin: 20px auto; border: 1px solid #eaeaea; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); page-break-inside: avoid; }
-            .stage-block { margin-bottom: 16px; page-break-inside: avoid; }
-            .stage-name { font-weight: bold; color: #1f2937; }
+            h3 { font-size: 15px; color: #334155; margin-top: 20px; }
+            .role { background: #f8fafc; padding: 18px; margin: 16px 0; border-radius: 8px; border: 1px solid #e2e8f0; page-break-inside: avoid; }
+            .role-name { margin-top: 0; color: #2563eb; font-size: 16px; font-weight: 700; }
+            .role-privilege { font-style: italic; color: #475569; margin-bottom: 10px; font-size: 13px; }
+            ul { padding-left: 20px; margin-top: 6px; font-size: 13px; }
+            li { margin-bottom: 6px; }
+            
+            .stage-card {
+              background: #ffffff;
+              border: 1px solid #e2e8f0;
+              border-left-width: 6px;
+              border-radius: 8px;
+              padding: 16px 20px;
+              margin-bottom: 16px;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+              page-break-inside: avoid;
+            }
+            .stage-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 8px;
+            }
+            .stage-title {
+              font-size: 16px;
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .stage-badge {
+              font-size: 11px;
+              font-weight: 700;
+              padding: 3px 8px;
+              border-radius: 12px;
+              background: #f1f5f9;
+              color: #334155;
+            }
+            .stage-desc {
+              font-size: 13px;
+              color: #475569;
+              margin-bottom: 10px;
+            }
+            .req-title {
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #dc2626;
+              margin-bottom: 6px;
+            }
+            .req-list {
+              list-style-type: none;
+              padding-left: 0;
+              margin: 0;
+            }
+            .req-list li {
+              position: relative;
+              padding-left: 18px;
+              font-size: 13px;
+              color: #1e293b;
+              margin-bottom: 4px;
+            }
+            .req-list li::before {
+              content: '✓';
+              position: absolute;
+              left: 0;
+              color: #10b981;
+              font-weight: bold;
+            }
+
+            .attr-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+              font-size: 13px;
+            }
+            .attr-table th {
+              background: #f1f5f9;
+              text-align: left;
+              padding: 8px 12px;
+              border: 1px solid #cbd5e1;
+              font-weight: 700;
+              color: #334155;
+            }
+            .attr-table td {
+              padding: 8px 12px;
+              border: 1px solid #e2e8f0;
+              color: #1e293b;
+            }
+
             .page-break { page-break-before: always; }
             .print-btn {
                display: block;
-               width: 200px;
-               margin: 0 auto 30px auto;
-               padding: 12px 24px;
+               width: 220px;
+               margin: 0 auto 24px auto;
+               padding: 10px 20px;
                background-color: #2563eb;
                color: white;
                text-align: center;
@@ -1297,7 +1594,7 @@ async function startServer() {
                font-weight: bold;
                cursor: pointer;
                border: none;
-               font-size: 16px;
+               font-size: 15px;
             }
             .print-btn:hover { background-color: #1d4ed8; }
             @media print {
@@ -1309,38 +1606,122 @@ async function startServer() {
         </head>
         <body>
           <button class="print-btn no-print" onclick="window.print()">
-            ${isCS ? 'Tisk do PDF' : 'Print to PDF'}
+            ${isCS ? '🖨️ Tisk / Uložit PDF' : '🖨️ Print / Save PDF'}
           </button>
           
           <div class="content-wrapper">
-            <h1>${isCS ? 'Podrobný uživatelský manuál aplikace' : 'Detailed Application User Manual'}</h1>
-            <p class="subtitle">${isCS ? 'Tento dokument slouží jako detailní průvodce pro veškeré role systému CRM, specifikuje stavy, datové atributy a přechody.' : 'This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions.'}</p>
+            <h1>${isCS ? 'Podrobný uživatelský manuál FHB CRM' : 'Detailed FHB CRM User Manual'}</h1>
+            <p class="subtitle">${isCS ? 'Kompletní příručka: Fáze potrubí, podmínky přechodů, datové atributy, role a integrace.' : 'Complete guide: Pipeline stages, transition rules, data attributes, roles, and integrations.'}</p>
             
-            <h2>${isCS ? '1. Úvod a přístup do systému' : '1. Introduction and System Access'}</h2>
-            <p>${isCS ? 'Přístup do systému je zajištěn výhradně na základě přidělených přístupových údajů (email a heslo). Prvotní heslo by mělo být co nejdříve změněno v sekci Profil. Během používání komunikuje systém bezpečně pomocí šifrovaného spojení. Data se organizují dle jednotlivých obchodních případů (Deals).' : 'System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals.'}</p>
-            
-            <h2>${isCS ? '2. Uživatelské rozhraní (Nástěnka vs Seznam)' : '2. User Interface (Board vs List)'}</h2>
-            <p>${isCS ? 'Každý uživatel má možnost přepínat mezi vizuálním zobrazením Kanban (sloupce dle fází) a tabulkovým Seznamem přes přepínač v pravém horním rohu. Obě zobrazení reflektují ta samá práva a omezení. Ze Seznamu i Nástěnky se lze prokliknout do detailu příležitosti. Sloupce listu obsahují možnost filtrovat dle stavu (Stage) či země.' : 'Every user can toggle between the visual Kanban Board and a Tabular List view using the toggle in the top right corner. Both views respect the same permissions and constraints. Users can click into the Deal detail from both views. The list allows filtering by Stage or Country.'}</p>
-            
-            <h2>${isCS ? '3. Přechody mezi stavy (Pipeline Transitions)' : '3. Pipeline Stages and Transitions'}</h2>
-            <p>${isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.'}</p>
+            <h2>${isCS ? '1. Úvod a Přístup do Systému' : '1. Introduction & System Access'}</h2>
+            <p>${isCS ? 'FHB CRM slouží k řízení akvizice, smlouvání a onboarding procesu nových klíčových klientů pro fulfillment. Přístup je zabezpečen e-mailem a heslem. Z bezpečnostních důvodů si po prvním přihlášení změňte heslo v sekci Profil.' : 'FHB CRM manages the acquisition, contracting, and onboarding process for new fulfillment clients. Access is secured by email and password. Please change your password upon initial login in the Profile section.'}</p>
+
+            <h2>${isCS ? '2. Přechody mezi stavy (Pipeline Transitions & Requirements)' : '2. Pipeline Stages & Transition Requirements'}</h2>
+            <p>${isCS ? 'Pro přesun obchodního případu (Deal) do další fáze je nutné splnit striktní podmínky validace dat. Pokud jakýkoliv povinný údaj chybí, systém přesun neumožní a chybějící pole v detailu firmy zvýrazní červeně.' : 'To move a deal to the next stage, strict data validation rules must be met. If any required attribute is missing, the transition is blocked and missing fields are highlighted in red.'}</p>
             
             <div>
-              ${stages.map(s => `
-                <div class="stage-block">
-                  <div class="stage-name">${s.name}</div>
-                  <div class="stage-req">${s.requirements}</div>
+              ${stagesDetailed.map(s => `
+                <div class="stage-card" style="border-left-color: ${s.color};">
+                  <div class="stage-header">
+                    <span class="stage-title">${s.name}</span>
+                    <span class="stage-badge">${isCS ? 'Garant' : 'Owner'}: ${s.role}</span>
+                  </div>
+                  <div class="stage-desc">${s.desc}</div>
+                  <div class="req-title">${isCS ? 'Podmínky pro posun do této / další fáze:' : 'Requirements for advancement:'}</div>
+                  <ul class="req-list">
+                    ${s.reqs.map(r => `<li>${r}</li>`).join('')}
+                  </ul>
                 </div>
               `).join('')}
             </div>
             
             <div class="page-break"></div>
+
+            <h2>${isCS ? '3. Přehled Všech Datových Atributů' : '3. Complete Data Attributes Reference'}</h2>
+            <p>${isCS ? 'Detailní struktura polí a atributů evidovaných u firmy a obchodního případu:' : 'Detailed field structure recorded for companies and deal opportunities:'}</p>
             
-            <h2>${isCS ? '4. Seznam rolí a jejich operace' : '4. User Roles and Operations'}</h2>
+            <table class="attr-table">
+              <thead>
+                <tr>
+                  <th>${isCS ? 'Kategorie / Název atributu' : 'Category / Attribute Name'}</th>
+                  <th>${isCS ? 'Technické pole' : 'Technical Field'}</th>
+                  <th>${isCS ? 'Popis & Význam' : 'Description & Meaning'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>Identifikace firmy (IČO)</b></td>
+                  <td><code>companyId</code></td>
+                  <td>${isCS ? 'Identifikační číslo firmy. Povinné pro posun z Opportunity.' : 'Company registration ID. Required to advance from Opportunity.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Zdroj leadu</b></td>
+                  <td><code>leadSourceId</code></td>
+                  <td>${isCS ? 'Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinné pro Lead.' : 'Acquisition source. Required for Lead stage.'}</td>
+                </tr>
+                <tr>
+                  <td><b>E-commerce platforma</b></td>
+                  <td><code>ecommercePlatformId</code></td>
+                  <td>${isCS ? 'E-shopové řešení (Shoptet, WooCommerce, Custom API). Povinné pro Lead.' : 'E-commerce platform. Required for Lead stage.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Měsíční počet balíků</b></td>
+                  <td><code>estimatedMonthlyParcels</code></td>
+                  <td>${isCS ? 'Odhadovaný měsíční objem zásilek (>0). Povinné pro Lead.' : 'Estimated monthly parcel volume (>0). Required for Lead stage.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Doručovací země</b></td>
+                  <td><code>deliveryCountries</code></td>
+                  <td>${isCS ? 'Cílové země doručování (multi-select). Povinné pro Discovery.' : 'Target delivery countries (multi-select). Required for Discovery.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Kusovost na objednávku</b></td>
+                  <td><code>averageItemsPerOrder</code></td>
+                  <td>${isCS ? 'Průměrný počet kusů v balíku. Povinné pro Discovery.' : 'Average items per order. Required for Discovery.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Váha & Objem balíku</b></td>
+                  <td><code>averageParcelWeight / Volume</code></td>
+                  <td>${isCS ? 'Průměrná váha (kg) a objem (m³). Povinné pro Discovery.' : 'Average weight (kg) and volume (m³). Required for Discovery.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Cenová nabídka (Offers)</b></td>
+                  <td><code>pricingOffers</code></td>
+                  <td>${isCS ? 'Nahraný PDF dokument nabídky. Povinné pro Discovery.' : 'Uploaded offer PDF document. Required for Discovery.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Smluvní data</b></td>
+                  <td><code>contractSignedDate / pricingUploadedDate</code></td>
+                  <td>${isCS ? 'Datum podpisu smlouvy a nahraní ceníku. Povinné pro Contracting.' : 'Contract signed & pricing upload dates. Required for Contracting.'}</td>
+                </tr>
+                <tr>
+                  <td><b>IT Integrace ID</b></td>
+                  <td><code>itIntegrationId</code></td>
+                  <td>${isCS ? 'Typ IT propojení ze systémového číselníku. Povinné pro Contracting.' : 'Selected IT integration type. Required for Contracting.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Dokončení IT & Naskladnění</b></td>
+                  <td><code>itIntegrationCompletedDate / firstStockingDateActual</code></td>
+                  <td>${isCS ? 'Skutečná data dokončení integrace a 1. naskladnění. Povinné pro Farming.' : 'Actual IT completion and first stocking dates. Required for Farming.'}</td>
+                </tr>
+                <tr>
+                  <td><b>UAT Testování</b></td>
+                  <td><code>integrationTestingCompletedDate</code></td>
+                  <td>${isCS ? 'Potvrzení o dokončení testování zkušebních zakázek. Povinné pro Farming.' : 'Confirmed completion of UAT order testing. Required for Farming.'}</td>
+                </tr>
+                <tr>
+                  <td><b>Kontaktní osoby & DNC</b></td>
+                  <td><code>contacts / doNotContact</code></td>
+                  <td>${isCS ? 'E-maily, telefony a prvek "Nechce kontaktovat (DNC)" s časovým razítkem.' : 'Emails, phone numbers, and "Do Not Contact (DNC)" status with timestamp.'}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h2>${isCS ? '4. Seznam Rolí a Oprávnění' : '4. User Roles & Permissions'}</h2>
             <div>
               ${rolesList.map(r => `
                 <div class="role">
-                  <h3 class="role-name">Role: ${r.name}</h3>
+                  <div class="role-name">${r.name}</div>
                   <div class="role-privilege">${r.privileges}</div>
                   <ul>
                     ${r.actions.map(a => `<li>${a}</li>`).join('')}
@@ -1351,149 +1732,21 @@ async function startServer() {
 
             <div class="page-break"></div>
 
-            <h2>${isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'}</h2>
-            
-            <h3>${isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'}</h3>
-            <p>${isCS ? 'Na pravé straně vedle avatara uživatele naleznete přepínač jazyků, ikonu ozubeného kola (Nastavení integrace kalendáře - Google & Microsoft) a rozklinutím avatara se otevře tento profil. Zde je možné změnit heslo i stáhnout si tento manuál.' : 'On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile. Here you can change your password and download this manual.'}</p>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; background-color: white; border: 1px solid #e5e7eb; padding: 15px 20px; border-radius: 8px; font-family: sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 20px 0; page-break-inside: avoid;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 24px; height: 24px; background: #3b82f6; border-radius: 4px;"></div>
-                <div style="font-weight: bold; font-size: 18px; color: #111827;">FHB CRM</div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 15px; color: #4b5563;">
-                <span style="font-size: 14px; padding: 6px 12px; background: #f3f4f6; border-radius: 20px;">🔍 ${isCS ? 'Hledat dle IČO či názvu' : 'Search by ID or name'}...</span>
-                <span style="font-size: 18px;" title="${isCS ? 'Integrace kalendáře' : 'Calendar Integration'}">📅</span>
-                <span style="display: inline-block; padding: 4px 8px; font-size: 14px; border: 1px solid #d1d5db; border-radius: 4px;">CS ▾</span>
-                <span style="display: inline-flex; justify-content: center; align-items: center; width: 36px; height: 36px; background: #3b82f6; color: white; border-radius: 50%; font-weight: bold; font-size: 14px;">JD</span>
-              </div>
-            </div>
+            <h2>${isCS ? '5. Kalendář, Schůzky, E-mail Audit a Logy' : '5. Calendar Integrations, Meetings, Email Audit & Logs'}</h2>
+            <p>${isCS ? 'Aplikace disponuje pokročilým propojením na externí systémy a bezpečnostním auditem:' : 'The application features advanced external integrations and security auditing:'}</p>
+            <ul>
+              <li><b>${isCS ? 'Synchronizace Kalendáře (Google & Microsoft 365)' : 'Calendar Sync (Google & Microsoft 365)'}:</b> ${isCS ? 'Uživatel si může v Nastavení profilu připojit svůj Google nebo Microsoft účet. Schůzky naplánované v CRM se automaticky vytvářejí v externím kalendáři včetně odkazů na Google Meet nebo MS Teams.' : 'Users can connect Google or Microsoft accounts in Settings. Meetings created in CRM automatically populate external calendars with Meet/Teams links.'}</li>
+              <li><b>${isCS ? 'E-mailový Audit (Workspace & M365)' : 'Email Audit Search'}:</b> ${isCS ? 'Administrátor má k dispozici modul pro dohled nad e-mailovou komunikací. Umožňuje vyhledávat v doručené i odchozí poště propojených účtů dle IČO nebo názvu firmy pro zpětné ověření dohod.' : 'Admins can search incoming and outgoing email communications across connected workspace accounts by Company ID or name.'}</li>
+              <li><b>${isCS ? 'Auditní stopa změn (Audit Trail)' : 'Audit Trail'}:</b> ${isCS ? 'U každého dealu je uchovávána kompletní historie úprav polí, včetně autora změn, původní a nové hodnoty a časového razítka.' : 'Every deal maintains a complete field change history, recording the author, old/new values, and timestamp.'}</li>
+              <li><b>${isCS ? 'Přihlašovací logy (Login Logs)' : 'Login Logs'}:</b> ${isCS ? 'Správa IP adres, použitých prohlížečů a časů přihlášení uživatelů pro zajištění bezpečnosti.' : 'Tracking IP addresses, user agents, and login timestamps for security enforcement.'}</li>
+            </ul>
 
-            <h3>${isCS ? 'D2: Kanban nástěnka (Pipeline)' : 'D2: Kanban Board (Pipeline)'}</h3>
-            <p>${isCS ? 'Základní obrazovka po přihlášení. Dealy (příležitosti) jsou zobrazeny jako karty ve sloupcích podle své fáze. Lze mezi nimi přesouvat, ale pouze pokud jsou splněny datové požadavky konkrétní role. Nový deal vytvoříte kliknutím na tlačítko "Add Deal".' : 'The main screen after logging in. Deals (opportunities) are displayed as cards in columns according to their stage. You can move them, but only if the data requirements for your role are met. Create a new deal by clicking "Add Deal".'}</p>            
-            <div style="display: flex; gap: 10px; font-family: sans-serif; background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; page-break-inside: avoid;">
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">LEAD & OPP... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">1</span></div>
-                 <div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 13px;">
-                    <div style="font-weight: bold; color: #111;">ABC s.r.o.</div>
-                    <div style="color: #6b7280; font-size: 11px; margin-top: 4px;">Web Form</div>
-                 </div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">DISCOVERY &... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">CONTRACTING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">ONBOARDING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-            </div>
-
-            <div class="page-break"></div>
-
-            <h3>${isCS ? 'D3: Detail firmy (Deal View) a plánování schůzek' : 'D3: Deal View and Event Planning'}</h3>
-            <p>${isCS ? 'Rozdělené obrazovky:<br/><b>LEVÝ PANEL:</b> Údaje firmy, Tagy, Produktová část, Dodatkové kontaktní osoby, Přenosy fází (Další fáze = Zelené tlačítko vpravo nahoře). Pokud podtrhnuté pole svítí červeně, znamená to chybějící data pro přechod.<br/><b>PRAVÝ PANEL:</b> Kalendář schůzek, Log aktivit (hovory, zprávy), Uploadované dokumenty a přidávání nabídek (PDF).' : 'Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Additional contact persons, Stage transitions (Next stage = Green button top right). If an underlined field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Calendar events, Activity Logs, Uploaded documents and adding Offers (PDF).'}</p>
-            
-            <div style="display: flex; gap: 20px; font-family: sans-serif; background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
-              <div style="flex: 2; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                  <h3 style="margin-top: 0; margin-bottom: 10px; color: #111;">Detail Firmy: ABC s.r.o.</h3>
-                  <div style="background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;">Advance to Discovery & Proposal →</div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                   <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: Lead & Opportunity</span>
-                   <span style="padding: 4px 8px; background: #f3f4f6; color: #374151; border-radius: 4px; font-size: 12px;">Zdroj: Web Form</span>
-                </div>
-                
-                <div style="display: flex; gap: 20px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px dashed #d1d5db;">
-                   <div style="flex: 1;">
-                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Základní údaje</div>
-                     <div style="margin-top: 8px; font-size: 14px;"><strong>IČO:</strong> <span style="color: #ef4444; border-bottom: 1px dashed #ef4444;" title="Chybějící údaj pro přechod">Nevyplněno</span></div>
-                     <div style="margin-top: 5px; font-size: 14px;"><strong>Země:</strong> CZ, SK</div>
-                   </div>
-                   <div style="flex: 1;">
-                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Kontaktní osoby (+ Přidat)</div>
-                     <div style="margin-top: 8px; font-size: 14px; background: #fff; padding: 5px; border: 1px solid #eee;">
-                        <b>Jan Novák</b> (CEO) <br> <span style="color: #6b7280; font-size: 12px;">jan.novak@abc.cz | +420 123 456 789</span>
-                     </div>
-                   </div>
-                </div>
-              </div>
-              
-              <div style="flex: 1; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
-                   <span style="font-weight: bold; font-size: 14px; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: -11px;">Timeline</span>
-                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Documents</span>
-                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Emails</span>
-                </div>
-                
-                <div style="flex: 1;">
-                  <div style="background: #fdf2f8; border: 1px solid #fbcfe8; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
-                    <div style="font-size: 12px; color: #db2777; font-weight: bold;">📅 Plánovaná schůzka</div>
-                    <div style="font-size: 13px; margin-top: 4px;">Dnes 15:00 - Google Meet (Sync)</div>
-                  </div>
-
-                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; margin-bottom: 15px; position: relative;">
-                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
-                    <div style="font-size: 12px; color: #6b7280;">Dnes 14:00 • <b>Hunter</b></div>
-                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Telefonát s klientem - dohodnuta schůzka.</div>
-                  </div>
-                  
-                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; position: relative;">
-                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;"></div>
-                    <div style="font-size: 12px; color: #6b7280;">Včera 10:00 • <b>Hunter</b></div>
-                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Založení dealu z formuláře.</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div class="page-break"></div>
-
-            <h3>${isCS ? 'D4: Sekce Administrace (Admin Panel)' : 'D4: Administration Section (Admin Panel)'}</h3>
-            <p>${isCS ? 'Vyhrazená sekce pro roli Admin. Slouží ke správě uživatelů (změny hesel a oprávnění - rolí). Umožňuje editaci globálních číselníků (Důvody ztráty, Zdroje leadů). Poskytuje pohled na Loginy a možnost auditovat systém díky integrovanému vyhledávání emailů nad Workspace účty (M365, Google).' : 'A dedicated section for the Admin role. Used for user management (password resets, role assignment). Allows editing global enumerations (Lost Reasons, Lead Sources). Provides access to Login logs and system audits with integrated email search across Workspace accounts (M365, Google).'}</p>
-            
-            <div style="font-family: sans-serif; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
-               <div style="display: flex; gap: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
-                 <span style="font-weight: bold; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 13px; margin-bottom: -15px;">Správa Uživatelů</span>
-                 <span style="font-weight: bold; color: #6b7280;">Číselníky (Enums)</span>
-                 <span style="font-weight: bold; color: #6b7280;">Audit (Emaily)</span>
-                 <span style="font-weight: bold; color: #6b7280;">Login Logy</span>
-               </div>
-               
-               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                 <b>Všichni uživatelé systému:</b>
-                 <button style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold;">+ Přidat Uživatele</button>
-               </div>
-               
-               <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 14px;">
-                 <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
-                   <th style="padding: 10px;">Email</th>
-                   <th style="padding: 10px;">Role</th>
-                   <th style="padding: 10px;">Vytvořeno</th>
-                   <th style="padding: 10px;">Akce</th>
-                 </tr>
-                 <tr style="border-bottom: 1px solid #e5e7eb;">
-                   <td style="padding: 10px;">admin@fhb.com</td>
-                   <td style="padding: 10px;"><span style="background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Admin</span></td>
-                   <td style="padding: 10px;">1. 1. 2026</td>
-                   <td style="padding: 10px; color: #3b82f6;">Změnit heslo</td>
-                 </tr>
-                 <tr>
-                   <td style="padding: 10px;">hunter@fhb.com</td>
-                   <td style="padding: 10px;"><span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Hunter</span></td>
-                   <td style="padding: 10px;">2. 1. 2026</td>
-                   <td style="padding: 10px; color: #3b82f6;">Změnit heslo</td>
-                 </tr>
-               </table>
-               
-               <div style="margin-top: 30px; background: #fff8f1; padding: 15px; border-left: 4px solid #f97316; border-radius: 4px;">
-                  <b>Tip: Audit (Vyhledávání Emailů)</b> 
-                  <p style="font-size: 13px; margin-top: 5px; color: #431407;">V záložce Audit má administrátor možnost vyhledávat příchozí i odchozí zprávy přes propojené Microsoft 365 a Google Workspace účty uživatelů (např. fulltextové vyhledávání dle IČO nebo domény klienta), což slouží k dohledu a zálohování důležité komunikace ke konkrétním dealům.</p>
-               </div>
-            </div>
+            <h2>${isCS ? '6. Uživatelské Rozhraní a Ovládací Prvky' : '6. User Interface & Controls'}</h2>
+            <ul>
+              <li><b>${isCS ? 'Dvojitá lišta posuvníku (Kanban Scrollbar)' : 'Dual Kanban Scrollbar'}:</b> ${isCS ? 'Kanban deska obsahuje posuvník nahoře i dole pod sloupci, což zajišťuje pohodlný horizontální posun napříč všemi 7 fázemi i na menších obrazovkách.' : 'The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display.'}</li>
+              <li><b>${isCS ? 'Filtr nepřiřazených dealů' : 'Unassigned Deals Filter'}:</b> ${isCS ? 'Tlačítko "Pouze nepřiřazené" zobrazí příležitosti, které zatím nemají v dané fázi stanoveného garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
+              <li><b>${isCS ? 'Zvýraznění chybějících dat (Red Underline Alert)' : 'Red Missing Data Highlighting'}:</b> ${isCS ? 'Pokud na kartě dealu chybí povinný údaj pro posun, pole je při pokusu o uložení či posun červeně podtrženo.' : 'If a required field is missing, it is underlined in red upon saving or advancing.'}</li>
+            </ul>
           </div>
           <script>
             setTimeout(() => {
@@ -1508,7 +1761,6 @@ async function startServer() {
       res.send(html);
     } catch (err: any) {
       console.error('Failed to generate manual:', err);
-      // Ensure we don't crash the server, just end response if not already ended
       if (!res.headersSent) {
          res.status(500).json({ error: 'Manual generation failed' });
       }
@@ -1887,7 +2139,7 @@ async function runHourlyJob() {
     try {
       // Find deals in opportunity with a hunter that have a relevant activity
       const [rows] = await connection.query(`
-        SELECT DISTINCT d.id 
+        SELECT DISTINCT d.id, d.companyId 
         FROM deals d
         JOIN activities a ON d.id = a.dealId
         WHERE d.stage = 'opportunity' 
@@ -1897,10 +2149,16 @@ async function runHourlyJob() {
           AND a.date <= NOW()
       `);
       
-      const dealsToAdvance = rows as {id: string}[];
+      const dealsToAdvance = rows as {id: string, companyId: string}[];
       if (dealsToAdvance.length > 0) {
         for (const deal of dealsToAdvance) {
           await connection.query("UPDATE deals SET stage = 'lead', updatedAt = NOW() WHERE id = ?", [deal.id]);
+          const auditLogId = uuidv4();
+          await connection.query(
+            `INSERT INTO audit_logs (id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [auditLogId, deal.id, deal.companyId, 'stage', 'opportunity', 'lead', 'System Cron']
+          );
           console.log(`[JOBS] Deal ${deal.id} advanced to lead.`);
         }
       }
@@ -2048,8 +2306,8 @@ setTimeout(() => {
                   if (meetings.value && meetings.value.length > 0) {
                       meetingId = meetings.value[0].id;
                   }
-              } catch (e) {
-                  console.error('[Worker] Failed to resolve online meeting. Make sure the OAuth user has OnlineMeetings.Read or equivalent application permissions.', e.message);
+              } catch (e: any) {
+                  console.warn(`[Worker] Could not resolve online meeting for activity ${activity.id} (requires OnlineMeetings.Read or OnlineMeetings.ReadWrite scope):`, e.message || e);
               }
               
               if (!meetingId) return;

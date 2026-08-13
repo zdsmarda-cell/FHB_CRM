@@ -39,28 +39,138 @@ const generatePDF = (lang, outputPath) => {
       .moveDown();
 
     // 2. Faze a prechody (Transitions)
-    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '2. Přechody mezi stavy (Pipeline Transitions)' : '2. Pipeline Stages and Transitions'), { underline: true });
-    doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Životní cyklus obchodního případu (Deal) prochází pevně stanovenými fázemi. Pro přechod mezi nimi jsou vyžadována konkrétní data a práva.' : 'The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them.')).moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '2. Přechody mezi stavy (Pipeline Stages & Requirements)' : '2. Pipeline Stages & Transition Requirements'), { underline: true });
+    doc.font('Helvetica').fontSize(11).text(removeDiacritics(isCS ? 'Pro přesun obchodního případu (Deal) do další fáze je nutné splnit striktní podmínky validace dat. Pokud chybí povinný údaj, přesun je zablokován.' : 'To move a deal to the next stage, strict data validation rules must be met. Missing required fields will block the transition.')).moveDown(0.5);
     
-    const stages = isCS ? [
-      { name: 'New (Otevřený lead)', requirements: 'Vyžaduje pouhé založení přes Kanban desku. Tuto fází běžně operuje Hunter.' },
-      { name: 'Discovery & Proposal', requirements: 'Pro přechod do této fáze musí Hunter provézt úvodní schůzku. Zde probíhá komunikace, odesílají se nabídky.' },
-      { name: 'Contracting (Smlouvání)', requirements: 'Klíčový přechod. Nutno vyplnit: Doručovací země (Delivery countries), Průměrný počet kusů v objednávce (Items), Váha (Weight), Objem (Volume). Nutno nahrát cenovou nabídku.' },
-      { name: 'Onboarding', requirements: 'Smlouva je podepsána. Vyžadovaná pole pro přechod: Datum podpisu smlouvy (Contract Signed Date), Datum nahrání ceníku, Preferovaný začátek IT integrace a Očekávané první naskladnění.' },
-      { name: 'Farming (Živý provoz)', requirements: 'Konečná fáze. Vyžaduje: Potvrzení o dokončení IT integrace, Ostré datum prvního naskladnění (Actual First Stocking) a dokončené UAT testování.' },
-      { name: 'Lost & Postponed', requirements: 'Z jakékoliv fáze lze přejít do rozeznání ztráty (Lost - vyžaduje vybrání důvodu úbytku ze sdíleného číselníku) nebo Odložení (Postponed - vyžaduje zadání data připomenutí a důvodu odložení).' }
+    const stagesDetailed = isCS ? [
+      {
+        name: '1. Opportunity (Oportunita / Zájemce) [Garant: Hunter]',
+        reqs: [
+          'Prirazeni garanta z roli Hunter (Hunter ID).',
+          'Vyplnene ICO v profilu spolecnosti.',
+          'Alespon 1 realizovana aktivita (Hovor, Teams, Schuzka) s datem v minulosti nebo pritomnosti.'
+        ]
+      },
+      {
+        name: '2. Lead (Kvalifikovany lead) [Garant: Hunter]',
+        reqs: [
+          'Prirazeni garanta z roli Hunter (Hunter ID).',
+          'Vyplneny Zdroj leadu (Lead Source z ciselniku).',
+          'Vyplnena E-commerce platforma (Shoptet, WooCommerce, Custom API apod.).',
+          'Kladny odhadovany mesicni pocet zasilok (> 0).'
+        ]
+      },
+      {
+        name: '3. Discovery & Proposal (Objevovani & Nabidka) [Garant: Closer]',
+        reqs: [
+          'Prirazeni garanta z roli Closer (Closer ID).',
+          'Vyber dorucovacich zemi (Delivery Countries - alespon 1 zeme).',
+          'Prumerny pocet kusu na objednavku (> 0).',
+          'Prumerna vaha baliku in kg (> 0 kg).',
+          'Prumerny objem baliku in m3 (> 0 m3).',
+          'Nahrana alespon 1 Cenova nabidka v PDF.'
+        ]
+      },
+      {
+        name: '4. Contracting (Smluvni jednani) [Garant: Closer]',
+        reqs: [
+          'Prirazeni garanta z roli Closer (Closer ID).',
+          'Datum podpisu smlouvy (Contract Signed Date).',
+          'Datum nahrani schvaleneho ceniku (Pricing Uploaded Date).',
+          'Vybrany system IT integrace (IT Integration ID).',
+          'Ocekavane datum 1. naskladneni (Expected First Stocking Date).'
+        ]
+      },
+      {
+        name: '5. Onboarding (Integrace & Naskladnovani) [Garant: Farmer]',
+        reqs: [
+          'Skutecne datum dokonceni IT integrace (IT Integration Completed Date).',
+          'Skutecne datum prvniho naskladneni (Actual First Stocking Date).',
+          'Skutecne datum dokonceni testovani UAT (Testing Completed Date).'
+        ]
+      },
+      {
+        name: '6. Farming (Zivy provoz) [Garant: Farmer]',
+        reqs: [
+          'Konecna produkcni faze. Klient generuje zive objednavky v systemu.'
+        ]
+      },
+      {
+        name: '7. Lost (Ztraceno) & Postponed (Odlozeno)',
+        reqs: [
+          'Lost: Vyzaduje vybrani Duvodu ztraty z ciselniku.',
+          'Postponed: Vyzaduje datum obnoveni jednani a duvod odlozeni.'
+        ]
+      }
     ] : [
-      { name: 'New (Open lead)', requirements: 'Only requires creation via Kanban board. Fully operated by Hunter.' },
-      { name: 'Discovery & Proposal', requirements: 'Transitioned by Hunter after initial meeting. Used for communication and proposals.' },
-      { name: 'Contracting', requirements: 'Critical transition. Mandatory attributes: Delivery countries, Average Items, Weight, Volume. Must upload a pricing offer.' },
-      { name: 'Onboarding', requirements: 'Contract signed. Required fields: Contract Signed Date, Pricing Upload Date, IT Integration ID/Start, and Expected First Stocking Date.' },
-      { name: 'Farming (Live operations)', requirements: 'Final stage. Requires: IT Integration Completed Date, Actual First Stocking Date, and Testing Completed Date.' },
-      { name: 'Lost & Postponed', requirements: 'Can be transitioned to from any stage. Lost requires a reason from enumerations. Postponed requires resume date and reason.' }
+      {
+        name: '1. Opportunity [Owner: Hunter]',
+        reqs: [
+          'Assigned Hunter (Hunter ID).',
+          'Company ID / Registration Number.',
+          'At least 1 completed activity (Call, Teams, Meeting) dated present or past.'
+        ]
+      },
+      {
+        name: '2. Qualified Lead [Owner: Hunter]',
+        reqs: [
+          'Assigned Hunter (Hunter ID).',
+          'Selected Lead Source from enumeration.',
+          'Selected E-commerce Platform.',
+          'Positive Estimated Monthly Parcels (> 0).'
+        ]
+      },
+      {
+        name: '3. Discovery & Proposal [Owner: Closer]',
+        reqs: [
+          'Assigned Closer (Closer ID).',
+          'Selected Delivery Countries (at least 1 country).',
+          'Average Items Per Order (> 0).',
+          'Average Parcel Weight (> 0 kg).',
+          'Average Parcel Volume (> 0 m3).',
+          'Uploaded at least 1 Pricing Offer PDF.'
+        ]
+      },
+      {
+        name: '4. Contracting [Owner: Closer]',
+        reqs: [
+          'Assigned Closer (Closer ID).',
+          'Contract Signed Date.',
+          'Pricing Uploaded Date.',
+          'Selected IT Integration system.',
+          'Expected First Stocking Date.'
+        ]
+      },
+      {
+        name: '5. Onboarding [Owner: Farmer]',
+        reqs: [
+          'IT Integration Completed Date.',
+          'Actual First Stocking Date.',
+          'UAT Testing Completed Date.'
+        ]
+      },
+      {
+        name: '6. Farming (Live operations) [Owner: Farmer]',
+        reqs: [
+          'Final production stage. Live order processing.'
+        ]
+      },
+      {
+        name: '7. Lost & Postponed',
+        reqs: [
+          'Lost: Requires selecting a Lost Reason from enumeration.',
+          'Postponed: Requires Postponed Until date and reason.'
+        ]
+      }
     ];
 
-    stages.forEach(s => {
+    stagesDetailed.forEach(s => {
       doc.font('Helvetica-Bold').fontSize(11).text(removeDiacritics(s.name));
-      doc.font('Helvetica').fontSize(11).text(removeDiacritics(s.requirements)).moveDown(0.5);
+      doc.font('Helvetica').fontSize(10);
+      s.reqs.forEach(r => {
+        doc.text(`  • ${removeDiacritics(r)}`);
+      });
+      doc.moveDown(0.5);
     });
     doc.moveDown();
 

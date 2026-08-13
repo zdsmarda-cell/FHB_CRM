@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -283,6 +283,24 @@ export function DealDetailsView() {
               <div className="space-y-4">
                 {paginatedLogs.map(log => {
                   const user = users.find(u => u.id === log.changedBy);
+                  const isCronUser = log.changedBy === 'System Cron' || log.changedBy === 'System';
+                  
+                  const formatStageLabel = (stageVal: string) => {
+                    if (!stageVal) return '';
+                    const stageKey = stageVal.toLowerCase();
+                    if (stageKey === 'opportunity' || stageKey === 'lead_opportunity') return t('stages.opportunity', '1. Opportunity');
+                    if (stageKey === 'lead') return t('stages.lead', '2. Qualified Lead');
+                    if (stageKey === 'proposal' || stageKey === 'discovery_proposal') return t('stages.discovery_proposal', '3. Discovery & Proposal');
+                    if (stageKey === 'contracting') return t('stages.contracting', '4. Contracting');
+                    if (stageKey === 'onboarding') return t('stages.onboarding', '5. Onboarding');
+                    if (stageKey === 'farming') return t('stages.farming', '6. Farming');
+                    if (stageKey === 'lost') return t('stages.lost', '7. Lost & Postponed');
+                    return stageVal;
+                  };
+
+                  const displayOld = log.field === 'stage' ? formatStageLabel(log.oldValue) : log.oldValue;
+                  const displayNew = log.field === 'stage' ? formatStageLabel(log.newValue) : log.newValue;
+
                   return (
                     <div key={log.id} className="relative pl-4 border-l-2 border-indigo-100">
                       <div className="absolute w-2 h-2 rounded-full bg-indigo-500 -left-[5px] top-1"></div>
@@ -290,20 +308,33 @@ export function DealDetailsView() {
                         {format(parseISO(log.timestamp), 'MMM d, HH:mm')}
                       </p>
                       <p className="text-sm text-gray-800">
-                        Changed <span className="font-medium">{log.field}</span>
+                        {log.field === 'stage' ? (
+                          <span className="font-semibold text-indigo-900">{t('history.stageChanged', 'Změna fázového stavu')}</span>
+                        ) : (
+                          <>Changed <span className="font-medium">{log.field}</span></>
+                        )}
                       </p>
                       <div className="mt-1 bg-gray-50 p-2 rounded text-xs text-gray-600 border border-gray-200 flex items-center flex-wrap gap-1">
-                        {log.oldValue && log.oldValue !== 'undefined' && (
+                        {displayOld && displayOld !== 'undefined' && (
                           <>
-                            <span className="line-through opacity-70 break-words">{log.oldValue}</span>
+                            <span className="line-through opacity-70 break-words">{displayOld}</span>
                             <span className="text-gray-400 font-medium">{'->'}</span>
                           </>
                         )}
-                        <span className="font-medium text-indigo-700 break-words">{log.newValue}</span>
+                        <span className="font-semibold text-indigo-700 break-words">{displayNew}</span>
                       </div>
                       <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                        <UserIcon className="w-3 h-3" />
-                        {log.changedBy === 'System' ? 'System' : (user?.name || 'Unknown User')}
+                        {isCronUser ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-700 font-medium border border-amber-200">
+                            <Bot className="w-3.5 h-3.5 text-amber-600" />
+                            {t('history.systemCron', 'Systémový automat (Cron)')}
+                          </span>
+                        ) : (
+                          <>
+                            <UserIcon className="w-3 h-3 text-gray-400" />
+                            <span>{user?.name || log.changedBy || 'Unknown User'}</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   )

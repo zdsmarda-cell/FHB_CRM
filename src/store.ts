@@ -207,6 +207,18 @@ export const useStore = create<StoreState>((set, get) => {
     
     kanbanUserFilter: null,
     setKanbanUserFilter: (userId) => set({ kanbanUserFilter: userId }),
+    kanbanCompanySearch: '',
+    setKanbanCompanySearch: (term) => set({ kanbanCompanySearch: term }),
+    kanbanCountryFilter: [],
+    setKanbanCountryFilter: (countries) => set({ kanbanCountryFilter: countries }),
+    kanbanSegmentFilter: [],
+    setKanbanSegmentFilter: (segments) => set({ kanbanSegmentFilter: segments }),
+    resetKanbanFilters: () => set({
+      kanbanUserFilter: null,
+      kanbanCompanySearch: '',
+      kanbanCountryFilter: [],
+      kanbanSegmentFilter: []
+    }),
 
     addSegment: async (name) => {
       const newSegment = { id: uuidv4(), name, isActive: true };
@@ -609,6 +621,7 @@ export const useStore = create<StoreState>((set, get) => {
     const newLog: AuditLog = {
       id: uuidv4(),
       dealId: dealId,
+      companyId: oldDeal.companyId,
       field: 'stage',
       oldValue: oldDeal.stage,
       newValue: newStage,
@@ -652,6 +665,7 @@ export const useStore = create<StoreState>((set, get) => {
             newLogs.push({
               id: uuidv4(),
               dealId: dealId,
+              companyId: oldDeal.companyId,
               field,
               oldValue: oldStr,
               newValue: newStr,
@@ -663,6 +677,7 @@ export const useStore = create<StoreState>((set, get) => {
           newLogs.push({
             id: uuidv4(),
             dealId: dealId,
+            companyId: oldDeal.companyId,
             field,
             oldValue: formatAuditValue(state, field, oldVal),
             newValue: formatAuditValue(state, field, newVal),
@@ -688,10 +703,11 @@ export const useStore = create<StoreState>((set, get) => {
     const state = get();
     const now = new Date();
     let hasChanges = false;
+    const newLogs: AuditLog[] = [];
     const newDeals = state.deals.map(deal => {
       if (deal.postponedUntil && !deal.lostPermanently && new Date(deal.postponedUntil) <= now && deal.stage === 'lost') {
         hasChanges = true;
-        return {
+        const updatedDeal = {
           ...deal,
           stage: 'opportunity' as Stage, // returning to opportunity
           postponedUntil: undefined,
@@ -700,13 +716,27 @@ export const useStore = create<StoreState>((set, get) => {
           postponedAt: undefined,
           updatedAt: now.toISOString()
         };
+        newLogs.push({
+          id: uuidv4(),
+          dealId: deal.id,
+          companyId: deal.companyId,
+          field: 'stage',
+          oldValue: deal.stage,
+          newValue: 'opportunity',
+          changedBy: 'System Cron',
+          timestamp: now.toISOString()
+        });
+        return updatedDeal;
       }
       return deal;
     });
 
     if (hasChanges) {
-      await syncToDb({ deals: newDeals });
-      set({ deals: newDeals });
+      await syncToDb({ deals: newDeals, audit_logs: newLogs });
+      set((state) => ({
+        deals: newDeals,
+        auditLogs: [...state.auditLogs, ...newLogs]
+      }));
     }
   },
 

@@ -213,6 +213,13 @@ export interface StoreState {
   
   kanbanUserFilter: string | null;
   setKanbanUserFilter: (userId: string | null) => void;
+  kanbanCompanySearch: string;
+  setKanbanCompanySearch: (term: string) => void;
+  kanbanCountryFilter: string[];
+  setKanbanCountryFilter: (countries: string[]) => void;
+  kanbanSegmentFilter: string[];
+  setKanbanSegmentFilter: (segments: string[]) => void;
+  resetKanbanFilters: () => void;
 
   // Actions
   refreshState: () => Promise<void>;

@@ -80,7 +80,7 @@ async function checkPostponedDealsWorker() {
               'stage', 
               deal.stage, 
               newStage, 
-              'System', 
+              'System Cron', 
               updateTime
             ]
           );
