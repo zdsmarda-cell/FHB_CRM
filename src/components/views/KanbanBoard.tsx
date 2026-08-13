@@ -60,6 +60,11 @@ export const getAssigneeField = (stage: Stage, deal?: Deal) => {
   return 'hunterId';
 };
 
+export const formatDisplayUrl = (url: string): string => {
+  if (!url) return '';
+  return url.replace(/^https?:\/\//i, '');
+};
+
 export const getDealDaysInStage = (deal: Deal, auditLogs: AuditLog[]): number => {
   const relevantLogs = (auditLogs || [])
     .filter(a => a.dealId === deal.id && a.field === 'stage' && a.newValue === deal.stage)
@@ -700,24 +705,27 @@ export function KanbanBoard() {
                             </h4>
                             <p className="text-xs text-gray-500 mt-1 truncate flex items-center gap-1.5">
                               <Globe className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-                              {company.urls && company.urls.filter(u => u && u.trim() !== '').length > 0 ? (
-                                <a
-                                  href={
-                                    company.urls.find(u => u && u.trim() !== '')?.startsWith('http')
-                                      ? company.urls.find(u => u && u.trim() !== '')
-                                      : `https://${company.urls.find(u => u && u.trim() !== '')}`
-                                  }
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-indigo-600 hover:text-indigo-800 hover:underline truncate"
-                                  title={company.urls.filter(u => u && u.trim() !== '').join(', ')}
-                                >
-                                  {company.urls.find(u => u && u.trim() !== '')}
-                                </a>
-                              ) : (
-                                <span className="text-gray-400 italic">{t('common.noUrl', 'Bez URL')}</span>
-                              )}
+                              {(() => {
+                                const mainUrl = company.urls?.find(u => u && u.trim() !== '');
+                                if (!mainUrl) {
+                                  return <span className="text-gray-400 italic">{t('common.noUrl', 'Bez URL')}</span>;
+                                }
+                                const href = mainUrl.startsWith('http') ? mainUrl : `https://${mainUrl}`;
+                                const displayUrl = formatDisplayUrl(mainUrl);
+                                const allUrlsTooltip = company.urls.filter(u => u && u.trim() !== '').map(formatDisplayUrl).join(', ');
+                                return (
+                                  <a
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-indigo-600 hover:text-indigo-800 hover:underline truncate"
+                                    title={allUrlsTooltip}
+                                  >
+                                    {displayUrl}
+                                  </a>
+                                );
+                              })()}
                             </p>
                           </div>
                         </div>

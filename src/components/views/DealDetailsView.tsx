@@ -510,7 +510,15 @@ function CompanyDetailsForm({ company, isEditing, formData, setFormData }: any) 
         <span className="text-gray-500 block mb-1">{t('fields.urls')}</span>
         <div className="flex flex-wrap gap-2">
           {company.urls?.map((url: string, i: number) => url ? (
-            <a key={i} href={url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{url}</a>
+            <a 
+              key={i} 
+              href={url.startsWith('http') ? url : `https://${url}`} 
+              target="_blank" 
+              rel="noreferrer" 
+              className="text-indigo-600 hover:underline"
+            >
+              {url.replace(/^https?:\/\//i, '')}
+            </a>
           ) : null)}
         </div>
       </div>
