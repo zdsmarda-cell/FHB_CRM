@@ -8,6 +8,7 @@ import { COUNTRIES } from '../../lib/countryMapping';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getDealsForUser, STAGES } from '../../lib/permissions';
 import { getCurrentAssigneeId, getDealReminderColor } from './KanbanBoard';
+import { format, parseISO } from 'date-fns';
 
 export function DealsListView({ 
   showUnassignedOnly = false,
@@ -39,10 +40,13 @@ export function DealsListView({
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
   const requestSort = (key: string) => {
-    let direction: 'asc' | 'desc' | null = 'asc';
+    let direction: 'asc' | 'desc' | null = key === 'createdAt' ? 'desc' : 'asc';
     if (sortConfig && sortConfig.key === key) {
-      if (sortConfig.direction === 'asc') direction = 'desc';
-      else direction = null;
+      if (sortConfig.direction === 'desc') {
+        direction = key === 'createdAt' ? 'asc' : null;
+      } else if (sortConfig.direction === 'asc') {
+        direction = key === 'createdAt' ? null : 'desc';
+      }
     }
     setSortConfig(direction ? { key, direction } : null);
   };
@@ -164,6 +168,10 @@ export function DealsListView({
           case 'stage':
             aValue = t(`stages.${a.stage}`);
             bValue = t(`stages.${b.stage}`);
+            break;
+          case 'createdAt':
+            aValue = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            bValue = b.createdAt ? new Date(b.createdAt).getTime() : 0;
             break;
         }
         
@@ -300,20 +308,23 @@ export function DealsListView({
         <table className="w-full text-left text-sm whitespace-nowrap">
           <thead className="bg-gray-50 text-gray-500 uppercase tracking-wider border-b border-gray-200 sticky top-0 z-0">
             <tr>
-              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('name')}>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('name')}>
                 {t('admin.name')} {renderSortIcon('name')}
               </th>
-              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('ico')}>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('ico')}>
                 {t('fields.ico')} {renderSortIcon('ico')}
               </th>
-              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('country')}>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('country')}>
                 {t('fields.country')} {renderSortIcon('country')}
               </th>
-              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('segment')}>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('segment')}>
                 {t('fields.segment')} {renderSortIcon('segment')}
               </th>
-              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100" onClick={() => requestSort('stage')}>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('stage')}>
                 {t('common.stage', 'Stav')} {renderSortIcon('stage')}
+              </th>
+              <th className="px-6 py-4 font-medium cursor-pointer hover:bg-gray-100 select-none" onClick={() => requestSort('createdAt')}>
+                {t('fields.dateCreated', 'Datum vytvoření')} {renderSortIcon('createdAt')}
               </th>
               {currentUser?.role === 'administrator' && (
                 <th className="px-6 py-4 font-medium">{t('admin.visibility')}</th>
@@ -323,7 +334,7 @@ export function DealsListView({
           <tbody className="divide-y divide-gray-100">
             {currentDeals.length === 0 ? (
               <tr>
-                <td colSpan={currentUser?.role === 'administrator' ? 6 : 5} className="px-6 py-8 text-center text-gray-500">
+                <td colSpan={currentUser?.role === 'administrator' ? 7 : 6} className="px-6 py-8 text-center text-gray-500">
                   {t('admin.noRecords')}
                 </td>
               </tr>
@@ -343,6 +354,9 @@ export function DealsListView({
                     <td className="px-6 py-4 text-gray-500">{company.country || 'Czechia'}</td>
                     <td className="px-6 py-4 text-gray-500">{company.segment ? (segments.find(s => s.id === company.segment)?.name || company.segment.charAt(0).toUpperCase() + company.segment.slice(1)) : ''}</td>
                     <td className="px-6 py-4 text-gray-900 font-medium">{t(`stages.${deal.stage}`)}</td>
+                    <td className="px-6 py-4 text-gray-500 text-xs">
+                      {deal.createdAt ? format(parseISO(deal.createdAt), 'dd.MM.yyyy') : '-'}
+                    </td>
                     {currentUser?.role === 'administrator' && (
                       <td className="px-6 py-4">
                         <button

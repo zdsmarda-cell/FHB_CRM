@@ -36,7 +36,9 @@ const resources = {
         email: 'Email',
         phone: 'Phone',
         urls: 'Websites',
-        contacts: 'Contacts'
+        contacts: 'Contacts',
+        createdAt: 'Created At',
+        dateCreated: 'Date Created'
       },
       auth: {
         login: 'Login',
@@ -354,7 +356,9 @@ const resources = {
         email: 'Email',
         phone: 'Telefon',
         urls: 'Webové Stránky',
-        contacts: 'Kontakty'
+        contacts: 'Kontakty',
+        createdAt: 'Vytvořeno',
+        dateCreated: 'Datum vytvoření'
       },
       auth: {
         login: 'Přihlášení',

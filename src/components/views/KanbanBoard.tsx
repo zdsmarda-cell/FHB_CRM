@@ -3,7 +3,7 @@ import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
 import { Stage, User, Deal, StageReminder, AuditLog } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -124,6 +124,31 @@ export function KanbanBoard() {
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>(() => {
     return (localStorage.getItem('board_view_mode') as 'kanban' | 'list') || 'kanban';
   });
+  const [stageSorts, setStageSorts] = useState<Record<string, 'desc' | 'asc' | null>>(() => {
+    try {
+      const saved = localStorage.getItem('kanban_stage_sorts');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleStageSort = (stage: string) => {
+    setStageSorts(prev => {
+      const current = prev[stage] || null;
+      let next: 'desc' | 'asc' | null = null;
+      if (!current) next = 'desc';
+      else if (current === 'desc') next = 'asc';
+      else next = null;
+
+      const updated = { ...prev, [stage]: next };
+      try {
+        localStorage.setItem('kanban_stage_sorts', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
   const navigate = useNavigate();
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -651,7 +676,22 @@ export function KanbanBoard() {
           style={{ zoom: zoomLevel } as any}
         >
           {visibleStages.map(stage => {
-          const stageDeals = visibleDeals.filter(d => d.stage === stage);
+          let stageDeals = visibleDeals.filter(d => d.stage === stage);
+          const sortDirection = stageSorts[stage] || null;
+
+          if (sortDirection === 'desc') {
+            stageDeals = [...stageDeals].sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeB - timeA;
+            });
+          } else if (sortDirection === 'asc') {
+            stageDeals = [...stageDeals].sort((a, b) => {
+              const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return timeA - timeB;
+            });
+          }
           
           return (
             <div 
@@ -661,10 +701,42 @@ export function KanbanBoard() {
               className="min-w-[320px] w-[320px] bg-gray-100/70 rounded-xl p-4 flex flex-col h-full border border-gray-200/60 shadow-inner"
             >
               <div className="flex justify-between items-center mb-4 px-1">
-                <h3 className="font-semibold text-gray-700 uppercase tracking-wider text-xs">
-                  {t(`stages.${stage}`)}
-                </h3>
-                <span className="bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-gray-300">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h3 
+                    onClick={() => toggleStageSort(stage)}
+                    className="font-semibold text-gray-700 uppercase tracking-wider text-xs truncate cursor-pointer hover:text-indigo-600 select-none"
+                    title={
+                      sortDirection === 'desc'
+                        ? 'Seřazeno podle data vytvoření: Sestupně (od nejnovějšího). Klikněte pro vzestupné.'
+                        : sortDirection === 'asc'
+                        ? 'Seřazeno podle data vytvoření: Vzestupně (od nejstaršího). Klikněte pro výchozí řazení.'
+                        : 'Klikněte pro seřazení podle data vytvoření'
+                    }
+                  >
+                    {t(`stages.${stage}`)}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => toggleStageSort(stage)}
+                    className={`p-1 rounded transition-colors flex items-center justify-center ${
+                      sortDirection
+                        ? 'text-indigo-600 bg-indigo-50 border border-indigo-200 shadow-2xs font-semibold'
+                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200/60'
+                    }`}
+                    title={
+                      sortDirection === 'desc'
+                        ? 'Seřazeno podle data vytvoření: Sestupně (od nejnovějšího). Klikněte pro vzestupné.'
+                        : sortDirection === 'asc'
+                        ? 'Seřazeno podle data vytvoření: Vzestupně (od nejstaršího). Klikněte pro výchozí řazení.'
+                        : 'Seřadit podle data vytvoření'
+                    }
+                  >
+                    {sortDirection === 'desc' && <ArrowDown className="w-3.5 h-3.5" />}
+                    {sortDirection === 'asc' && <ArrowUp className="w-3.5 h-3.5" />}
+                    {!sortDirection && <ArrowUpDown className="w-3.5 h-3.5 opacity-40 hover:opacity-100" />}
+                  </button>
+                </div>
+                <span className="bg-gray-200 text-gray-700 px-2.5 py-0.5 rounded-full text-xs font-bold border border-gray-300 shrink-0">
                   {stageDeals.length}
                 </span>
               </div>
