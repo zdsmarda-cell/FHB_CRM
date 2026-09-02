@@ -1877,6 +1877,13 @@ async function startServer() {
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
       const [contactPositions] = await pool.query('SELECT * FROM contact_positions');
       const [stageReminders] = await pool.query('SELECT * FROM stage_reminders');
+      let stageAuditLogs: any[] = [];
+      try {
+        const [auditRows] = await pool.query("SELECT * FROM audit_logs WHERE field = 'stage' ORDER BY timestamp DESC LIMIT 5000");
+        stageAuditLogs = auditRows as any[];
+      } catch (e) {
+        console.warn('Could not fetch stage audit_logs in /api/state:', e);
+      }
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -1909,7 +1916,7 @@ async function startServer() {
         lostReasons: parseJsonFields(lostReasons as any[], []),
         contactPositions: parseJsonFields(contactPositions as any[], []),
         stageReminders: parseJsonFields(stageReminders as any[], []),
-        auditLogs: [],
+        auditLogs: stageAuditLogs,
         activities: []
       });
     } catch (err: any) {

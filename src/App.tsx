@@ -4,13 +4,14 @@ import { KanbanBoard } from './components/views/KanbanBoard';
 import { AdminPanel } from './components/views/AdminPanel';
 import { DealDetailsView } from './components/views/DealDetailsView';
 import { Header } from './components/layout/Header';
-import { LayoutDashboard, Users, Info } from 'lucide-react';
+import { LayoutDashboard, Users, Info, BarChart3 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSubordinateIds } from './lib/permissions';
 import { useStore, CLIENT_ID } from './store';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Login } from './components/auth/Login';
 import { ResetPassword } from './components/auth/ResetPassword';
+import { StatisticsView } from './components/views/StatisticsView';
 import { io } from 'socket.io-client';
 
 const socket = io();
@@ -102,6 +103,7 @@ function MainLayout() {
 
   const navItems = [
     { path: '/', label: t('menu.board'), icon: LayoutDashboard },
+    { path: '/statistics', label: t('menu.statistics', 'Statistiky'), icon: BarChart3 },
   ];
 
   if (currentUser.role === 'administrator' || currentUser.role === 'cso') {
@@ -159,6 +161,7 @@ function MainLayout() {
       <main className="flex-1 overflow-auto">
         <Routes>
           <Route path="/" element={<KanbanBoard />} />
+          <Route path="/statistics" element={<StatisticsView />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="/deal/:id" element={<DealDetailsView />} />
         </Routes>

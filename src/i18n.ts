@@ -24,7 +24,8 @@ const resources = {
       menu: {
         board: 'Kanban Board',
         admin: 'Admin Panel',
-        newDeal: 'New Deal'
+        newDeal: 'New Deal',
+        statistics: 'Statistics'
       },
       fields: {
         ico: 'Company ID',
@@ -319,6 +320,62 @@ const resources = {
           invalidCurrent: 'The given current password is incorrect.',
           general: 'Failed to change password.'
         }
+      },
+      statistics: {
+        title: 'Statistics & KPIs',
+        subtitle: 'Key performance indicators and sales funnel metrics',
+        tabs: {
+          opportunities: 'Opportunities',
+          conversions: 'Conversions',
+          performance: 'Team Performance',
+          comingSoon: 'Coming soon'
+        },
+        summary: {
+          totalOpportunities: 'Total Inserted Opportunities',
+          avgTimeBetweenCreations: 'Avg. Time Between New Opportunities',
+          avgTimeToLead: 'Avg. Time from Opportunity to Lead'
+        },
+        filters: {
+          title: 'Filters',
+          periodFrom: 'From',
+          periodTo: 'To',
+          user: 'User / Creator',
+          allUsers: 'All users',
+          country: 'Country',
+          allCountries: 'All countries',
+          region: 'Region',
+          allRegions: 'All regions',
+          segment: 'Segment',
+          allSegments: 'All segments',
+          reset: 'Reset filters',
+          allTime: 'All time',
+          last12Months: 'Last 12 months',
+          thisYear: 'This year',
+          thisMonth: 'This month'
+        },
+        charts: {
+          insertedDealsTitle: 'Opportunities Inserted in Last 12 Months',
+          insertedDealsSubtitle: 'Including current month',
+          leadTransitionTitle: 'Average Time to Lead Conversion',
+          leadTransitionSubtitle: 'Last 12 months (days & hours)',
+          count: 'Inserted',
+          avgDuration: 'Avg Duration',
+          dealsCount: 'deals'
+        },
+        table: {
+          title: 'List of Inserted Opportunities',
+          companyName: 'Company Name',
+          createdAt: 'Date Inserted',
+          url: 'Website (URL)',
+          ico: 'Company ID',
+          createdBy: 'Created By',
+          searchCompany: 'Search company...',
+          searchIco: 'Search ID...',
+          searchUrl: 'Search URL...',
+          searchCreator: 'Search user...',
+          noRecords: 'No opportunities match your filter criteria.',
+          showingCount: 'Showing {{shown}} of {{total}} opportunities'
+        }
       }
     }
   },
@@ -344,7 +401,8 @@ const resources = {
       menu: {
         board: 'Kanban Nástěnka',
         admin: 'Admin Panel',
-        newDeal: 'Nová Příležitost'
+        newDeal: 'Nová Příležitost',
+        statistics: 'Statistiky'
       },
       fields: {
         ico: 'IČO',
@@ -637,6 +695,62 @@ const resources = {
           passwordsDoNotMatch: 'Nové heslo a jeho kontrola se neshodují.',
           invalidCurrent: 'Zadané stávající heslo není správné.',
           general: 'Nepodařilo se změnit heslo.'
+        }
+      },
+      statistics: {
+        title: 'Statistiky a KPI',
+        subtitle: 'Klíčové ukazatele výkonnosti a analýza obchodního trychtýře',
+        tabs: {
+          opportunities: 'Příležitosti',
+          conversions: 'Konverze',
+          performance: 'Výkonnost týmu',
+          comingSoon: 'V přípravě'
+        },
+        summary: {
+          totalOpportunities: 'Celkem vložených příležitostí',
+          avgTimeBetweenCreations: 'Průměrná doba pro vložení nové příležitosti',
+          avgTimeToLead: 'Průměrný čas přechodu do leadu'
+        },
+        filters: {
+          title: 'Filtry',
+          periodFrom: 'Od',
+          periodTo: 'Do',
+          user: 'Uživatel / Vytvořil',
+          allUsers: 'Všichni uživatelé',
+          country: 'Země',
+          allCountries: 'Všechny země',
+          region: 'Region',
+          allRegions: 'Všechny regiony',
+          segment: 'Segment',
+          allSegments: 'Všechny segmenty',
+          reset: 'Resetovat filtry',
+          allTime: 'Od začátku',
+          last12Months: 'Posledních 12 měsíců',
+          thisYear: 'Tento rok',
+          thisMonth: 'Tento měsíc'
+        },
+        charts: {
+          insertedDealsTitle: 'Počet vložených příležitostí za posledních 12 měsíců',
+          insertedDealsSubtitle: 'Včetně aktuálního měsíce',
+          leadTransitionTitle: 'Průměrná doba mezi vloženou příležitostí a změnou do leadu',
+          leadTransitionSubtitle: 'Za posledních 12 měsíců (ve dnech a hodinách)',
+          count: 'Vloženo',
+          avgDuration: 'Průměrná doba',
+          dealsCount: 'příležitostí'
+        },
+        table: {
+          title: 'Seznam vložených příležitostí',
+          companyName: 'Název společnosti',
+          createdAt: 'Datum vložení do systému',
+          url: 'URL',
+          ico: 'IČ',
+          createdBy: 'Kdo ji vytvořil',
+          searchCompany: 'Hledat společnost...',
+          searchIco: 'Hledat IČ...',
+          searchUrl: 'Hledat URL...',
+          searchCreator: 'Hledat uživatele...',
+          noRecords: 'Nebyly nalezeny žádné příležitosti odpovídající zadaným kritériím.',
+          showingCount: 'Zobrazeno {{shown}} z {{total}} příležitostí'
         }
       }
     }
