@@ -617,6 +617,23 @@ async function startServer() {
     }
   });
 
+  // GET User Login Counts for Statistics (counts per user)
+  app.get('/api/user_login_counts', authMiddleware, async (req, res) => {
+    try {
+      const [rows] = await pool.query('SELECT userId, COUNT(*) as count FROM login_logs GROUP BY userId');
+      const counts: Record<string, number> = {};
+      for (const row of (rows as any[])) {
+        if (row.userId) {
+          counts[row.userId] = Number(row.count) || 0;
+        }
+      }
+      res.json(counts);
+    } catch (err: any) {
+      console.error('Failed to fetch user login counts:', err);
+      res.status(500).json({ error: 'Failed to fetch user login counts' });
+    }
+  });
+
   // GET Email Logs for Admin
   app.get('/api/email_logs', async (req, res) => {
     try {

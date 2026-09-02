@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../../store';
-import { getDealsForUser } from '../../../lib/permissions';
-import { Deal, Company, AuditLog } from '../../../types';
+import { Deal, Company, AuditLog, Stage } from '../../../types';
+import { isTestDeal, getUserStatisticsScope, formatDaysAndHours } from '../../../lib/statistics';
 import { format, parseISO, subMonths, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { cs } from 'date-fns/locale';
 import { 
@@ -21,7 +21,13 @@ import {
   ArrowUp, 
   ArrowDown,
   CheckCircle2,
-  FileText
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ShieldAlert,
+  Users as UsersIcon
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -35,37 +41,41 @@ import {
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 
-/**
- * Format milliseconds into Czech days and hours (e.g., "3 dny, 14 hodin")
- */
-export function formatDaysAndHours(ms: number): string {
-  if (isNaN(ms) || ms <= 0) return '0 hodin';
-  const totalHours = ms / (1000 * 60 * 60);
-  const days = Math.floor(totalHours / 24);
-  const hours = Math.round(totalHours % 24);
-
-  const dayStr = days === 1 ? '1 den' : (days >= 2 && days <= 4 ? `${days} dny` : `${days} dní`);
-  const hourStr = hours === 1 ? '1 hodina' : (hours >= 2 && hours <= 4 ? `${hours} hodiny` : `${hours} hodin`);
-
-  if (days === 0) {
-    return hours === 0 ? '< 1 hodina' : hourStr;
-  }
-  if (hours === 0) {
-    return dayStr;
-  }
-  return `${dayStr}, ${hourStr}`;
-}
-
 export function OpportunitiesKpiView() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const store = useStore();
   const { deals, companies, users, segments, auditLogs, currentUser } = store;
 
-  // Base deals accessible by current user based on permission model
+  // Evaluate RBAC Scope:
+  // - Admin & CSO: sees all data, can filter across all users
+  // - Manager: sees data of themselves and their subordinates only
+  // - Regular: sees only their own data (cannot filter across others)
+  const scope = useMemo(() => {
+    return getUserStatisticsScope(currentUser, users);
+  }, [currentUser, users]);
+
+  // Base deals:
+  // 1. Exclude test opportunities (isTestDeal)
+  // 2. Restrict to user's RBAC scope
   const accessibleDeals = useMemo(() => {
-    return getDealsForUser(store, currentUser);
-  }, [store, currentUser]);
+    return deals.filter(deal => {
+      // Exclude test deals
+      if (isTestDeal(deal, store)) return false;
+
+      // Admin & CSO can see all deals
+      if (scope.isAll) return true;
+
+      // Check if creator, hunter, closer, or farmer belongs to allowed scope
+      const matchesScope = 
+        scope.allowedUserIds.includes(deal.createdBy) ||
+        (deal.hunterId && scope.allowedUserIds.includes(deal.hunterId)) ||
+        (deal.closerId && scope.allowedUserIds.includes(deal.closerId)) ||
+        (deal.farmerId && scope.allowedUserIds.includes(deal.farmerId));
+
+      return matchesScope;
+    });
+  }, [deals, store, scope]);
 
   // Main Filters state: Od - Do default from the beginning (empty = all time)
   const [dateFrom, setDateFrom] = useState<string>('');
@@ -81,10 +91,16 @@ export function OpportunitiesKpiView() {
   const [colSearchUrl, setColSearchUrl] = useState('');
   const [colSearchIco, setColSearchIco] = useState('');
   const [colSearchCreator, setColSearchCreator] = useState('');
+  const [colSearchAssigned, setColSearchAssigned] = useState('');
+  const [colSearchStage, setColSearchStage] = useState('all');
 
   // Table sorting
   const [tableSortDir, setTableSortDir] = useState<'desc' | 'asc'>('desc');
-  const [tableSortKey, setTableSortKey] = useState<'createdAt' | 'name' | 'ico' | 'creator'>('createdAt');
+  const [tableSortKey, setTableSortKey] = useState<'createdAt' | 'name' | 'ico' | 'creator' | 'assigned' | 'stage'>('createdAt');
+
+  // Table pagination
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(25);
 
   // Available unique countries and regions from companies
   const availableCountries = useMemo(() => {
@@ -120,6 +136,7 @@ export function OpportunitiesKpiView() {
       setDateFrom(format(startOfMonth(now), 'yyyy-MM-dd'));
       setDateTo(format(now, 'yyyy-MM-dd'));
     }
+    setCurrentPage(1);
   };
 
   const handleResetFilters = () => {
@@ -134,6 +151,9 @@ export function OpportunitiesKpiView() {
     setColSearchUrl('');
     setColSearchIco('');
     setColSearchCreator('');
+    setColSearchAssigned('');
+    setColSearchStage('all');
+    setCurrentPage(1);
   };
 
   // Filter deals dynamically based on main filters
@@ -150,11 +170,13 @@ export function OpportunitiesKpiView() {
         if (dateFrom) return false;
       }
 
-      // User filter (Creator or Assigned hunter)
+      // User filter (Creator or Assigned)
       if (selectedUserId !== 'all') {
         const isCreator = deal.createdBy === selectedUserId;
         const isHunter = deal.hunterId === selectedUserId;
-        if (!isCreator && !isHunter) return false;
+        const isCloser = deal.closerId === selectedUserId;
+        const isFarmer = deal.farmerId === selectedUserId;
+        if (!isCreator && !isHunter && !isCloser && !isFarmer) return false;
       }
 
       // Country filter
@@ -194,34 +216,34 @@ export function OpportunitiesKpiView() {
     return formatDaysAndHours(avgMs);
   }, [filteredDeals]);
 
-  // Summary Metric 3 (Bonus): Average time to transition from opportunity to lead for filtered deals
+  // Summary Metric 3: Average time to transition from opportunity to lead for filtered deals
   const avgTimeToLeadGeneral = useMemo(() => {
     let totalMs = 0;
     let count = 0;
 
     filteredDeals.forEach(deal => {
-      if (!deal.createdAt) return;
-      const createdTime = new Date(deal.createdAt).getTime();
+      const dealLogs = auditLogs
+        .filter(l => l.dealId === deal.id && l.field === 'stage' && l.newValue === 'lead')
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-      // Find audit log for transition to lead
-      const leadLog = (auditLogs || []).find(
-        log => log.dealId === deal.id && log.field === 'stage' && log.newValue === 'lead'
-      );
-
-      if (leadLog && leadLog.timestamp) {
-        const leadTime = new Date(leadLog.timestamp).getTime();
-        const diff = leadTime - createdTime;
-        if (diff >= 0) {
-          totalMs += diff;
+      if (dealLogs.length > 0 && deal.createdAt) {
+        const createdMs = new Date(deal.createdAt).getTime();
+        const leadMs = new Date(dealLogs[0].timestamp).getTime();
+        if (leadMs >= createdMs) {
+          totalMs += (leadMs - createdMs);
           count++;
         }
-      } else if (deal.stage !== 'opportunity' && deal.updatedAt) {
-        // Fallback if deal is in lead or beyond
-        const updatedTime = new Date(deal.updatedAt).getTime();
-        const diff = updatedTime - createdTime;
-        if (diff > 0) {
-          totalMs += diff;
-          count++;
+      } else if (deal.stage !== 'opportunity' && deal.createdAt) {
+        const anyLogs = auditLogs
+          .filter(l => l.dealId === deal.id && l.field === 'stage')
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        if (anyLogs.length > 0) {
+          const createdMs = new Date(deal.createdAt).getTime();
+          const firstTransitionMs = new Date(anyLogs[0].timestamp).getTime();
+          if (firstTransitionMs >= createdMs) {
+            totalMs += (firstTransitionMs - createdMs);
+            count++;
+          }
         }
       }
     });
@@ -232,42 +254,37 @@ export function OpportunitiesKpiView() {
 
   // Last 12 months array (including current month)
   const last12MonthsList = useMemo(() => {
-    const now = new Date();
     const months = [];
-    const isCs = i18n.language === 'cs';
-
+    const now = new Date();
     for (let i = 11; i >= 0; i--) {
-      const monthDate = subMonths(now, i);
-      const key = format(monthDate, 'yyyy-MM');
-      const start = startOfMonth(monthDate);
-      const end = endOfMonth(monthDate);
-      const label = format(monthDate, 'LLL yy', { locale: isCs ? cs : undefined });
-      const fullLabel = format(monthDate, 'LLLL yyyy', { locale: isCs ? cs : undefined });
-
-      months.push({
-        key,
-        start,
-        end,
-        label,
-        fullLabel
-      });
+      const d = subMonths(now, i);
+      const year = d.getFullYear();
+      const month = d.getMonth();
+      const start = startOfMonth(d);
+      const end = endOfMonth(d);
+      const label = format(d, 'MMM yy', { locale: cs });
+      const fullLabel = format(d, 'LLLL yyyy', { locale: cs });
+      months.push({ year, month, start, end, label, fullLabel });
     }
     return months;
-  }, [i18n.language]);
+  }, []);
 
-  // Graph 1 Data: Deals inserted into system per month over the last 12 months
-  const monthlyInsertedData = useMemo(() => {
+  // Chart 1 Data: Deals inserted per month (last 12 months, respecting main filters)
+  const chartInsertedDealsData = useMemo(() => {
     return last12MonthsList.map(m => {
-      // Find deals created within this month (matching user/country/region/segment filters without the date range restriction)
       const count = accessibleDeals.filter(deal => {
         if (!deal.createdAt) return false;
-        const dealTime = new Date(deal.createdAt);
-        if (!isWithinInterval(dealTime, { start: m.start, end: m.end })) return false;
+        const d = new Date(deal.createdAt);
+        if (d < m.start || d > m.end) return false;
 
         const company = companies.find(c => c.id === deal.companyId);
 
         if (selectedUserId !== 'all') {
-          if (deal.createdBy !== selectedUserId && deal.hunterId !== selectedUserId) return false;
+          const isCreator = deal.createdBy === selectedUserId;
+          const isHunter = deal.hunterId === selectedUserId;
+          const isCloser = deal.closerId === selectedUserId;
+          const isFarmer = deal.farmerId === selectedUserId;
+          if (!isCreator && !isHunter && !isCloser && !isFarmer) return false;
         }
         if (selectedCountry !== 'all') {
           const country = company?.country || 'Czechia';
@@ -287,19 +304,23 @@ export function OpportunitiesKpiView() {
     });
   }, [last12MonthsList, accessibleDeals, companies, selectedUserId, selectedCountry, selectedRegion, selectedSegment]);
 
-  // Graph 2 Data: Average days & hours between deal creation and stage change from opportunity to lead for last 12 months
-  const monthlyLeadTransitionData = useMemo(() => {
+  // Chart 2 Data: Average time between creation and transition to lead (days & hours)
+  const chartLeadTransitionData = useMemo(() => {
     return last12MonthsList.map(m => {
       let totalDurationMs = 0;
       let transitionCount = 0;
 
       accessibleDeals.forEach(deal => {
-        if (!deal.createdAt) return;
+        if (!deal.createdAt) return false;
+
         const company = companies.find(c => c.id === deal.companyId);
 
-        // Apply dimension filters
         if (selectedUserId !== 'all') {
-          if (deal.createdBy !== selectedUserId && deal.hunterId !== selectedUserId) return;
+          const isCreator = deal.createdBy === selectedUserId;
+          const isHunter = deal.hunterId === selectedUserId;
+          const isCloser = deal.closerId === selectedUserId;
+          const isFarmer = deal.farmerId === selectedUserId;
+          if (!isCreator && !isHunter && !isCloser && !isFarmer) return;
         }
         if (selectedCountry !== 'all') {
           const country = company?.country || 'Czechia';
@@ -308,33 +329,35 @@ export function OpportunitiesKpiView() {
         if (selectedRegion !== 'all' && company?.region !== selectedRegion) return;
         if (selectedSegment !== 'all' && company?.segment !== selectedSegment) return;
 
-        const createdTime = new Date(deal.createdAt).getTime();
-
-        // Check if transition to lead occurred in month m
-        const leadLog = (auditLogs || []).find(
-          log => log.dealId === deal.id && log.field === 'stage' && log.newValue === 'lead'
-        );
+        const stageLogs = auditLogs
+          .filter(l => l.dealId === deal.id && l.field === 'stage' && l.newValue === 'lead')
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         let transitionDate: Date | null = null;
-        let diffMs = 0;
-
-        if (leadLog && leadLog.timestamp) {
-          transitionDate = new Date(leadLog.timestamp);
-          diffMs = transitionDate.getTime() - createdTime;
-        } else if (deal.stage !== 'opportunity' && deal.updatedAt) {
-          transitionDate = new Date(deal.updatedAt);
-          diffMs = transitionDate.getTime() - createdTime;
+        if (stageLogs.length > 0) {
+          transitionDate = new Date(stageLogs[0].timestamp);
+        } else if (deal.stage !== 'opportunity') {
+          const anyLogs = auditLogs
+            .filter(l => l.dealId === deal.id && l.field === 'stage')
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          if (anyLogs.length > 0) {
+            transitionDate = new Date(anyLogs[0].timestamp);
+          }
         }
 
-        if (transitionDate && diffMs >= 0 && isWithinInterval(transitionDate, { start: m.start, end: m.end })) {
-          totalDurationMs += diffMs;
-          transitionCount++;
+        if (transitionDate && transitionDate >= m.start && transitionDate <= m.end) {
+          const createdDate = new Date(deal.createdAt);
+          const diff = transitionDate.getTime() - createdDate.getTime();
+          if (diff >= 0) {
+            totalDurationMs += diff;
+            transitionCount++;
+          }
         }
       });
 
       const avgMs = transitionCount > 0 ? totalDurationMs / transitionCount : 0;
-      const avgDays = Number((avgMs / (1000 * 60 * 60 * 24)).toFixed(1));
-      const formattedDuration = transitionCount > 0 ? formatDaysAndHours(avgMs) : 'Žádná data';
+      const avgDays = Math.round((avgMs / (1000 * 60 * 60 * 24)) * 10) / 10;
+      const formattedDuration = formatDaysAndHours(avgMs);
 
       return {
         month: m.label,
@@ -347,11 +370,49 @@ export function OpportunitiesKpiView() {
     });
   }, [last12MonthsList, accessibleDeals, companies, auditLogs, selectedUserId, selectedCountry, selectedRegion, selectedSegment]);
 
+  // Helper to get assignee name for a deal
+  const getDealAssignee = (deal: Deal) => {
+    if (deal.stage === 'opportunity' || deal.stage === 'lead') {
+      return users.find(u => u.id === deal.hunterId)?.name || '–';
+    }
+    if (deal.stage === 'discovery_proposal' || deal.stage === 'contracting' || deal.stage === 'onboarding') {
+      return users.find(u => u.id === deal.closerId)?.name || '–';
+    }
+    if (deal.stage === 'farming') {
+      return users.find(u => u.id === deal.farmerId)?.name || '–';
+    }
+    // Lost or fallback
+    return users.find(u => u.id === deal.hunterId || u.id === deal.closerId || u.id === deal.farmerId)?.name || '–';
+  };
+
+  // Helper for stage badge
+  const getStageBadge = (stage: Stage) => {
+    switch (stage) {
+      case 'opportunity':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800">Příležitost</span>;
+      case 'lead':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-800">Lead</span>;
+      case 'discovery_proposal':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800">Discovery</span>;
+      case 'contracting':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-orange-100 text-orange-800">Contracting</span>;
+      case 'onboarding':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-purple-100 text-purple-800">Onboarding</span>;
+      case 'farming':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-800">Farming</span>;
+      case 'lost':
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-rose-100 text-rose-800">Lost</span>;
+      default:
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-800">{stage}</span>;
+    }
+  };
+
   // Apply column-specific table filters and sorting to the list of opportunities
   const tableDeals = useMemo(() => {
     let result = filteredDeals.filter(deal => {
       const company = companies.find(c => c.id === deal.companyId);
       const creator = users.find(u => u.id === deal.createdBy)?.name || '-';
+      const assignee = getDealAssignee(deal);
       const companyName = company?.name || '';
       const ico = company?.companyId || '';
       const urlsStr = (company?.urls || []).join(' ');
@@ -369,6 +430,12 @@ export function OpportunitiesKpiView() {
       if (colSearchCreator && !creator.toLowerCase().includes(colSearchCreator.toLowerCase())) {
         return false;
       }
+      if (colSearchAssigned && !assignee.toLowerCase().includes(colSearchAssigned.toLowerCase())) {
+        return false;
+      }
+      if (colSearchStage !== 'all' && deal.stage !== colSearchStage) {
+        return false;
+      }
       if (colSearchDate && !dateFormatted.toLowerCase().includes(colSearchDate.toLowerCase())) {
         return false;
       }
@@ -376,7 +443,7 @@ export function OpportunitiesKpiView() {
       return true;
     });
 
-    // Sort table rows (default newest to oldest by createdAt)
+    // Sort table rows
     result.sort((a, b) => {
       const companyA = companies.find(c => c.id === a.companyId);
       const companyB = companies.find(c => c.id === b.companyId);
@@ -396,6 +463,12 @@ export function OpportunitiesKpiView() {
       } else if (tableSortKey === 'creator') {
         valA = users.find(u => u.id === a.createdBy)?.name.toLowerCase() || '';
         valB = users.find(u => u.id === b.createdBy)?.name.toLowerCase() || '';
+      } else if (tableSortKey === 'assigned') {
+        valA = getDealAssignee(a).toLowerCase();
+        valB = getDealAssignee(b).toLowerCase();
+      } else if (tableSortKey === 'stage') {
+        valA = a.stage;
+        valB = b.stage;
       }
 
       if (valA < valB) return tableSortDir === 'asc' ? -1 : 1;
@@ -404,9 +477,18 @@ export function OpportunitiesKpiView() {
     });
 
     return result;
-  }, [filteredDeals, companies, users, colSearchCompany, colSearchIco, colSearchUrl, colSearchCreator, colSearchDate, tableSortKey, tableSortDir]);
+  }, [filteredDeals, companies, users, colSearchCompany, colSearchIco, colSearchUrl, colSearchCreator, colSearchAssigned, colSearchStage, colSearchDate, tableSortKey, tableSortDir]);
 
-  const toggleTableSort = (key: 'createdAt' | 'name' | 'ico' | 'creator') => {
+  // Pagination calculation
+  const totalPages = Math.ceil(tableDeals.length / pageSize) || 1;
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+
+  const pagedDeals = useMemo(() => {
+    const startIndex = (safeCurrentPage - 1) * pageSize;
+    return tableDeals.slice(startIndex, startIndex + pageSize);
+  }, [tableDeals, safeCurrentPage, pageSize]);
+
+  const toggleTableSort = (key: 'createdAt' | 'name' | 'ico' | 'creator' | 'assigned' | 'stage') => {
     if (tableSortKey === key) {
       setTableSortDir(prev => (prev === 'desc' ? 'asc' : 'desc'));
     } else {
@@ -417,21 +499,122 @@ export function OpportunitiesKpiView() {
 
   const hasActiveFilters = Boolean(
     dateFrom || dateTo || selectedUserId !== 'all' || selectedCountry !== 'all' || selectedRegion !== 'all' || selectedSegment !== 'all' ||
-    colSearchCompany || colSearchDate || colSearchUrl || colSearchIco || colSearchCreator
+    colSearchCompany || colSearchDate || colSearchUrl || colSearchIco || colSearchCreator || colSearchAssigned || colSearchStage !== 'all'
   );
 
   return (
     <div id="opportunities-kpi-container" className="space-y-6">
+      {/* Top Banner with Scope Notice */}
+      <div className="bg-white rounded-xl border border-gray-200/80 p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+              <Layers className="w-5 h-5 text-indigo-600" />
+              {t('statistics.tabs.opportunities', 'Příležitosti')} – Přehled a KPI
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Analýza nově vložených příležitostí a dynamika konverze do leadu
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {scope.isAll && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Všechna data systému (Role: {currentUser?.role?.toUpperCase()})
+              </span>
+            )}
+            {scope.isManager && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                <UsersIcon className="w-3.5 h-3.5" />
+                Data týmu a podřízených ({scope.accessibleUsers.length} uživatelů)
+              </span>
+            )}
+            {scope.isRegular && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <ShieldAlert className="w-3.5 h-3.5" />
+                Pouze vaše osobní data ({currentUser?.name})
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* 3 Summary KPI Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-5 pt-4 border-t border-gray-100">
+          <div id="stat-card-total-inserted" className="bg-gray-50/80 rounded-xl p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-xs font-medium text-gray-500 block">
+                  {t('statistics.summary.totalOpportunities', 'Celkem vložených příležitostí')}
+                </span>
+                <span className="text-2xl font-bold text-gray-900 leading-tight block mt-0.5">
+                  {totalInsertedCount}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Ve vybraném období a filtru (bez testovacích záznamů)
+            </p>
+          </div>
+
+          <div id="stat-card-avg-creation-interval" className="bg-gray-50/80 rounded-xl p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-xs font-medium text-gray-500 block">
+                  {t('statistics.summary.avgTimeBetweenCreations', 'Průměrná doba pro vložení nové příležitosti')}
+                </span>
+                <span className="text-xl font-bold text-emerald-700 leading-tight block mt-0.5">
+                  {avgCreationInterval || '–'}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Průměrný interval mezi dvěma po sobě vloženými příležitostmi
+            </p>
+          </div>
+
+          <div id="stat-card-avg-time-to-lead" className="bg-gray-50/80 rounded-xl p-4 border border-gray-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-xs font-medium text-gray-500 block">
+                  {t('statistics.summary.avgTimeToLead', 'Průměrný čas přechodu do leadu')}
+                </span>
+                <span className="text-xl font-bold text-blue-700 leading-tight block mt-0.5">
+                  {avgTimeToLeadGeneral || '–'}
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Doba od založení příležitosti do prvního posunu stavu
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Dynamic Filter Toolbar */}
       <div id="statistics-filter-card" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-3">
           <div className="flex items-center gap-2 text-gray-800 font-semibold text-sm">
             <Filter className="w-4 h-4 text-indigo-600" />
             <span>{t('statistics.filters.title', 'Filtry')}</span>
+            {hasActiveFilters && (
+              <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                Aktivní
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium">{t('statistics.filters.quickPeriods.allTime', 'Rychlé období')}:</span>
+            <span className="text-xs text-gray-500 font-medium">Rychlý výběr období:</span>
             <button
               type="button"
               id="filter-preset-all"
@@ -495,7 +678,10 @@ export function OpportunitiesKpiView() {
               type="date"
               id="filter-date-from"
               value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
+              onChange={e => {
+                setDateFrom(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
               placeholder="Od začátku"
             />
@@ -510,29 +696,47 @@ export function OpportunitiesKpiView() {
               type="date"
               id="filter-date-to"
               value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
+              onChange={e => {
+                setDateTo(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
               placeholder="Dodnes"
             />
           </div>
 
-          {/* User Filter */}
+          {/* User Filter (Role-Aware) */}
           <div>
             <label htmlFor="filter-user" className="block text-xs font-semibold text-gray-600 mb-1">
               {t('statistics.filters.user', 'Uživatel')}
             </label>
             <select
               id="filter-user"
-              value={selectedUserId}
-              onChange={e => setSelectedUserId(e.target.value)}
-              className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
+              value={scope.isRegular ? (currentUser?.id || '') : selectedUserId}
+              onChange={e => {
+                setSelectedUserId(e.target.value);
+                setCurrentPage(1);
+              }}
+              disabled={scope.isRegular}
+              className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700 disabled:bg-gray-100 disabled:text-gray-400"
             >
-              <option value="all">{t('statistics.filters.allUsers', 'Všichni uživatelé')}</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role})
+              {scope.isAll && (
+                <option value="all">{t('statistics.filters.allUsers', 'Všichni uživatelé')}</option>
+              )}
+              {scope.isManager && (
+                <option value="all">{t('statistics.filters.mySubordinates', 'Můj tým a podřízení')}</option>
+              )}
+              {scope.isRegular && (
+                <option value={currentUser?.id}>
+                  {currentUser?.name} ({t('statistics.filters.onlyMyData', 'Pouze moje data')})
                 </option>
-              ))}
+              )}
+              {!scope.isRegular &&
+                scope.accessibleUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.role})
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -544,12 +748,17 @@ export function OpportunitiesKpiView() {
             <select
               id="filter-country"
               value={selectedCountry}
-              onChange={e => setSelectedCountry(e.target.value)}
+              onChange={e => {
+                setSelectedCountry(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
             >
               <option value="all">{t('statistics.filters.allCountries', 'Všechny země')}</option>
               {availableCountries.map(c => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
@@ -562,12 +771,17 @@ export function OpportunitiesKpiView() {
             <select
               id="filter-region"
               value={selectedRegion}
-              onChange={e => setSelectedRegion(e.target.value)}
+              onChange={e => {
+                setSelectedRegion(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
             >
               <option value="all">{t('statistics.filters.allRegions', 'Všechny regiony')}</option>
               {availableRegions.map(r => (
-                <option key={r} value={r}>{r}</option>
+                <option key={r} value={r}>
+                  {r}
+                </option>
               ))}
             </select>
           </div>
@@ -580,114 +794,68 @@ export function OpportunitiesKpiView() {
             <select
               id="filter-segment"
               value={selectedSegment}
-              onChange={e => setSelectedSegment(e.target.value)}
+              onChange={e => {
+                setSelectedSegment(e.target.value);
+                setCurrentPage(1);
+              }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
             >
               <option value="all">{t('statistics.filters.allSegments', 'Všechny segmenty')}</option>
-              {segments.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
+              {segments
+                .filter(s => s.isActive !== false)
+                .map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
             </select>
           </div>
         </div>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* Metric 1: Inserted Deals Count */}
-        <div id="summary-card-count" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-              {t('statistics.summary.totalOpportunities', 'Celkem vložených příležitostí')}
-            </span>
-            <div className="text-3xl font-extrabold text-gray-900 mt-2 tracking-tight">
-              {totalInsertedCount}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {hasActiveFilters ? 'Ve vybraném filtru a období' : 'Celkově v systému'}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-            <Layers className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 2: Average time between new deals */}
-        <div id="summary-card-cadence" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-              {t('statistics.summary.avgTimeBetweenCreations', 'Průměrná doba pro vložení nové')}
-            </span>
-            <div className="text-2xl font-extrabold text-gray-900 mt-2 tracking-tight">
-              {avgCreationInterval || '–'}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {avgCreationInterval ? 'Interval mezi nově vytvořenými příležitostmi' : 'Nedostatek dat pro výpočet intervalu'}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-            <Clock className="w-5 h-5" />
-          </div>
-        </div>
-
-        {/* Metric 3: Average time from opportunity to lead */}
-        <div id="summary-card-lead-time" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex items-start justify-between">
-          <div>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider block">
-              {t('statistics.summary.avgTimeToLead', 'Průměrný čas přechodu do leadu')}
-            </span>
-            <div className="text-2xl font-extrabold text-gray-900 mt-2 tracking-tight">
-              {avgTimeToLeadGeneral || '–'}
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              {avgTimeToLeadGeneral ? 'Doba od založení po změnu do stavu Lead' : 'Zatím žádné přechody do leadu'}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Two Graphs Section */}
+      {/* 2 Interactive Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Graph 1: Deals Inserted in Last 12 Months */}
-        <div id="chart-card-inserted" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col">
-          <div className="mb-4">
-            <h3 className="font-semibold text-gray-800 text-sm">
-              {t('statistics.charts.insertedDealsTitle', 'Počet vložených příležitostí za posledních 12 měsíců')}
-            </h3>
-            <p className="text-xs text-gray-500">
-              {t('statistics.charts.insertedDealsSubtitle', 'Včetně aktuálního měsíce')}
-            </p>
+        {/* Chart 1: Inserted Deals per Month */}
+        <div id="chart-inserted-deals-card" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">
+                {t('statistics.charts.insertedDealsTitle', 'Počet vložených příležitostí za posledních 12 měsíců')}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {t('statistics.charts.insertedDealsSubtitle', 'Včetně aktuálního měsíce (bez testovacích záznamů)')}
+              </p>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+              <Layers className="w-4 h-4" />
+            </div>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyInsertedData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <BarChart data={chartInsertedDealsData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
                 <XAxis 
                   dataKey="month" 
-                  tick={{ fontSize: 11, fill: '#6b7280' }} 
-                  axisLine={{ stroke: '#e5e7eb' }} 
+                  tick={{ fontSize: 11, fill: '#6B7280' }} 
+                  axisLine={{ stroke: '#E5E7EB' }}
                   tickLine={false}
                 />
                 <YAxis 
-                  allowDecimals={false} 
-                  tick={{ fontSize: 11, fill: '#6b7280' }} 
-                  axisLine={{ stroke: '#e5e7eb' }} 
-                  tickLine={false} 
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: '#6B7280' }} 
+                  axisLine={false}
+                  tickLine={false}
                 />
                 <Tooltip 
-                  cursor={{ fill: '#f9fafb' }}
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-gray-900 text-white px-3 py-2 rounded-md text-xs shadow-lg space-y-1">
-                          <p className="font-bold text-gray-200">{data.fullMonth}</p>
-                          <p className="text-indigo-300 font-semibold">
-                            {t('statistics.charts.count', 'Vloženo')}: {data.count} {t('statistics.charts.dealsCount', 'příležitostí')}
+                        <div className="bg-gray-900 text-white p-2.5 rounded-lg shadow-xl text-xs space-y-1">
+                          <p className="font-semibold capitalize">{data.fullMonth}</p>
+                          <p className="text-indigo-300">
+                            Vloženo: <strong className="text-white font-bold">{data.count}</strong> {t('statistics.charts.dealsCount', 'příležitostí')}
                           </p>
                         </div>
                       );
@@ -695,57 +863,63 @@ export function OpportunitiesKpiView() {
                     return null;
                   }}
                 />
-                <Bar 
-                  dataKey="count" 
-                  fill="#4f46e5" 
-                  radius={[4, 4, 0, 0]} 
-                  maxBarSize={36}
-                />
+                <Bar dataKey="count" fill="#4F46E5" radius={[4, 4, 0, 0]}>
+                  {chartInsertedDealsData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={index === chartInsertedDealsData.length - 1 ? '#6366F1' : '#4F46E5'} 
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Graph 2: Average Days and Hours between Creation and Lead Stage */}
-        <div id="chart-card-lead-time" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm flex flex-col">
-          <div className="mb-4">
-            <h3 className="font-semibold text-gray-800 text-sm">
-              {t('statistics.charts.leadTransitionTitle', 'Průměrná doba od vložení po změnu stavu do leadu')}
-            </h3>
-            <p className="text-xs text-gray-500">
-              {t('statistics.charts.leadTransitionSubtitle', 'Za posledních 12 měsíců (ve dnech a hodinách)')}
-            </p>
+        {/* Chart 2: Average Days to Lead */}
+        <div id="chart-lead-transition-card" className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900">
+                {t('statistics.charts.leadTransitionTitle', 'Průměrná doba mezi vloženou příležitostí a změnou do leadu')}
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {t('statistics.charts.leadTransitionSubtitle', 'Za posledních 12 měsíců (ve dnech a hodinách)')}
+              </p>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+              <Clock className="w-4 h-4" />
+            </div>
           </div>
 
-          <div className="h-64 w-full">
+          <div className="h-64 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthlyLeadTransitionData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <BarChart data={chartLeadTransitionData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
                 <XAxis 
                   dataKey="month" 
-                  tick={{ fontSize: 11, fill: '#6b7280' }} 
-                  axisLine={{ stroke: '#e5e7eb' }} 
+                  tick={{ fontSize: 11, fill: '#6B7280' }} 
+                  axisLine={{ stroke: '#E5E7EB' }}
                   tickLine={false}
                 />
                 <YAxis 
-                  tick={{ fontSize: 11, fill: '#6b7280' }} 
-                  axisLine={{ stroke: '#e5e7eb' }} 
+                  tick={{ fontSize: 11, fill: '#6B7280' }} 
+                  axisLine={false}
                   tickLine={false}
                   unit=" d"
                 />
                 <Tooltip 
-                  cursor={{ fill: '#f9fafb' }}
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-gray-900 text-white px-3 py-2 rounded-md text-xs shadow-lg space-y-1">
-                          <p className="font-bold text-gray-200">{data.fullMonth}</p>
-                          <p className="text-teal-300 font-semibold">
-                            {t('statistics.charts.avgDuration', 'Průměrná doba')}: {data.formattedDuration}
+                        <div className="bg-gray-900 text-white p-2.5 rounded-lg shadow-xl text-xs space-y-1">
+                          <p className="font-semibold capitalize">{data.fullMonth}</p>
+                          <p className="text-emerald-300">
+                            Průměrná doba: <strong className="text-white font-bold">{data.formattedDuration}</strong>
                           </p>
-                          <p className="text-gray-400 text-[11px]">
-                            {data.count} {t('statistics.charts.dealsCount', 'příležitostí přesunuto do leadu')}
+                          <p className="text-gray-400 text-[10px]">
+                            Změněno příležitostí: {data.count}
                           </p>
                         </div>
                       );
@@ -753,16 +927,11 @@ export function OpportunitiesKpiView() {
                     return null;
                   }}
                 />
-                <Bar 
-                  dataKey="avgDays" 
-                  fill="#0d9488" 
-                  radius={[4, 4, 0, 0]} 
-                  maxBarSize={36}
-                >
-                  {monthlyLeadTransitionData.map((entry, index) => (
+                <Bar dataKey="avgDays" fill="#10B981" radius={[4, 4, 0, 0]}>
+                  {chartLeadTransitionData.map((entry, index) => (
                     <Cell 
-                      key={`cell-${index}`} 
-                      fill={entry.count > 0 ? '#0d9488' : '#e5e7eb'} 
+                      key={`cell-lead-${index}`} 
+                      fill={index === chartLeadTransitionData.length - 1 ? '#34D399' : '#10B981'} 
                     />
                   ))}
                 </Bar>
@@ -772,27 +941,49 @@ export function OpportunitiesKpiView() {
         </div>
       </div>
 
-      {/* Opportunities List Table with Scrolling & Per-Column Filters */}
+      {/* Main Table: Opportunities List with Column Filtering, Sorting and Pagination */}
       <div id="opportunities-table-card" className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-gray-800 text-base">
+        {/* Table Card Header with count and pagination selector */}
+        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
+          <div className="flex items-center gap-2">
+            <Layers className="w-4 h-4 text-indigo-600" />
+            <h3 className="text-sm font-bold text-gray-900">
               {t('statistics.table.title', 'Seznam vložených příležitostí')}
             </h3>
-            <p className="text-xs text-gray-500">
-              {t('statistics.table.showingCount', { shown: tableDeals.length, total: filteredDeals.length })}
-            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500 font-medium">
+              Zobrazeno <strong className="text-gray-900">{tableDeals.length}</strong> příležitostí
+            </span>
+
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <span>{t('statistics.table.rowsPerPage', 'Řádků na stránku')}:</span>
+              <select
+                value={pageSize}
+                onChange={e => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-gray-200 rounded px-2 py-1 text-xs text-gray-700 font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Scrollable Table Container */}
-        <div className="overflow-y-auto max-h-[520px] divide-y divide-gray-100">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-gray-50 text-gray-600 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200 shadow-xs">
-              <tr>
+        {/* Scrollable Table View with Sticky Header */}
+        <div className="overflow-x-auto overflow-y-auto max-h-[520px]">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10 shadow-xs">
+              <tr className="text-gray-600">
                 {/* Column: Company Name */}
                 <th 
-                  className="px-5 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
                   onClick={() => toggleTableSort('name')}
                 >
                   <div className="flex items-center gap-1.5">
@@ -807,7 +998,7 @@ export function OpportunitiesKpiView() {
 
                 {/* Column: Date inserted */}
                 <th 
-                  className="px-5 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
                   onClick={() => toggleTableSort('createdAt')}
                 >
                   <div className="flex items-center gap-1.5">
@@ -821,13 +1012,13 @@ export function OpportunitiesKpiView() {
                 </th>
 
                 {/* Column: URL */}
-                <th className="px-5 py-3 font-semibold text-xs select-none">
+                <th className="px-4 py-3 font-semibold text-xs select-none">
                   <span>{t('statistics.table.url', 'URL')}</span>
                 </th>
 
                 {/* Column: IČ */}
                 <th 
-                  className="px-5 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
                   onClick={() => toggleTableSort('ico')}
                 >
                   <div className="flex items-center gap-1.5">
@@ -840,14 +1031,44 @@ export function OpportunitiesKpiView() {
                   </div>
                 </th>
 
-                {/* Column: Created By */}
+                {/* Column: Kdo ji zadal (Created By) */}
                 <th 
-                  className="px-5 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
                   onClick={() => toggleTableSort('creator')}
                 >
                   <div className="flex items-center gap-1.5">
-                    <span>{t('statistics.table.createdBy', 'Kdo ji vytvořil')}</span>
+                    <span>{t('statistics.table.createdBy', 'Kdo ji zadal')}</span>
                     {tableSortKey === 'creator' ? (
+                      tableSortDir === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-gray-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
+                {/* Column: Přiřazený obchodník (Assignee) */}
+                <th 
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  onClick={() => toggleTableSort('assigned')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>{t('statistics.table.assignedTo', 'Přiřazený obchodník')}</span>
+                    {tableSortKey === 'assigned' ? (
+                      tableSortDir === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-gray-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
+                {/* Column: Fáze */}
+                <th 
+                  className="px-4 py-3 font-semibold text-xs cursor-pointer hover:bg-gray-100 transition-colors select-none"
+                  onClick={() => toggleTableSort('stage')}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>{t('statistics.table.stage', 'Fáze')}</span>
+                    {tableSortKey === 'stage' ? (
                       tableSortDir === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-indigo-600" /> : <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
                     ) : (
                       <ArrowUpDown className="w-3 h-3 text-gray-400 opacity-60" />
@@ -858,73 +1079,122 @@ export function OpportunitiesKpiView() {
 
               {/* Per-column inline search filters row */}
               <tr className="bg-gray-50/80 border-t border-gray-200/60">
-                <th className="px-4 py-1.5">
+                <th className="px-3 py-1.5">
                   <div className="relative">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
                     <input
                       type="text"
                       value={colSearchCompany}
-                      onChange={e => setColSearchCompany(e.target.value)}
+                      onChange={e => {
+                        setColSearchCompany(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       placeholder={t('statistics.table.searchCompany', 'Hledat společnost...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
                 </th>
-                <th className="px-4 py-1.5">
+                <th className="px-3 py-1.5">
                   <div className="relative">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
                     <input
                       type="text"
                       value={colSearchDate}
-                      onChange={e => setColSearchDate(e.target.value)}
+                      onChange={e => {
+                        setColSearchDate(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       placeholder="dd.mm.rrrr..."
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
                 </th>
-                <th className="px-4 py-1.5">
+                <th className="px-3 py-1.5">
                   <div className="relative">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
                     <input
                       type="text"
                       value={colSearchUrl}
-                      onChange={e => setColSearchUrl(e.target.value)}
+                      onChange={e => {
+                        setColSearchUrl(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       placeholder={t('statistics.table.searchUrl', 'Hledat URL...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
                 </th>
-                <th className="px-4 py-1.5">
+                <th className="px-3 py-1.5">
                   <div className="relative">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
                     <input
                       type="text"
                       value={colSearchIco}
-                      onChange={e => setColSearchIco(e.target.value)}
+                      onChange={e => {
+                        setColSearchIco(e.target.value);
+                        setCurrentPage(1);
+                      }}
                       placeholder={t('statistics.table.searchIco', 'Hledat IČ...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
                 </th>
-                <th className="px-4 py-1.5">
+                <th className="px-3 py-1.5">
                   <div className="relative">
                     <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
                     <input
                       type="text"
                       value={colSearchCreator}
-                      onChange={e => setColSearchCreator(e.target.value)}
-                      placeholder={t('statistics.table.searchCreator', 'Hledat uživatele...')}
+                      onChange={e => {
+                        setColSearchCreator(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="Zadal..."
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
+                </th>
+                <th className="px-3 py-1.5">
+                  <div className="relative">
+                    <Search className="w-3 h-3 text-gray-400 absolute left-2 top-2" />
+                    <input
+                      type="text"
+                      value={colSearchAssigned}
+                      onChange={e => {
+                        setColSearchAssigned(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="Přiřazeno..."
+                      className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
+                    />
+                  </div>
+                </th>
+                <th className="px-3 py-1.5">
+                  <select
+                    value={colSearchStage}
+                    onChange={e => {
+                      setColSearchStage(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full text-xs px-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
+                  >
+                    <option value="all">Všechny</option>
+                    <option value="opportunity">Příležitost</option>
+                    <option value="lead">Lead</option>
+                    <option value="discovery_proposal">Discovery</option>
+                    <option value="contracting">Contracting</option>
+                    <option value="onboarding">Onboarding</option>
+                    <option value="farming">Farming</option>
+                    <option value="lost">Lost</option>
+                  </select>
                 </th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-gray-100">
-              {tableDeals.length === 0 ? (
+              {pagedDeals.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                     <p className="text-sm font-medium">{t('statistics.table.noRecords', 'Nebyly nalezeny žádné příležitosti odpovídající zadaným kritériím.')}</p>
                     {hasActiveFilters && (
                       <button
@@ -939,10 +1209,11 @@ export function OpportunitiesKpiView() {
                   </td>
                 </tr>
               ) : (
-                tableDeals.map(deal => {
+                pagedDeals.map(deal => {
                   const company = companies.find(c => c.id === deal.companyId);
                   const creatorUser = users.find(u => u.id === deal.createdBy);
-                  const creatorName = creatorUser?.name || users.find(u => u.id === deal.hunterId)?.name || 'Neznámý';
+                  const creatorName = creatorUser?.name || deal.createdBy || 'Neznámý';
+                  const assigneeName = getDealAssignee(deal);
                   const primaryUrl = company?.urls && company.urls.length > 0 ? company.urls[0] : null;
 
                   return (
@@ -952,7 +1223,7 @@ export function OpportunitiesKpiView() {
                       onClick={() => navigate(`/deal/${deal.id}`)}
                     >
                       {/* Company Name */}
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded bg-gray-100 flex items-center justify-center text-gray-500 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors shrink-0">
                             <Building2 className="w-4 h-4" />
@@ -971,7 +1242,7 @@ export function OpportunitiesKpiView() {
                       </td>
 
                       {/* Date Inserted */}
-                      <td className="px-5 py-3.5 text-xs text-gray-600">
+                      <td className="px-4 py-3.5 text-xs text-gray-600 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                           <span>
@@ -981,13 +1252,13 @@ export function OpportunitiesKpiView() {
                       </td>
 
                       {/* URL */}
-                      <td className="px-5 py-3.5 text-xs text-gray-600" onClick={e => e.stopPropagation()}>
+                      <td className="px-4 py-3.5 text-xs text-gray-600" onClick={e => e.stopPropagation()}>
                         {primaryUrl ? (
                           <a
                             href={primaryUrl.startsWith('http') ? primaryUrl : `https://${primaryUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:underline max-w-[220px] truncate"
+                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 hover:underline max-w-[180px] truncate"
                           >
                             <span className="truncate">{primaryUrl.replace(/^https?:\/\/(www\.)?/, '')}</span>
                             <ExternalLink className="w-3 h-3 shrink-0" />
@@ -998,7 +1269,7 @@ export function OpportunitiesKpiView() {
                       </td>
 
                       {/* IČ */}
-                      <td className="px-5 py-3.5 text-xs font-mono text-gray-700">
+                      <td className="px-4 py-3.5 text-xs font-mono text-gray-700 whitespace-nowrap">
                         {company?.companyId ? (
                           <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-800 font-medium">
                             {company.companyId}
@@ -1008,14 +1279,24 @@ export function OpportunitiesKpiView() {
                         )}
                       </td>
 
-                      {/* Created By */}
-                      <td className="px-5 py-3.5 text-xs text-gray-700">
+                      {/* Kdo ji zadal */}
+                      <td className="px-4 py-3.5 text-xs text-gray-700 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {creatorName.charAt(0).toUpperCase()}
                           </div>
-                          <span className="font-medium">{creatorName}</span>
+                          <span className="font-medium text-gray-900">{creatorName}</span>
                         </div>
+                      </td>
+
+                      {/* Přiřazený obchodník */}
+                      <td className="px-4 py-3.5 text-xs text-gray-700 whitespace-nowrap">
+                        <span className="text-gray-600 font-medium">{assigneeName}</span>
+                      </td>
+
+                      {/* Fáze */}
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {getStageBadge(deal.stage)}
                       </td>
                     </tr>
                   );
@@ -1023,6 +1304,62 @@ export function OpportunitiesKpiView() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Pagination Bar */}
+        <div className="p-3.5 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <span className="text-gray-500 font-medium">
+            Zobrazeno{' '}
+            <strong className="text-gray-900">
+              {tableDeals.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}–
+              {Math.min(safeCurrentPage * pageSize, tableDeals.length)}
+            </strong>{' '}
+            z <strong className="text-gray-900">{tableDeals.length}</strong> příležitostí
+          </span>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => setCurrentPage(1)}
+              className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="První strana"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              disabled={safeCurrentPage <= 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Předchozí strana"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <span className="px-2.5 py-1 text-gray-700 font-semibold">
+              Strana {safeCurrentPage} z {totalPages}
+            </span>
+
+            <button
+              type="button"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Další strana"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              disabled={safeCurrentPage >= totalPages}
+              onClick={() => setCurrentPage(totalPages)}
+              className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Poslední strana"
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

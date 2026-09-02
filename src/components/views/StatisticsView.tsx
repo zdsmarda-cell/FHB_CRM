@@ -11,30 +11,40 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { OpportunitiesKpiView } from './statistics/OpportunitiesKpiView';
+import { UsersKpiView } from './statistics/UsersKpiView';
 import { useStore } from '../../store';
 
-type KpiSubTab = 'opportunities' | 'conversions' | 'performance';
+type KpiSubTab = 'opportunities' | 'users' | 'conversions' | 'performance';
 
 export function StatisticsView() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<KpiSubTab>('opportunities');
   const { deals } = useStore();
 
-  const subTabs: { id: KpiSubTab; label: string; icon: React.ElementType }[] = [
+  const subTabs: { id: KpiSubTab; label: string; icon: React.ElementType; isReady?: boolean }[] = [
     {
       id: 'opportunities',
       label: t('statistics.tabs.opportunities', 'Příležitosti'),
-      icon: Layers
+      icon: Layers,
+      isReady: true
+    },
+    {
+      id: 'users',
+      label: t('statistics.tabs.users', 'Uživatelé'),
+      icon: Users,
+      isReady: true
     },
     {
       id: 'conversions',
       label: t('statistics.tabs.conversions', 'Konverze'),
-      icon: TrendingUp
+      icon: TrendingUp,
+      isReady: false
     },
     {
       id: 'performance',
       label: t('statistics.tabs.performance', 'Výkonnost týmu'),
-      icon: Users
+      icon: Target,
+      isReady: false
     }
   ];
 
@@ -72,7 +82,7 @@ export function StatisticsView() {
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
                 <span>{tab.label}</span>
-                {tab.id !== 'opportunities' && (
+                {!tab.isReady && (
                   <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">
                     {t('statistics.tabs.comingSoon', 'V přípravě')}
                   </span>
@@ -86,6 +96,8 @@ export function StatisticsView() {
       {/* Sub-tab content */}
       <div className="mt-4">
         {activeTab === 'opportunities' && <OpportunitiesKpiView />}
+
+        {activeTab === 'users' && <UsersKpiView />}
 
         {activeTab === 'conversions' && (
           <div className="bg-white rounded-xl border border-gray-200 p-8 text-center space-y-4">

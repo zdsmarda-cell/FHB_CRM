@@ -326,6 +326,7 @@ const resources = {
         subtitle: 'Key performance indicators and sales funnel metrics',
         tabs: {
           opportunities: 'Opportunities',
+          users: 'Users',
           conversions: 'Conversions',
           performance: 'Team Performance',
           comingSoon: 'Coming soon'
@@ -339,8 +340,10 @@ const resources = {
           title: 'Filters',
           periodFrom: 'From',
           periodTo: 'To',
-          user: 'User / Creator',
-          allUsers: 'All users',
+          user: 'User',
+          allUsers: 'All accessible users',
+          onlyMyData: 'Only my data',
+          mySubordinates: 'My team & subordinates',
           country: 'Country',
           allCountries: 'All countries',
           region: 'Region',
@@ -355,7 +358,7 @@ const resources = {
         },
         charts: {
           insertedDealsTitle: 'Opportunities Inserted in Last 12 Months',
-          insertedDealsSubtitle: 'Including current month',
+          insertedDealsSubtitle: 'Including current month (excluding test opportunities)',
           leadTransitionTitle: 'Average Time to Lead Conversion',
           leadTransitionSubtitle: 'Last 12 months (days & hours)',
           count: 'Inserted',
@@ -368,13 +371,46 @@ const resources = {
           createdAt: 'Date Inserted',
           url: 'Website (URL)',
           ico: 'Company ID',
-          createdBy: 'Created By',
+          createdBy: 'Inserted By',
+          assignedTo: 'Assigned',
+          stage: 'Stage',
           searchCompany: 'Search company...',
           searchIco: 'Search ID...',
           searchUrl: 'Search URL...',
           searchCreator: 'Search user...',
           noRecords: 'No opportunities match your filter criteria.',
-          showingCount: 'Showing {{shown}} of {{total}} opportunities'
+          showingCount: 'Showing {{shown}} of {{total}} opportunities',
+          rowsPerPage: 'Rows per page',
+          showingRange: 'Showing {{start}}–{{end}} of {{total}}'
+        },
+        users: {
+          title: 'Users & Activity Statistics',
+          subtitle: 'Detailed tracking of logins, deals created, activities, updates, processing time and conversion rate',
+          columns: {
+            name: 'Name',
+            login: 'Login / E-mail',
+            role: 'Role',
+            logins: 'Logins',
+            dealsCreated: 'Created Deals',
+            activities: 'Active Activities',
+            attributeUpdates: 'Attr. Updates',
+            currentlyAssigned: 'Assigned Deals',
+            notesCount: 'Notes Added',
+            avgProcessingTime: 'Avg Processing Time',
+            conversionRate: 'Conversion Rate'
+          },
+          filters: {
+            roles: 'User Role',
+            allRoles: 'All roles',
+            usersSelect: 'Select Users',
+            selectAll: 'Select All',
+            clearAll: 'Clear All',
+            dealDateFrom: 'Created From',
+            dealDateTo: 'Created To',
+            selectedCount: '{{count}} users selected'
+          },
+          noRecords: 'No users match your criteria.',
+          showingCount: 'Showing {{shown}} of {{total}} users'
         }
       }
     }
@@ -702,6 +738,7 @@ const resources = {
         subtitle: 'Klíčové ukazatele výkonnosti a analýza obchodního trychtýře',
         tabs: {
           opportunities: 'Příležitosti',
+          users: 'Uživatelé',
           conversions: 'Konverze',
           performance: 'Výkonnost týmu',
           comingSoon: 'V přípravě'
@@ -715,8 +752,10 @@ const resources = {
           title: 'Filtry',
           periodFrom: 'Od',
           periodTo: 'Do',
-          user: 'Uživatel / Vytvořil',
-          allUsers: 'Všichni uživatelé',
+          user: 'Uživatel',
+          allUsers: 'Všichni dostupní uživatelé',
+          onlyMyData: 'Pouze moje data',
+          mySubordinates: 'Můj tým a podřízení',
           country: 'Země',
           allCountries: 'Všechny země',
           region: 'Region',
@@ -731,7 +770,7 @@ const resources = {
         },
         charts: {
           insertedDealsTitle: 'Počet vložených příležitostí za posledních 12 měsíců',
-          insertedDealsSubtitle: 'Včetně aktuálního měsíce',
+          insertedDealsSubtitle: 'Včetně aktuálního měsíce (bez testovacích příležitostí)',
           leadTransitionTitle: 'Průměrná doba mezi vloženou příležitostí a změnou do leadu',
           leadTransitionSubtitle: 'Za posledních 12 měsíců (ve dnech a hodinách)',
           count: 'Vloženo',
@@ -744,13 +783,46 @@ const resources = {
           createdAt: 'Datum vložení do systému',
           url: 'URL',
           ico: 'IČ',
-          createdBy: 'Kdo ji vytvořil',
+          createdBy: 'Kdo ji zadal',
+          assignedTo: 'Přiřazený obchodník',
+          stage: 'Fáze',
           searchCompany: 'Hledat společnost...',
           searchIco: 'Hledat IČ...',
           searchUrl: 'Hledat URL...',
           searchCreator: 'Hledat uživatele...',
           noRecords: 'Nebyly nalezeny žádné příležitosti odpovídající zadaným kritériím.',
-          showingCount: 'Zobrazeno {{shown}} z {{total}} příležitostí'
+          showingCount: 'Zobrazeno {{shown}} z {{total}} příležitostí',
+          rowsPerPage: 'Řádků na stránku',
+          showingRange: 'Zobrazeno {{start}}–{{end}} z {{total}}'
+        },
+        users: {
+          title: 'Statistiky a aktivita uživatelů',
+          subtitle: 'Komplexní přehled přihlášení, zadaných příležitostí, aktivit, aktualizací, průměrné doby zpracování a konverzí',
+          columns: {
+            name: 'Jméno',
+            login: 'Login / E-mail',
+            role: 'Role',
+            logins: 'Přihlášení',
+            dealsCreated: 'Zadané příležitosti',
+            activities: 'Zadané aktivity',
+            attributeUpdates: 'Aktualizace atributů',
+            currentlyAssigned: 'Aktuálně přiřazeno',
+            notesCount: 'Zadané poznámky',
+            avgProcessingTime: 'Prům. doba zpracování',
+            conversionRate: 'Konverzní poměr'
+          },
+          filters: {
+            roles: 'Role uživatelů',
+            allRoles: 'Všechny role',
+            usersSelect: 'Uživatelé (výběr)',
+            selectAll: 'Vybrat vše',
+            clearAll: 'Zrušit výběr',
+            dealDateFrom: 'Vznik příležitosti Od',
+            dealDateTo: 'Vznik příležitosti Do',
+            selectedCount: 'Vybráno {{count}} uživatelů'
+          },
+          noRecords: 'Nebyli nalezeni žádní uživatelé odpovídající zadaným kritériím.',
+          showingCount: 'Zobrazeno {{shown}} z {{total}} uživatelů'
         }
       }
     }
