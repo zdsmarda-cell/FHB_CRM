@@ -4,7 +4,7 @@ import { useStore } from '../../../store';
 import { Deal, Company, AuditLog, Stage } from '../../../types';
 import { isTestDeal, getUserStatisticsScope, formatDaysAndHours } from '../../../lib/statistics';
 import { format, parseISO, subMonths, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
-import { cs } from 'date-fns/locale';
+import { cs, enUS } from 'date-fns/locale';
 import { 
   Building2, 
   Calendar, 
@@ -249,8 +249,13 @@ export function OpportunitiesKpiView() {
     });
 
     if (count === 0) return null;
-    return formatDaysAndHours(totalMs / count);
-  }, [filteredDeals, auditLogs]);
+    return formatDaysAndHours(totalMs / count, t);
+  }, [filteredDeals, auditLogs, t, i18n.language]);
+
+  // Dynamic date-fns locale based on i18n language
+  const dateLocale = useMemo(() => {
+    return i18n.language?.startsWith('en') ? enUS : cs;
+  }, [i18n.language]);
 
   // Last 12 months array (including current month)
   const last12MonthsList = useMemo(() => {
@@ -262,12 +267,12 @@ export function OpportunitiesKpiView() {
       const month = d.getMonth();
       const start = startOfMonth(d);
       const end = endOfMonth(d);
-      const label = format(d, 'MMM yy', { locale: cs });
-      const fullLabel = format(d, 'LLLL yyyy', { locale: cs });
+      const label = format(d, 'MMM yy', { locale: dateLocale });
+      const fullLabel = format(d, 'LLLL yyyy', { locale: dateLocale });
       months.push({ year, month, start, end, label, fullLabel });
     }
     return months;
-  }, []);
+  }, [dateLocale]);
 
   // Chart 1 Data: Deals inserted per month (last 12 months, respecting main filters)
   const chartInsertedDealsData = useMemo(() => {
@@ -357,7 +362,7 @@ export function OpportunitiesKpiView() {
 
       const avgMs = transitionCount > 0 ? totalDurationMs / transitionCount : 0;
       const avgDays = Math.round((avgMs / (1000 * 60 * 60 * 24)) * 10) / 10;
-      const formattedDuration = formatDaysAndHours(avgMs);
+      const formattedDuration = formatDaysAndHours(avgMs, t);
 
       return {
         month: m.label,
@@ -387,23 +392,24 @@ export function OpportunitiesKpiView() {
 
   // Helper for stage badge
   const getStageBadge = (stage: Stage) => {
+    const stageLabel = t(`stages.${stage}`, stage);
     switch (stage) {
       case 'opportunity':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800">Příležitost</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800">{stageLabel}</span>;
       case 'lead':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-800">Lead</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-800">{stageLabel}</span>;
       case 'discovery_proposal':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800">Discovery</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-100 text-amber-800">{stageLabel}</span>;
       case 'contracting':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-orange-100 text-orange-800">Contracting</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-orange-100 text-orange-800">{stageLabel}</span>;
       case 'onboarding':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-purple-100 text-purple-800">Onboarding</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-purple-100 text-purple-800">{stageLabel}</span>;
       case 'farming':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-800">Farming</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-800">{stageLabel}</span>;
       case 'lost':
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-rose-100 text-rose-800">Lost</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-rose-100 text-rose-800">{stageLabel}</span>;
       default:
-        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-800">{stage}</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 text-gray-800">{stageLabel}</span>;
     }
   };
 
@@ -510,10 +516,10 @@ export function OpportunitiesKpiView() {
           <div>
             <h2 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
               <Layers className="w-5 h-5 text-indigo-600" />
-              {t('statistics.tabs.opportunities', 'Příležitosti')} – Přehled a KPI
+              {t('statistics.opportunities.heading', 'Příležitosti – Přehled a KPI')}
             </h2>
             <p className="text-xs text-gray-500 mt-1">
-              Analýza nově vložených příležitostí a dynamika konverze do leadu
+              {t('statistics.opportunities.subheading', 'Analýza nově vložených příležitostí a dynamika konverze do leadu')}
             </p>
           </div>
 
@@ -521,19 +527,19 @@ export function OpportunitiesKpiView() {
             {scope.isAll && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Všechna data systému (Role: {currentUser?.role?.toUpperCase()})
+                {t('statistics.scope.allData', { role: currentUser?.role?.toUpperCase() })}
               </span>
             )}
             {scope.isManager && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                 <UsersIcon className="w-3.5 h-3.5" />
-                Data týmu a podřízených ({scope.accessibleUsers.length} uživatelů)
+                {t('statistics.scope.managerData', { count: scope.accessibleUsers.length })}
               </span>
             )}
             {scope.isRegular && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                 <ShieldAlert className="w-3.5 h-3.5" />
-                Pouze vaše osobní data ({currentUser?.name})
+                {t('statistics.scope.regularData', { name: currentUser?.name })}
               </span>
             )}
           </div>
@@ -556,7 +562,7 @@ export function OpportunitiesKpiView() {
               </div>
             </div>
             <p className="text-[11px] text-gray-400 mt-2">
-              Ve vybraném období a filtru (bez testovacích záznamů)
+              {t('statistics.opportunities.totalOpportunitiesDesc', 'Ve vybraném období a filtru (bez testovacích záznamů)')}
             </p>
           </div>
 
@@ -575,7 +581,7 @@ export function OpportunitiesKpiView() {
               </div>
             </div>
             <p className="text-[11px] text-gray-400 mt-2">
-              Průměrný interval mezi dvěma po sobě vloženými příležitostmi
+              {t('statistics.opportunities.avgTimeBetweenCreationsDesc', 'Průměrný interval mezi dvěma po sobě vloženými příležitostmi')}
             </p>
           </div>
 
@@ -594,7 +600,7 @@ export function OpportunitiesKpiView() {
               </div>
             </div>
             <p className="text-[11px] text-gray-400 mt-2">
-              Doba od založení příležitosti do prvního posunu stavu
+              {t('statistics.opportunities.avgTimeToLeadDesc', 'Doba od založení příležitosti do prvního posunu stavu')}
             </p>
           </div>
         </div>
@@ -608,13 +614,15 @@ export function OpportunitiesKpiView() {
             <span>{t('statistics.filters.title', 'Filtry')}</span>
             {hasActiveFilters && (
               <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                Aktivní
+                {t('statistics.filters.active', 'Aktivní')}
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium">Rychlý výběr období:</span>
+            <span className="text-xs text-gray-500 font-medium">
+              {t('statistics.filters.quickPeriod', 'Rychlý výběr období:')}
+            </span>
             <button
               type="button"
               id="filter-preset-all"
@@ -683,7 +691,7 @@ export function OpportunitiesKpiView() {
                 setCurrentPage(1);
               }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
-              placeholder="Od začátku"
+              placeholder={t('statistics.filters.periodFromPlaceholder', 'Od začátku')}
             />
           </div>
 
@@ -701,7 +709,7 @@ export function OpportunitiesKpiView() {
                 setCurrentPage(1);
               }}
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 text-gray-700"
-              placeholder="Dodnes"
+              placeholder={t('statistics.filters.periodToPlaceholder', 'Dodnes')}
             />
           </div>
 
@@ -855,7 +863,7 @@ export function OpportunitiesKpiView() {
                         <div className="bg-gray-900 text-white p-2.5 rounded-lg shadow-xl text-xs space-y-1">
                           <p className="font-semibold capitalize">{data.fullMonth}</p>
                           <p className="text-indigo-300">
-                            Vloženo: <strong className="text-white font-bold">{data.count}</strong> {t('statistics.charts.dealsCount', 'příležitostí')}
+                            {t('statistics.charts.count', 'Vloženo')}: <strong className="text-white font-bold">{data.count}</strong> {t('statistics.charts.dealsCount', 'příležitostí')}
                           </p>
                         </div>
                       );
@@ -916,10 +924,10 @@ export function OpportunitiesKpiView() {
                         <div className="bg-gray-900 text-white p-2.5 rounded-lg shadow-xl text-xs space-y-1">
                           <p className="font-semibold capitalize">{data.fullMonth}</p>
                           <p className="text-emerald-300">
-                            Průměrná doba: <strong className="text-white font-bold">{data.formattedDuration}</strong>
+                            {t('statistics.charts.avgDuration', 'Průměrná doba')}: <strong className="text-white font-bold">{data.formattedDuration}</strong>
                           </p>
                           <p className="text-gray-400 text-[10px]">
-                            Změněno příležitostí: {data.count}
+                            {t('statistics.charts.convertedCount', 'Změněno příležitostí')}: {data.count}
                           </p>
                         </div>
                       );
@@ -954,7 +962,7 @@ export function OpportunitiesKpiView() {
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500 font-medium">
-              Zobrazeno <strong className="text-gray-900">{tableDeals.length}</strong> příležitostí
+              {t('statistics.table.showingCount', { shown: tableDeals.length, total: tableDeals.length })}
             </span>
 
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -1104,7 +1112,7 @@ export function OpportunitiesKpiView() {
                         setColSearchDate(e.target.value);
                         setCurrentPage(1);
                       }}
-                      placeholder="dd.mm.rrrr..."
+                      placeholder={t('statistics.table.searchDatePlaceholder', 'dd.mm.rrrr...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
@@ -1149,7 +1157,7 @@ export function OpportunitiesKpiView() {
                         setColSearchCreator(e.target.value);
                         setCurrentPage(1);
                       }}
-                      placeholder="Zadal..."
+                      placeholder={t('statistics.table.searchCreator', 'Hledat uživatele...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
@@ -1164,7 +1172,7 @@ export function OpportunitiesKpiView() {
                         setColSearchAssigned(e.target.value);
                         setCurrentPage(1);
                       }}
-                      placeholder="Přiřazeno..."
+                      placeholder={t('statistics.table.searchAssigned', 'Hledat přiřazeného...')}
                       className="w-full text-xs pl-6 pr-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                     />
                   </div>
@@ -1178,14 +1186,14 @@ export function OpportunitiesKpiView() {
                     }}
                     className="w-full text-xs px-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                   >
-                    <option value="all">Všechny</option>
-                    <option value="opportunity">Příležitost</option>
-                    <option value="lead">Lead</option>
-                    <option value="discovery_proposal">Discovery</option>
-                    <option value="contracting">Contracting</option>
-                    <option value="onboarding">Onboarding</option>
-                    <option value="farming">Farming</option>
-                    <option value="lost">Lost</option>
+                    <option value="all">{t('statistics.table.allStages', 'Všechny fáze')}</option>
+                    <option value="opportunity">{t('stages.opportunity', 'Příležitost')}</option>
+                    <option value="lead">{t('stages.lead', 'Lead')}</option>
+                    <option value="discovery_proposal">{t('stages.discovery_proposal', 'Discovery')}</option>
+                    <option value="contracting">{t('stages.contracting', 'Contracting')}</option>
+                    <option value="onboarding">{t('stages.onboarding', 'Onboarding')}</option>
+                    <option value="farming">{t('stages.farming', 'Farming')}</option>
+                    <option value="lost">{t('stages.lost', 'Lost')}</option>
                   </select>
                 </th>
               </tr>
@@ -1309,12 +1317,11 @@ export function OpportunitiesKpiView() {
         {/* Pagination Bar */}
         <div className="p-3.5 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <span className="text-gray-500 font-medium">
-            Zobrazeno{' '}
-            <strong className="text-gray-900">
-              {tableDeals.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}–
-              {Math.min(safeCurrentPage * pageSize, tableDeals.length)}
-            </strong>{' '}
-            z <strong className="text-gray-900">{tableDeals.length}</strong> příležitostí
+            {t('statistics.table.showingRange', {
+              start: tableDeals.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1,
+              end: Math.min(safeCurrentPage * pageSize, tableDeals.length),
+              total: tableDeals.length
+            })}
           </span>
 
           <div className="flex items-center gap-1">
@@ -1323,7 +1330,7 @@ export function OpportunitiesKpiView() {
               disabled={safeCurrentPage <= 1}
               onClick={() => setCurrentPage(1)}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="První strana"
+              title={t('statistics.table.firstPage', 'První strana')}
             >
               <ChevronsLeft className="w-4 h-4" />
             </button>
@@ -1332,13 +1339,13 @@ export function OpportunitiesKpiView() {
               disabled={safeCurrentPage <= 1}
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Předchozí strana"
+              title={t('statistics.table.prevPage', 'Předchozí strana')}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
             <span className="px-2.5 py-1 text-gray-700 font-semibold">
-              Strana {safeCurrentPage} z {totalPages}
+              {t('statistics.table.pageOf', { current: safeCurrentPage, total: totalPages })}
             </span>
 
             <button
@@ -1346,7 +1353,7 @@ export function OpportunitiesKpiView() {
               disabled={safeCurrentPage >= totalPages}
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Další strana"
+              title={t('statistics.table.nextPage', 'Další strana')}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -1355,7 +1362,7 @@ export function OpportunitiesKpiView() {
               disabled={safeCurrentPage >= totalPages}
               onClick={() => setCurrentPage(totalPages)}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Poslední strana"
+              title={t('statistics.table.lastPage', 'Poslední strana')}
             >
               <ChevronsRight className="w-4 h-4" />
             </button>

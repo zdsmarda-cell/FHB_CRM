@@ -327,9 +327,33 @@ const resources = {
         tabs: {
           opportunities: 'Opportunities',
           users: 'Users',
+          lost: 'Lost',
           conversions: 'Conversions',
           performance: 'Team Performance',
           comingSoon: 'Coming soon'
+        },
+        time: {
+          zeroHours: '0 hours',
+          lessThanHour: '< 1 hour',
+          day_one: '1 day',
+          day_few: '{{count}} days',
+          day_other: '{{count}} days',
+          hour_one: '1 hour',
+          hour_few: '{{count}} hours',
+          hour_other: '{{count}} hours',
+          dayShort: 'd'
+        },
+        scope: {
+          allData: 'All system data (Role: {{role}})',
+          managerData: 'Team and subordinates data ({{count}} users)',
+          regularData: 'Only your personal data ({{name}})'
+        },
+        opportunities: {
+          heading: 'Opportunities – Overview & KPIs',
+          subheading: 'Analysis of newly inserted opportunities and conversion dynamics into leads',
+          totalOpportunitiesDesc: 'In selected period and filters (excluding test records)',
+          avgTimeBetweenCreationsDesc: 'Average interval between two consecutively created opportunities',
+          avgTimeToLeadDesc: 'Time from opportunity creation to first stage shift'
         },
         summary: {
           totalOpportunities: 'Total Inserted Opportunities',
@@ -338,8 +362,14 @@ const resources = {
         },
         filters: {
           title: 'Filters',
+          active: 'Active',
+          activeFilters: 'Active filters',
+          quickPeriod: 'Quick period selection:',
+          quickPeriodUsers: 'Quick deal creation period selection:',
           periodFrom: 'From',
           periodTo: 'To',
+          periodFromPlaceholder: 'From the beginning',
+          periodToPlaceholder: 'To date',
           user: 'User',
           allUsers: 'All accessible users',
           onlyMyData: 'Only my data',
@@ -363,7 +393,8 @@ const resources = {
           leadTransitionSubtitle: 'Last 12 months (days & hours)',
           count: 'Inserted',
           avgDuration: 'Avg Duration',
-          dealsCount: 'deals'
+          dealsCount: 'opportunities',
+          convertedCount: 'Converted opportunities'
         },
         table: {
           title: 'List of Inserted Opportunities',
@@ -372,24 +403,43 @@ const resources = {
           url: 'Website (URL)',
           ico: 'Company ID',
           createdBy: 'Inserted By',
-          assignedTo: 'Assigned',
+          assignedTo: 'Assigned Representative',
           stage: 'Stage',
           searchCompany: 'Search company...',
           searchIco: 'Search ID...',
           searchUrl: 'Search URL...',
           searchCreator: 'Search user...',
+          searchAssigned: 'Search assigned...',
+          searchDatePlaceholder: 'dd.mm.yyyy...',
+          allStages: 'All stages',
           noRecords: 'No opportunities match your filter criteria.',
-          showingCount: 'Showing {{shown}} of {{total}} opportunities',
+          showingCount: 'Showing {{shown}} opportunities',
+          showingRange: 'Showing {{start}}–{{end}} of {{total}} opportunities',
           rowsPerPage: 'Rows per page',
-          showingRange: 'Showing {{start}}–{{end}} of {{total}}'
+          firstPage: 'First page',
+          prevPage: 'Previous page',
+          nextPage: 'Next page',
+          lastPage: 'Last page',
+          pageOf: 'Page {{current}} of {{total}}'
         },
         users: {
           title: 'Users & Activity Statistics',
           subtitle: 'Detailed tracking of logins, deals created, activities, updates, processing time and conversion rate',
+          summary: {
+            trackedUsers: 'Tracked Users',
+            inView: 'in view',
+            createdDeals: 'Created Opportunities',
+            inFilter: 'in filter',
+            loggedActivities: 'Logged Activities',
+            activitiesSub: 'calls, meetings...',
+            avgConversionRate: 'Avg. Conversion Rate'
+          },
           columns: {
             name: 'Name',
             login: 'Login / E-mail',
             role: 'Role',
+            lastActivity: 'Last CRM Activity',
+            lastActivityShort: 'Last Activity',
             logins: 'Logins',
             dealsCreated: 'Created Deals',
             activities: 'Active Activities',
@@ -407,10 +457,79 @@ const resources = {
             clearAll: 'Clear All',
             dealDateFrom: 'Created From',
             dealDateTo: 'Created To',
-            selectedCount: '{{count}} users selected'
+            selectedCount: 'Selected ({{count}})',
+            oneUser: '1 user',
+            searchUser: 'Search user...',
+            searchUsersQuick: 'Quick user search...',
+            lastActivityPeriod: 'Last Activity',
+            lastActivityAll: 'All users',
+            lastActivity7d: 'Active in last 7 days',
+            lastActivity30d: 'Active in last 30 days',
+            lastActivityInactive30d: 'Inactive > 30 days',
+            lastActivityNone: 'No activity yet',
+            searchLastActivity: 'Search date...'
+          },
+          table: {
+            conversionsOutOf: '({{converted}} of {{total}})',
+            showingRange: 'Showing {{start}}–{{end}} of {{total}} users'
           },
           noRecords: 'No users match your criteria.',
           showingCount: 'Showing {{shown}} of {{total}} users'
+        },
+        lost: {
+          title: 'Lost Opportunities',
+          subtitle: 'Comprehensive overview and analysis of lost deals and specified loss reasons',
+          summary: {
+            totalLost: 'Lost Opportunities',
+            topReason: 'Top Reason for Loss',
+            avgTimeToLoss: 'Avg. Time to Loss',
+            totalVolume: 'Lost Parcel Volume / Year'
+          },
+          filters: {
+            reason: 'Loss Reason',
+            allReasons: 'All reasons',
+            lostFromStage: 'Original Stage',
+            allStages: 'All stages',
+            lostBy: 'Marked Lost By',
+            allUsers: 'All users',
+            dateType: 'Date Filter',
+            dateTypeLost: 'Date marked as lost',
+            dateTypeCreated: 'Date opportunity created',
+            lostDateFrom: 'Lost From',
+            lostDateTo: 'Lost To',
+            quickPeriodLost: 'Quick period selection:'
+          },
+          columns: {
+            company: 'Company',
+            createdAt: 'Created At',
+            lostAt: 'Date Lost',
+            duration: 'Duration',
+            lostFromStage: 'Original Stage',
+            reason: 'Loss Reason',
+            reasonNote: 'Reason Notes / Explanation',
+            lostBy: 'Marked By',
+            assigned: 'Assigned',
+            yearlyParcels: 'Est. Parcels / Year'
+          },
+          table: {
+            searchCompany: 'Search company...',
+            searchReason: 'Search reason...',
+            searchNote: 'Search in note...',
+            searchUser: 'Search user...',
+            showingRange: 'Showing {{start}}–{{end}} of {{total}} lost opportunities',
+            showingCount: 'Showing {{shown}} of {{total}} lost opportunities'
+          },
+          noRecords: 'No lost opportunities match your criteria.'
+        },
+        conversionsPlaceholder: {
+          title: 'Conversions',
+          desc: 'This section will contain an advanced funnel of conversions between individual stages (Opportunity → Lead → Discovery → Contracting → Farming).',
+          button: 'Go to Opportunities'
+        },
+        performancePlaceholder: {
+          title: 'Team Performance',
+          desc: 'This section will contain performance comparisons of individual sales reps, hunters, closers, and farmers over time.',
+          button: 'Go to Opportunities'
         }
       }
     }
@@ -739,9 +858,33 @@ const resources = {
         tabs: {
           opportunities: 'Příležitosti',
           users: 'Uživatelé',
+          lost: 'Ztracené',
           conversions: 'Konverze',
           performance: 'Výkonnost týmu',
           comingSoon: 'V přípravě'
+        },
+        time: {
+          zeroHours: '0 hodin',
+          lessThanHour: '< 1 hodina',
+          day_one: '1 den',
+          day_few: '{{count}} dny',
+          day_other: '{{count}} dní',
+          hour_one: '1 hodina',
+          hour_few: '{{count}} hodiny',
+          hour_other: '{{count}} hodin',
+          dayShort: 'd'
+        },
+        scope: {
+          allData: 'Všechna data systému (Role: {{role}})',
+          managerData: 'Data týmu a podřízených ({{count}} uživatelů)',
+          regularData: 'Pouze vaše osobní data ({{name}})'
+        },
+        opportunities: {
+          heading: 'Příležitosti – Přehled a KPI',
+          subheading: 'Analýza nově vložených příležitostí a dynamika konverze do leadu',
+          totalOpportunitiesDesc: 'Ve vybraném období a filtru (bez testovacích záznamů)',
+          avgTimeBetweenCreationsDesc: 'Průměrný interval mezi dvěma po sobě vloženými příležitostmi',
+          avgTimeToLeadDesc: 'Doba od založení příležitosti do prvního posunu stavu'
         },
         summary: {
           totalOpportunities: 'Celkem vložených příležitostí',
@@ -750,8 +893,14 @@ const resources = {
         },
         filters: {
           title: 'Filtry',
+          active: 'Aktivní',
+          activeFilters: 'Aktivní filtry',
+          quickPeriod: 'Rychlý výběr období:',
+          quickPeriodUsers: 'Rychlý výběr vzniku příležitostí:',
           periodFrom: 'Od',
           periodTo: 'Do',
+          periodFromPlaceholder: 'Od začátku',
+          periodToPlaceholder: 'Dodnes',
           user: 'Uživatel',
           allUsers: 'Všichni dostupní uživatelé',
           onlyMyData: 'Pouze moje data',
@@ -775,7 +924,8 @@ const resources = {
           leadTransitionSubtitle: 'Za posledních 12 měsíců (ve dnech a hodinách)',
           count: 'Vloženo',
           avgDuration: 'Průměrná doba',
-          dealsCount: 'příležitostí'
+          dealsCount: 'příležitostí',
+          convertedCount: 'Změněno příležitostí'
         },
         table: {
           title: 'Seznam vložených příležitostí',
@@ -790,18 +940,37 @@ const resources = {
           searchIco: 'Hledat IČ...',
           searchUrl: 'Hledat URL...',
           searchCreator: 'Hledat uživatele...',
+          searchAssigned: 'Hledat přiřazeného...',
+          searchDatePlaceholder: 'dd.mm.rrrr...',
+          allStages: 'Všechny fáze',
           noRecords: 'Nebyly nalezeny žádné příležitosti odpovídající zadaným kritériím.',
-          showingCount: 'Zobrazeno {{shown}} z {{total}} příležitostí',
+          showingCount: 'Zobrazeno {{shown}} příležitostí',
+          showingRange: 'Zobrazeno {{start}}–{{end}} z {{total}} příležitostí',
           rowsPerPage: 'Řádků na stránku',
-          showingRange: 'Zobrazeno {{start}}–{{end}} z {{total}}'
+          firstPage: 'První strana',
+          prevPage: 'Předchozí strana',
+          nextPage: 'Další strana',
+          lastPage: 'Poslední strana',
+          pageOf: 'Strana {{current}} z {{total}}'
         },
         users: {
           title: 'Statistiky a aktivita uživatelů',
           subtitle: 'Komplexní přehled přihlášení, zadaných příležitostí, aktivit, aktualizací, průměrné doby zpracování a konverzí',
+          summary: {
+            trackedUsers: 'Sledovaní uživatelé',
+            inView: 'v zobrazení',
+            createdDeals: 'Vytvořené příležitosti',
+            inFilter: 've filtru',
+            loggedActivities: 'Zadané aktivity',
+            activitiesSub: 'hovory, schůzky...',
+            avgConversionRate: 'Průměrný konverzní poměr'
+          },
           columns: {
             name: 'Jméno',
             login: 'Login / E-mail',
             role: 'Role',
+            lastActivity: 'Poslední aktivita v CRM',
+            lastActivityShort: 'Poslední aktivita',
             logins: 'Přihlášení',
             dealsCreated: 'Zadané příležitosti',
             activities: 'Zadané aktivity',
@@ -814,15 +983,84 @@ const resources = {
           filters: {
             roles: 'Role uživatelů',
             allRoles: 'Všechny role',
-            usersSelect: 'Uživatelé (výběr)',
+            usersSelect: 'Uživatelé (výběr více)',
             selectAll: 'Vybrat vše',
             clearAll: 'Zrušit výběr',
             dealDateFrom: 'Vznik příležitosti Od',
             dealDateTo: 'Vznik příležitosti Do',
-            selectedCount: 'Vybráno {{count}} uživatelů'
+            selectedCount: 'Vybráno ({{count}})',
+            oneUser: '1 uživatel',
+            searchUser: 'Hledat uživatele...',
+            searchUsersQuick: 'Rychlé vyhledání uživatele...',
+            lastActivityPeriod: 'Aktivita uživatele',
+            lastActivityAll: 'Všichni uživatelé',
+            lastActivity7d: 'Aktivní za posledních 7 dní',
+            lastActivity30d: 'Aktivní za posledních 30 dní',
+            lastActivityInactive30d: 'Neaktivní déle než 30 dní',
+            lastActivityNone: 'Zatím bez aktivity',
+            searchLastActivity: 'Hledat datum...'
+          },
+          table: {
+            conversionsOutOf: '({{converted}} z {{total}})',
+            showingRange: 'Zobrazeno {{start}}–{{end}} z {{total}} uživatelů'
           },
           noRecords: 'Nebyli nalezeni žádní uživatelé odpovídající zadaným kritériím.',
           showingCount: 'Zobrazeno {{shown}} z {{total}} uživatelů'
+        },
+        lost: {
+          title: 'Ztracené příležitosti',
+          subtitle: 'Komplexní přehled a analýza ztracených obchodních případů včetně vypsaných důvodů',
+          summary: {
+            totalLost: 'Ztracené příležitosti',
+            topReason: 'Nejčastější důvod ztráty',
+            avgTimeToLoss: 'Průměrná doba do ztráty',
+            totalVolume: 'Ztracený objem balíků / rok'
+          },
+          filters: {
+            reason: 'Důvod ztráty',
+            allReasons: 'Všechny důvody',
+            lostFromStage: 'Původní fáze před ztrátou',
+            allStages: 'Všechny fáze',
+            lostBy: 'Kdo označil jako ztracené',
+            allUsers: 'Všichni uživatelé',
+            dateType: 'Filtrovat podle data',
+            dateTypeLost: 'Datum označení ztráty',
+            dateTypeCreated: 'Datum vzniku příležitosti',
+            lostDateFrom: 'Ztraceno od',
+            lostDateTo: 'Ztraceno do',
+            quickPeriodLost: 'Rychlý výběr období ztráty:'
+          },
+          columns: {
+            company: 'Společnost',
+            createdAt: 'Vznik',
+            lostAt: 'Datum ztráty',
+            duration: 'Doba do ztráty',
+            lostFromStage: 'Původní fáze',
+            reason: 'Důvod ztráty',
+            reasonNote: 'Poznámka / vysvětlení důvodu',
+            lostBy: 'Kdo ztratil',
+            assigned: 'Přiřazení',
+            yearlyParcels: 'Balíků / rok'
+          },
+          table: {
+            searchCompany: 'Hledat společnost...',
+            searchReason: 'Hledat důvod...',
+            searchNote: 'Hledat v poznámce...',
+            searchUser: 'Hledat uživatele...',
+            showingRange: 'Zobrazeno {{start}}–{{end}} z {{total}} ztracených příležitostí',
+            showingCount: 'Zobrazeno {{shown}} z {{total}} ztracených příležitostí'
+          },
+          noRecords: 'Nebyly nalezeny žádné ztracené příležitosti odpovídající zadaným kritériím.'
+        },
+        conversionsPlaceholder: {
+          title: 'Konverze',
+          desc: 'Tato sekce bude obsahovat pokročilý trychtýř konverzí mezi jednotlivými fázemi (Příležitost → Lead → Discovery → Contracting → Farming).',
+          button: 'Přejít na Příležitosti'
+        },
+        performancePlaceholder: {
+          title: 'Výkonnost týmu',
+          desc: 'Tato sekce bude obsahovat porovnání výkonu jednotlivých obchodníků, hunterů, closerů a farmerů v čase.',
+          button: 'Přejít na Příležitosti'
         }
       }
     }

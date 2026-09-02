@@ -1894,12 +1894,20 @@ async function startServer() {
       const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
       const [contactPositions] = await pool.query('SELECT * FROM contact_positions');
       const [stageReminders] = await pool.query('SELECT * FROM stage_reminders');
-      let stageAuditLogs: any[] = [];
+      let allAuditLogs: any[] = [];
       try {
-        const [auditRows] = await pool.query("SELECT * FROM audit_logs WHERE field = 'stage' ORDER BY timestamp DESC LIMIT 5000");
-        stageAuditLogs = auditRows as any[];
+        const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
+        allAuditLogs = auditRows as any[];
       } catch (e) {
-        console.warn('Could not fetch stage audit_logs in /api/state:', e);
+        console.warn('Could not fetch audit_logs in /api/state:', e);
+      }
+
+      let allActivities: any[] = [];
+      try {
+        const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC");
+        allActivities = activityRows as any[];
+      } catch (e) {
+        console.warn('Could not fetch activities in /api/state:', e);
       }
 
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
@@ -1920,6 +1928,11 @@ async function startServer() {
       const currentUserId = (req as any).user?.id;
       const me = parsedUsers.find((u: any) => u.id === currentUserId) || null;
 
+      const parsedActivities = parseJsonFields(allActivities as any[], ['participants']).map((act: any) => {
+        if ('isVisible' in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
+        return act;
+      });
+
       res.json({
         users: parsedUsers,
         me: me,
@@ -1933,8 +1946,8 @@ async function startServer() {
         lostReasons: parseJsonFields(lostReasons as any[], []),
         contactPositions: parseJsonFields(contactPositions as any[], []),
         stageReminders: parseJsonFields(stageReminders as any[], []),
-        auditLogs: stageAuditLogs,
-        activities: []
+        auditLogs: allAuditLogs,
+        activities: parsedActivities
       });
     } catch (err: any) {
       console.error('DB State Error:', err);

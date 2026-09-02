@@ -2,49 +2,37 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   BarChart3, 
-  Target, 
   Layers, 
-  TrendingUp, 
   Users, 
-  Calendar,
-  CheckCircle,
-  HelpCircle
+  XCircle
 } from 'lucide-react';
 import { OpportunitiesKpiView } from './statistics/OpportunitiesKpiView';
 import { UsersKpiView } from './statistics/UsersKpiView';
+import { LostKpiView } from './statistics/LostKpiView';
 import { useStore } from '../../store';
 
-type KpiSubTab = 'opportunities' | 'users' | 'conversions' | 'performance';
+type KpiSubTab = 'opportunities' | 'users' | 'lost';
 
 export function StatisticsView() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<KpiSubTab>('opportunities');
   const { deals } = useStore();
 
-  const subTabs: { id: KpiSubTab; label: string; icon: React.ElementType; isReady?: boolean }[] = [
+  const subTabs: { id: KpiSubTab; label: string; icon: React.ElementType }[] = [
     {
       id: 'opportunities',
       label: t('statistics.tabs.opportunities', 'Příležitosti'),
-      icon: Layers,
-      isReady: true
+      icon: Layers
     },
     {
       id: 'users',
       label: t('statistics.tabs.users', 'Uživatelé'),
-      icon: Users,
-      isReady: true
+      icon: Users
     },
     {
-      id: 'conversions',
-      label: t('statistics.tabs.conversions', 'Konverze'),
-      icon: TrendingUp,
-      isReady: false
-    },
-    {
-      id: 'performance',
-      label: t('statistics.tabs.performance', 'Výkonnost týmu'),
-      icon: Target,
-      isReady: false
+      id: 'lost',
+      label: t('statistics.tabs.lost', 'Ztracené'),
+      icon: XCircle
     }
   ];
 
@@ -82,11 +70,6 @@ export function StatisticsView() {
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
                 <span>{tab.label}</span>
-                {!tab.isReady && (
-                  <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 border border-gray-200">
-                    {t('statistics.tabs.comingSoon', 'V přípravě')}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -96,50 +79,8 @@ export function StatisticsView() {
       {/* Sub-tab content */}
       <div className="mt-4">
         {activeTab === 'opportunities' && <OpportunitiesKpiView />}
-
         {activeTab === 'users' && <UsersKpiView />}
-
-        {activeTab === 'conversions' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800">
-              {t('statistics.tabs.conversions', 'Konverze')}
-            </h3>
-            <p className="text-sm text-gray-500 max-w-md mx-auto">
-              Tato sekce bude obsahovat pokročilý trychtýř konverzí mezi jednotlivými fázemi (Příležitost → Lead → Discovery → Contracting → Farming).
-            </p>
-            <button
-              onClick={() => setActiveTab('opportunities')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              <Layers className="w-4 h-4" />
-              Přejít na Příležitosti
-            </button>
-          </div>
-        )}
-
-        {activeTab === 'performance' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center space-y-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
-              <Users className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800">
-              {t('statistics.tabs.performance', 'Výkonnost týmu')}
-            </h3>
-            <p className="text-sm text-gray-500 max-w-md mx-auto">
-              Tato sekce bude obsahovat porovnání výkonu jednotlivých obchodníků, hunterů, closerů a farmerů v čase.
-            </p>
-            <button
-              onClick={() => setActiveTab('opportunities')}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
-            >
-              <Layers className="w-4 h-4" />
-              Přejít na Příležitosti
-            </button>
-          </div>
-        )}
+        {activeTab === 'lost' && <LostKpiView />}
       </div>
     </div>
   );

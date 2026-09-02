@@ -1,5 +1,6 @@
 import { User, Deal, Company, StoreState } from '../types';
 import { getSubordinateIds } from './permissions';
+import i18n from '../i18n';
 
 /**
  * Checks if a deal is a test opportunity.
@@ -94,22 +95,57 @@ export function getUserStatisticsScope(currentUser: User | null, allUsers: User[
 }
 
 /**
- * Format milliseconds into human-readable Czech days and hours (e.g., "3 dny, 14 hodin")
+ * Format milliseconds into human-readable localized days and hours (e.g., "3 days, 14 hours" / "3 dny, 14 hodin")
  */
-export function formatDaysAndHours(ms: number): string {
-  if (isNaN(ms) || ms <= 0) return '0 hodin';
+export function formatDaysAndHours(
+  ms: number,
+  t?: (key: string, options?: any) => string
+): string {
+  const translate = t || i18n.t.bind(i18n);
+  const currentLang = (i18n.language || 'cs').toLowerCase();
+  const isEn = currentLang.startsWith('en');
+
+  if (isNaN(ms) || ms <= 0) {
+    return translate('statistics.time.zeroHours', isEn ? '0 hours' : '0 hodin');
+  }
+
   const totalHours = ms / (1000 * 60 * 60);
   const days = Math.floor(totalHours / 24);
   const hours = Math.round(totalHours % 24);
 
-  const dayStr = days === 1 ? '1 den' : (days >= 2 && days <= 4 ? `${days} dny` : `${days} dní`);
-  const hourStr = hours === 1 ? '1 hodina' : (hours >= 2 && hours <= 4 ? `${hours} hodiny` : `${hours} hodin`);
+  if (days === 0 && hours === 0) {
+    return translate('statistics.time.lessThanHour', isEn ? '< 1 hour' : '< 1 hodina');
+  }
+
+  const getDayStr = (d: number) => {
+    if (isEn) {
+      return d === 1
+        ? translate('statistics.time.day_one', { count: 1, defaultValue: '1 day' })
+        : translate('statistics.time.day_other', { count: d, defaultValue: `${d} days` });
+    } else {
+      if (d === 1) return translate('statistics.time.day_one', { count: 1, defaultValue: '1 den' });
+      if (d >= 2 && d <= 4) return translate('statistics.time.day_few', { count: d, defaultValue: `${d} dny` });
+      return translate('statistics.time.day_other', { count: d, defaultValue: `${d} dní` });
+    }
+  };
+
+  const getHourStr = (h: number) => {
+    if (isEn) {
+      return h === 1
+        ? translate('statistics.time.hour_one', { count: 1, defaultValue: '1 hour' })
+        : translate('statistics.time.hour_other', { count: h, defaultValue: `${h} hours` });
+    } else {
+      if (h === 1) return translate('statistics.time.hour_one', { count: 1, defaultValue: '1 hodina' });
+      if (h >= 2 && h <= 4) return translate('statistics.time.hour_few', { count: h, defaultValue: `${h} hodiny` });
+      return translate('statistics.time.hour_other', { count: h, defaultValue: `${h} hodin` });
+    }
+  };
 
   if (days === 0) {
-    return hours === 0 ? '< 1 hodina' : hourStr;
+    return getHourStr(hours);
   }
   if (hours === 0) {
-    return dayStr;
+    return getDayStr(days);
   }
-  return `${dayStr}, ${hourStr}`;
+  return `${getDayStr(days)}, ${getHourStr(hours)}`;
 }

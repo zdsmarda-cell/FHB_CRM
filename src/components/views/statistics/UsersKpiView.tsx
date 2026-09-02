@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../../store';
 import { User, Deal, Company, Role, Stage } from '../../../types';
 import { isTestDeal, getUserStatisticsScope, formatDaysAndHours } from '../../../lib/statistics';
-import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subMonths, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { 
   Users as UsersIcon, 
   Search, 
@@ -48,6 +48,8 @@ interface UserKpiRow {
   attributeUpdatesCount: number;
   assignedDealsCount: number;
   notesCount: number;
+  lastActivityDate: string | null;
+  lastActivityTime: number;
   avgProcessingTimeMs: number | null;
   avgProcessingTimeFormatted: string;
   forwardTransitionsCount: number;
@@ -99,6 +101,7 @@ export function UsersKpiView() {
   const [selectedSegment, setSelectedSegment] = useState<string>('all');
   const [dealDateFrom, setDealDateFrom] = useState<string>('');
   const [dealDateTo, setDealDateTo] = useState<string>('');
+  const [lastActivityFilter, setLastActivityFilter] = useState<string>('all');
 
   // Multi-select user dropdown open state
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -153,6 +156,7 @@ export function UsersKpiView() {
     setSelectedSegment('all');
     setDealDateFrom('');
     setDealDateTo('');
+    setLastActivityFilter('all');
     setGeneralSearch('');
     setCurrentPage(1);
   };
@@ -238,26 +242,32 @@ export function UsersKpiView() {
     });
 
     return accessibleUsers.map(user => {
+      // Helper for matching user by id, name, or email
+      const isUserMatch = (val: string | undefined | null) => {
+        if (!val) return false;
+        return val === user.id || val === user.name || val === user.email;
+      };
+
       // 1. Kolikrát se do systému přihlásil
       const loginsCount = loginCounts[user.id] || 0;
 
       // 2. Kolik zadal příležitostí (created by this user in filtered set)
-      const dealsCreatedCount = filteredDeals.filter(d => d.createdBy === user.id).length;
+      const dealsCreatedCount = filteredDeals.filter(d => isUserMatch(d.createdBy)).length;
 
       // 3. Kolik zadal aktivit (které nebyly smazány)
       // Must not be deleted (isVisible !== false) and if linked to deal, deal must be in filtered set
       const activitiesCount = store.activities.filter(a => {
-        if (a.createdBy !== user.id) return false;
+        if (!isUserMatch(a.createdBy)) return false;
         if (a.isVisible === false) return false;
         if (a.dealId && !filteredDealIdsSet.has(a.dealId)) return false;
         return true;
       }).length;
 
       // 4. Kolikrát doplnil či aktualizoval atributy u příležitostí
-      // Audit logs where changedBy === user.id and field !== 'stage'
+      // Audit logs where changedBy matches user and field !== 'stage'
       const attributeUpdatesCount = auditLogs.filter(log => {
-        if (log.changedBy !== user.id) return false;
-        if (!log.dealId || !filteredDealIdsSet.has(log.dealId)) return false;
+        if (!isUserMatch(log.changedBy)) return false;
+        if (log.dealId && !filteredDealIdsSet.has(log.dealId)) return false;
         if (log.field === 'stage') return false;
         return true;
       }).length;
@@ -287,16 +297,59 @@ export function UsersKpiView() {
       filteredDeals.forEach(deal => {
         if (deal.notes && Array.isArray(deal.notes)) {
           deal.notes.forEach(n => {
-            if (n.createdBy === user.id) notesCount++;
+            if (isUserMatch(n.createdBy)) notesCount++;
           });
         }
       });
 
-      // 7. Průměrná doba na zpracování příležitosti, než se přepne do jiného stavu
+      // 7. Poslední aktivita uživatele (aktivita, poznámka, atribut či vytvoření dealu)
+      let latestActivityTime = 0;
+      let latestActivityDateStr: string | null = null;
+
+      const recordTime = (ts: string | undefined | null) => {
+        if (!ts) return;
+        const time = new Date(ts).getTime();
+        if (!isNaN(time) && time > latestActivityTime) {
+          latestActivityTime = time;
+          latestActivityDateStr = ts;
+        }
+      };
+
+      // Zkontroluj aktivity
+      store.activities.forEach(a => {
+        if (isUserMatch(a.createdBy) && a.isVisible !== false) {
+          recordTime(a.createdAt);
+          recordTime(a.date);
+        }
+      });
+
+      // Zkontroluj poznámky a vytvořené příležitosti
+      deals.forEach(deal => {
+        if (deal.notes && Array.isArray(deal.notes)) {
+          deal.notes.forEach(n => {
+            if (isUserMatch(n.createdBy)) {
+              recordTime(n.updatedAt);
+              recordTime(n.createdAt);
+            }
+          });
+        }
+        if (isUserMatch(deal.createdBy)) {
+          recordTime(deal.createdAt);
+        }
+      });
+
+      // Zkontroluj audit logy (změny atributů a stavů)
+      auditLogs.forEach(log => {
+        if (isUserMatch(log.changedBy)) {
+          recordTime(log.timestamp);
+        }
+      });
+
+      // 8. Průměrná doba na zpracování příležitosti, než se přepne do jiného stavu
       let totalProcessingMs = 0;
       let transitionEventsCount = 0;
 
-      // 8. Konverzní poměr:
+      // 9. Konverzní poměr:
       // Kolik k němu přiřazených příležitostí se přepne do následujícího stavu (nikoliv lost)
       let forwardTransitionsCount = 0;
       const assignedDealIds = new Set<string>();
@@ -365,7 +418,7 @@ export function UsersKpiView() {
       const avgProcessingTimeMs =
         transitionEventsCount > 0 ? totalProcessingMs / transitionEventsCount : null;
       const avgProcessingTimeFormatted =
-        avgProcessingTimeMs !== null ? formatDaysAndHours(avgProcessingTimeMs) : '–';
+        avgProcessingTimeMs !== null ? formatDaysAndHours(avgProcessingTimeMs, t) : '–';
 
       const totalAssignedDeals = assignedDealIds.size;
       const conversionRatePercent =
@@ -379,6 +432,8 @@ export function UsersKpiView() {
         attributeUpdatesCount,
         assignedDealsCount,
         notesCount,
+        lastActivityDate: latestActivityDateStr,
+        lastActivityTime: latestActivityTime,
         avgProcessingTimeMs,
         avgProcessingTimeFormatted,
         forwardTransitionsCount,
@@ -386,9 +441,9 @@ export function UsersKpiView() {
         conversionRatePercent
       };
     });
-  }, [accessibleUsers, filteredDeals, filteredDealIdsSet, auditLogs, loginCounts, store.activities]);
+  }, [accessibleUsers, filteredDeals, filteredDealIdsSet, auditLogs, loginCounts, store.activities, t, i18n.language]);
 
-  // Filter rows by Selected Role and Selected Users and General Search
+  // Filter rows by Selected Role and Selected Users, Last Activity, and General Search
   const filteredUserRows = useMemo(() => {
     return userRows.filter(row => {
       // Role filter
@@ -396,6 +451,18 @@ export function UsersKpiView() {
 
       // Users multi-option filter
       if (selectedUserIds.length > 0 && !selectedUserIds.includes(row.user.id)) return false;
+
+      // Last activity filter
+      if (lastActivityFilter !== 'all') {
+        const now = Date.now();
+        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+        const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+
+        if (lastActivityFilter === '7d' && row.lastActivityTime < sevenDaysAgo) return false;
+        if (lastActivityFilter === '30d' && row.lastActivityTime < thirtyDaysAgo) return false;
+        if (lastActivityFilter === 'inactive30d' && (row.lastActivityTime >= thirtyDaysAgo || row.lastActivityTime === 0)) return false;
+        if (lastActivityFilter === 'none' && row.lastActivityTime > 0) return false;
+      }
 
       // General search filter
       if (generalSearch.trim()) {
@@ -408,7 +475,7 @@ export function UsersKpiView() {
 
       return true;
     });
-  }, [userRows, selectedRole, selectedUserIds, generalSearch]);
+  }, [userRows, selectedRole, selectedUserIds, lastActivityFilter, generalSearch]);
 
   // Sort rows
   const sortedUserRows = useMemo(() => {
@@ -480,6 +547,7 @@ export function UsersKpiView() {
     selectedSegment !== 'all' ||
     dealDateFrom !== '' ||
     dealDateTo !== '' ||
+    lastActivityFilter !== 'all' ||
     generalSearch !== '';
 
   // Summary Metrics calculations
@@ -494,19 +562,20 @@ export function UsersKpiView() {
   }, [sortedUserRows]);
 
   const getRoleBadge = (role: Role) => {
+    const roleLabel = t(`roles.${role}`, role);
     switch (role) {
       case 'hunter':
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-100 text-emerald-800">Hunter</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-100 text-emerald-800">{roleLabel}</span>;
       case 'closer':
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-blue-100 text-blue-800">Closer</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-blue-100 text-blue-800">{roleLabel}</span>;
       case 'farmer':
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-amber-100 text-amber-800">Farmer</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-amber-100 text-amber-800">{roleLabel}</span>;
       case 'cso':
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-purple-100 text-purple-800">CSO</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-purple-100 text-purple-800">{roleLabel}</span>;
       case 'administrator':
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-rose-100 text-rose-800">Admin</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-rose-100 text-rose-800">{roleLabel}</span>;
       default:
-        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-gray-100 text-gray-800">{role}</span>;
+        return <span className="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-gray-100 text-gray-800">{roleLabel}</span>;
     }
   };
 
@@ -529,19 +598,19 @@ export function UsersKpiView() {
             {scope.isAll && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Všechna firemní data (Role: {currentUser?.role?.toUpperCase()})
+                {t('statistics.scope.allData', { role: currentUser?.role?.toUpperCase() })}
               </span>
             )}
             {scope.isManager && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                 <UsersIcon className="w-3.5 h-3.5" />
-                Data týmu a podřízených ({accessibleUsers.length} uživatelů)
+                {t('statistics.scope.managerData', { count: accessibleUsers.length })}
               </span>
             )}
             {scope.isRegular && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
                 <ShieldAlert className="w-3.5 h-3.5" />
-                Pouze vaše osobní data ({currentUser?.name})
+                {t('statistics.scope.regularData', { name: currentUser?.name })}
               </span>
             )}
           </div>
@@ -550,31 +619,45 @@ export function UsersKpiView() {
         {/* 4 Summary Stat Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5 pt-4 border-t border-gray-100">
           <div className="bg-gray-50/70 rounded-lg p-3.5 border border-gray-100">
-            <span className="text-xs text-gray-500 font-medium block">Sledovaní uživatelé</span>
+            <span className="text-xs text-gray-500 font-medium block">
+              {t('statistics.users.summary.trackedUsers', 'Sledovaní uživatelé')}
+            </span>
             <div className="text-xl font-bold text-gray-900 mt-1 flex items-center gap-2">
               <span>{totalActiveUsers}</span>
-              <span className="text-xs text-gray-400 font-normal">v zobrazení</span>
+              <span className="text-xs text-gray-400 font-normal">
+                {t('statistics.users.summary.inView', 'v zobrazení')}
+              </span>
             </div>
           </div>
 
           <div className="bg-gray-50/70 rounded-lg p-3.5 border border-gray-100">
-            <span className="text-xs text-gray-500 font-medium block">Vytvořené příležitosti</span>
+            <span className="text-xs text-gray-500 font-medium block">
+              {t('statistics.users.summary.createdDeals', 'Vytvořené příležitosti')}
+            </span>
             <div className="text-xl font-bold text-indigo-600 mt-1 flex items-center gap-2">
               <span>{totalDealsCreatedSum}</span>
-              <span className="text-xs text-gray-400 font-normal">ve filtru</span>
+              <span className="text-xs text-gray-400 font-normal">
+                {t('statistics.users.summary.inFilter', 've filtru')}
+              </span>
             </div>
           </div>
 
           <div className="bg-gray-50/70 rounded-lg p-3.5 border border-gray-100">
-            <span className="text-xs text-gray-500 font-medium block">Zadané aktivity</span>
+            <span className="text-xs text-gray-500 font-medium block">
+              {t('statistics.users.summary.loggedActivities', 'Zadané aktivity')}
+            </span>
             <div className="text-xl font-bold text-emerald-600 mt-1 flex items-center gap-2">
               <span>{totalActivitiesSum}</span>
-              <span className="text-xs text-gray-400 font-normal">hovory, schůzky...</span>
+              <span className="text-xs text-gray-400 font-normal">
+                {t('statistics.users.summary.activitiesSub', 'hovory, schůzky...')}
+              </span>
             </div>
           </div>
 
           <div className="bg-gray-50/70 rounded-lg p-3.5 border border-gray-100">
-            <span className="text-xs text-gray-500 font-medium block">Průměrný konverzní poměr</span>
+            <span className="text-xs text-gray-500 font-medium block">
+              {t('statistics.users.summary.avgConversionRate', 'Průměrný konverzní poměr')}
+            </span>
             <div className="text-xl font-bold text-amber-600 mt-1 flex items-center gap-1.5">
               <span>{avgTeamConversion !== null ? `${avgTeamConversion.toFixed(1)}%` : '–'}</span>
               <TrendingUp className="w-4 h-4 text-amber-500" />
@@ -591,7 +674,7 @@ export function UsersKpiView() {
             <h3 className="text-sm font-bold text-gray-900">{t('statistics.filters.title', 'Filtry')}</h3>
             {hasActiveFilters && (
               <span className="bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                Aktivní filtry
+                {t('statistics.filters.active', 'Aktivní')}
               </span>
             )}
           </div>
@@ -610,7 +693,9 @@ export function UsersKpiView() {
 
         {/* Quick Date Presets */}
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <span className="text-xs font-medium text-gray-500 mr-1">Rychlý výběr vzniku příležitostí:</span>
+          <span className="text-xs font-medium text-gray-500 mr-1">
+            {t('statistics.filters.quickPeriodUsers', 'Rychlý výběr vzniku příležitostí:')}
+          </span>
           <button
             type="button"
             onClick={() => handleQuickPeriod('all')}
@@ -646,7 +731,7 @@ export function UsersKpiView() {
         </div>
 
         {/* Main Filters Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 pt-2">
           {/* 1. Role Filter */}
           <div>
             <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -662,11 +747,11 @@ export function UsersKpiView() {
               className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 disabled:text-gray-400"
             >
               <option value="all">{t('statistics.users.filters.allRoles', 'Všechny role')}</option>
-              <option value="hunter">Hunter</option>
-              <option value="closer">Closer</option>
-              <option value="farmer">Farmer</option>
-              <option value="cso">CSO</option>
-              <option value="administrator">Administrátor</option>
+              <option value="hunter">{t('roles.hunter', 'Hunter')}</option>
+              <option value="closer">{t('roles.closer', 'Closer')}</option>
+              <option value="farmer">{t('roles.farmer', 'Farmer')}</option>
+              <option value="cso">{t('roles.cso', 'CSO')}</option>
+              <option value="administrator">{t('roles.administrator', 'Administrátor')}</option>
             </select>
           </div>
 
@@ -687,8 +772,8 @@ export function UsersKpiView() {
                   : selectedUserIds.length === 0
                   ? t('statistics.filters.allUsers', 'Všichni uživatelé')
                   : selectedUserIds.length === 1
-                  ? accessibleUsers.find(u => u.id === selectedUserIds[0])?.name || '1 uživatel'
-                  : `Vybráno (${selectedUserIds.length})`}
+                  ? accessibleUsers.find(u => u.id === selectedUserIds[0])?.name || t('statistics.users.filters.oneUser', '1 uživatel')
+                  : t('statistics.users.filters.selectedCount', { count: selectedUserIds.length })}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-gray-400 shrink-0 ml-1" />
             </button>
@@ -702,7 +787,7 @@ export function UsersKpiView() {
                     type="text"
                     value={userSearchText}
                     onChange={e => setUserSearchText(e.target.value)}
-                    placeholder="Hledat uživatele..."
+                    placeholder={t('statistics.users.filters.searchUser', 'Hledat uživatele...')}
                     className="w-full pl-7 pr-2 py-1 text-xs bg-gray-50 border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"
                   />
                 </div>
@@ -818,7 +903,28 @@ export function UsersKpiView() {
             </select>
           </div>
 
-          {/* 6. Date Created OD - DO */}
+          {/* 6. Last Activity Filter */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">
+              {t('statistics.users.filters.lastActivity', 'Poslední aktivita')}
+            </label>
+            <select
+              value={lastActivityFilter}
+              onChange={e => {
+                setLastActivityFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full text-xs px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">{t('statistics.users.filters.lastActivityAll', 'Všichni uživatelé')}</option>
+              <option value="7d">{t('statistics.users.filters.lastActivity7d', 'Aktivní za posl. 7 dní')}</option>
+              <option value="30d">{t('statistics.users.filters.lastActivity30d', 'Aktivní za posl. 30 dní')}</option>
+              <option value="inactive30d">{t('statistics.users.filters.lastActivityInactive30d', 'Neaktivní > 30 dní')}</option>
+              <option value="none">{t('statistics.users.filters.lastActivityNone', 'Bez aktivity')}</option>
+            </select>
+          </div>
+
+          {/* 7. Date Created OD - DO */}
           <div className="flex items-center gap-1.5">
             <div className="flex-1">
               <label className="block text-xs font-semibold text-gray-700 mb-1">
@@ -866,7 +972,7 @@ export function UsersKpiView() {
                   setGeneralSearch(e.target.value);
                   setCurrentPage(1);
                 }}
-                placeholder="Rychlé vyhledání uživatele..."
+                placeholder={t('statistics.users.filters.searchUsersQuick', 'Rychlé vyhledání uživatele...')}
                 className="w-full text-xs pl-8 pr-3 py-1.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-normal"
               />
             </div>
@@ -874,7 +980,7 @@ export function UsersKpiView() {
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500 font-medium">
-              Zobrazeno <strong className="text-gray-900">{sortedUserRows.length}</strong> uživatelů
+              {t('statistics.users.showingCount', { shown: sortedUserRows.length, total: sortedUserRows.length })}
             </span>
 
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
@@ -1015,7 +1121,22 @@ export function UsersKpiView() {
                   </div>
                 </th>
 
-                {/* 10. Avg Processing Time */}
+                {/* 10. Last Activity */}
+                <th
+                  className="px-4 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors text-right whitespace-nowrap"
+                  onClick={() => handleSort('lastActivityTime')}
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    <span>{t('statistics.users.columns.lastActivity', 'Poslední aktivita')}</span>
+                    {sortKey === 'lastActivityTime' ? (
+                      sortDir === 'asc' ? <ArrowUp className="w-3 h-3 text-indigo-600" /> : <ArrowDown className="w-3 h-3 text-indigo-600" />
+                    ) : (
+                      <ArrowUpDown className="w-3 h-3 text-gray-400 opacity-60" />
+                    )}
+                  </div>
+                </th>
+
+                {/* 11. Avg Processing Time */}
                 <th
                   className="px-4 py-3 font-semibold cursor-pointer hover:bg-gray-100 transition-colors text-right whitespace-nowrap"
                   onClick={() => handleSort('avgProcessingTimeMs')}
@@ -1050,7 +1171,7 @@ export function UsersKpiView() {
             <tbody className="divide-y divide-gray-100">
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={12} className="px-6 py-12 text-center text-gray-500">
                     <p className="text-sm font-medium">
                       {t('statistics.users.noRecords', 'Nebyli nalezeni žádní uživatelé odpovídající zadaným kritériím.')}
                     </p>
@@ -1150,6 +1271,18 @@ export function UsersKpiView() {
                         )}
                       </td>
 
+                      {/* Last Activity */}
+                      <td className="px-4 py-3 text-right whitespace-nowrap text-gray-700">
+                        {row.lastActivityDate ? (
+                          <div className="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded text-[11px] font-mono text-gray-700">
+                            <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
+                            <span>{format(parseISO(row.lastActivityDate), 'dd.MM.yyyy HH:mm')}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 font-mono text-[11px]">–</span>
+                        )}
+                      </td>
+
                       {/* Avg Processing Time */}
                       <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
                         <span className="font-medium">{row.avgProcessingTimeFormatted}</span>
@@ -1171,7 +1304,7 @@ export function UsersKpiView() {
                               {row.conversionRatePercent.toFixed(1)}%
                             </span>
                             <span className="text-[10px] text-gray-400 mt-0.5 font-mono">
-                              ({row.forwardTransitionsCount} z {row.totalAssignedDeals})
+                              {t('statistics.users.table.conversionsOutOf', { converted: row.forwardTransitionsCount, total: row.totalAssignedDeals })}
                             </span>
                           </div>
                         ) : (
@@ -1189,12 +1322,11 @@ export function UsersKpiView() {
         {/* Pagination Bar */}
         <div className="p-3.5 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
           <span className="text-gray-500 font-medium">
-            Zobrazeno{' '}
-            <strong className="text-gray-900">
-              {sortedUserRows.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}–
-              {Math.min(safeCurrentPage * pageSize, sortedUserRows.length)}
-            </strong>{' '}
-            z <strong className="text-gray-900">{sortedUserRows.length}</strong> uživatelů
+            {t('statistics.users.table.showingRange', {
+              start: sortedUserRows.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1,
+              end: Math.min(safeCurrentPage * pageSize, sortedUserRows.length),
+              total: sortedUserRows.length
+            })}
           </span>
 
           <div className="flex items-center gap-1">
@@ -1203,7 +1335,7 @@ export function UsersKpiView() {
               disabled={safeCurrentPage <= 1}
               onClick={() => setCurrentPage(1)}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="První strana"
+              title={t('statistics.table.firstPage', 'První strana')}
             >
               <ChevronsLeft className="w-4 h-4" />
             </button>
@@ -1212,13 +1344,13 @@ export function UsersKpiView() {
               disabled={safeCurrentPage <= 1}
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Předchozí strana"
+              title={t('statistics.table.prevPage', 'Předchozí strana')}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
             <span className="px-2.5 py-1 text-gray-700 font-semibold">
-              Strana {safeCurrentPage} z {totalPages}
+              {t('statistics.table.pageOf', { current: safeCurrentPage, total: totalPages })}
             </span>
 
             <button
@@ -1226,7 +1358,7 @@ export function UsersKpiView() {
               disabled={safeCurrentPage >= totalPages}
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Další strana"
+              title={t('statistics.table.nextPage', 'Další strana')}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -1235,7 +1367,7 @@ export function UsersKpiView() {
               disabled={safeCurrentPage >= totalPages}
               onClick={() => setCurrentPage(totalPages)}
               className="p-1 rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Poslední strana"
+              title={t('statistics.table.lastPage', 'Poslední strana')}
             >
               <ChevronsRight className="w-4 h-4" />
             </button>
