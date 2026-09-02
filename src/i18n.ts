@@ -327,6 +327,7 @@ const resources = {
         tabs: {
           opportunities: 'Opportunities',
           users: 'Users',
+          stages: 'Stages',
           lost: 'Lost',
           conversions: 'Conversions',
           performance: 'Team Performance',
@@ -520,6 +521,36 @@ const resources = {
             showingCount: 'Showing {{shown}} of {{total}} lost opportunities'
           },
           noRecords: 'No lost opportunities match your criteria.'
+        },
+        stages: {
+          title: 'Stages & Sales Pipeline Process',
+          subtitle: 'Comprehensive overview of pipeline stages, conversion ratios between states, and average dwell times',
+          stagesCount: 'stages',
+          tableTitle: 'Overview of States, Counts, Conversions and Processing Times',
+          tableSubtitle: 'Click on a row to expand detailed list of opportunities currently in that state',
+          searchPlaceholder: 'Search company, ID, representative...',
+          summary: {
+            activeDeals: 'Active in Pipeline',
+            activeDealsDesc: 'Opportunities in Opportunity to Farming stages',
+            pipelineVolume: 'Pipeline Parcel Volume',
+            pipelineVolumeDesc: 'Estimated yearly potential of active deals',
+            avgCycleTime: 'Avg. Sales Cycle Time',
+            avgCycleTimeDesc: 'From opportunity creation to contract signed',
+            winRate: 'Pipeline Win Rate',
+            winRateDesc: 'Share of deals reaching Farming stage'
+          },
+          colStage: 'Stage / State',
+          colActiveDeals: 'Active in State',
+          colYearlyParcels: 'Parcel Volume (pcs/yr)',
+          colEntered: 'Entered Historically',
+          colConversion: 'Conversion to Next Stage',
+          colAvgTransitionTime: 'Avg. State Change Time',
+          colLostFromStage: 'Drop-off to Lost',
+          ofTotal: 'of total',
+          lostRate: 'loss rate',
+          activeDealsInStage: 'Opportunities in stage',
+          noDealsInStage: 'No opportunities match your criteria in this stage.',
+          daysInStage: 'Time in CRM'
         },
         conversionsPlaceholder: {
           title: 'Conversions',
@@ -858,6 +889,7 @@ const resources = {
         tabs: {
           opportunities: 'Příležitosti',
           users: 'Uživatelé',
+          stages: 'Stavy',
           lost: 'Ztracené',
           conversions: 'Konverze',
           performance: 'Výkonnost týmu',
@@ -1051,6 +1083,36 @@ const resources = {
             showingCount: 'Zobrazeno {{shown}} z {{total}} ztracených příležitostí'
           },
           noRecords: 'Nebyly nalezeny žádné ztracené příležitosti odpovídající zadaným kritériím.'
+        },
+        stages: {
+          title: 'Stavy a fáze obchodního procesu',
+          subtitle: 'Kompletní přehled stavů pipeline, konverzních poměrů mezi jednotlivými fázemi a průměrné doby setrvání',
+          stagesCount: 'stavů',
+          tableTitle: 'Přehled stavů, počtů, konverzí a doby zpracování',
+          tableSubtitle: 'Kliknutím na řádek zobrazíte detailní seznam příležitostí aktuálně se nacházejících v daném stavu',
+          searchPlaceholder: 'Hledat společnost, IČ, obchodníka...',
+          summary: {
+            activeDeals: 'Aktivní v pipeline',
+            activeDealsDesc: 'Příležitosti ve fázích Opportunity až Farming',
+            pipelineVolume: 'Objem balíků v pipeline',
+            pipelineVolumeDesc: 'Odhadovaný roční potenciál aktivních obchodů',
+            avgCycleTime: 'Prům. doba obchodního cyklu',
+            avgCycleTimeDesc: 'Od vzniku příležitosti po zasmluvnění',
+            winRate: 'Úspěšnost pipeline (Won)',
+            winRateDesc: 'Podíl obchodů, které dosáhly fáze Farming'
+          },
+          colStage: 'Stav / Fáze',
+          colActiveDeals: 'Aktivní v tomto stavu',
+          colYearlyParcels: 'Objem balíků (ks/rok)',
+          colEntered: 'Historicky prošlo',
+          colConversion: 'Konverze do dalšího stavu',
+          colAvgTransitionTime: 'Průměrná doba pro změnu stavu',
+          colLostFromStage: 'Odpad do Lost',
+          ofTotal: 'z celku',
+          lostRate: 'ztrátovost',
+          activeDealsInStage: 'Příležitosti ve stavu',
+          noDealsInStage: 'V tomto stavu se ve vybraném filtru nenachází žádná příležitost.',
+          daysInStage: 'Doba v CRM'
         },
         conversionsPlaceholder: {
           title: 'Konverze',

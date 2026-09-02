@@ -72,6 +72,7 @@ export function LostKpiView() {
   const [dateTo, setDateTo] = useState<string>('');
   const [selectedReasonId, setSelectedReasonId] = useState<string>('all');
   const [selectedOriginalStage, setSelectedOriginalStage] = useState<string>('all');
+  const [selectedRole, setSelectedRole] = useState<string>('all');
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
   const [selectedCountry, setSelectedCountry] = useState<string>('all');
   const [selectedSegmentId, setSelectedSegmentId] = useState<string>('all');
@@ -125,7 +126,8 @@ export function LostKpiView() {
     setDateTo('');
     setSelectedReasonId('all');
     setSelectedOriginalStage('all');
-    setSelectedUserId('all');
+    setSelectedRole('all');
+    setSelectedUserId(scope.isRegular ? (currentUser?.id || 'all') : 'all');
     setSelectedCountry('all');
     setSelectedSegmentId('all');
     setSearchQuery('');
@@ -141,7 +143,8 @@ export function LostKpiView() {
     dateTo !== '' ||
     selectedReasonId !== 'all' ||
     selectedOriginalStage !== 'all' ||
-    selectedUserId !== 'all' ||
+    selectedRole !== 'all' ||
+    (selectedUserId !== 'all' && !scope.isRegular) ||
     selectedCountry !== 'all' ||
     selectedSegmentId !== 'all' ||
     searchQuery.trim() !== '' ||
@@ -180,14 +183,31 @@ export function LostKpiView() {
         if (prevStage !== selectedOriginalStage) return false;
       }
 
+      // Role filter
+      if (selectedRole !== 'all') {
+        const creator = users.find(u => u.id === deal.createdBy);
+        const hunter = users.find(u => u.id === deal.hunterId);
+        const closer = users.find(u => u.id === deal.closerId);
+        const farmer = users.find(u => u.id === deal.farmerId);
+        const lostBy = users.find(u => u.id === deal.lostBy);
+        const matchesRole =
+          creator?.role === selectedRole ||
+          hunter?.role === selectedRole ||
+          closer?.role === selectedRole ||
+          farmer?.role === selectedRole ||
+          lostBy?.role === selectedRole;
+        if (!matchesRole) return false;
+      }
+
       // User filter (lostBy or assigned or createdBy)
-      if (selectedUserId !== 'all') {
+      const effectiveUserId = scope.isRegular ? currentUser?.id : selectedUserId;
+      if (effectiveUserId && effectiveUserId !== 'all') {
         const matchesUser =
-          deal.lostBy === selectedUserId ||
-          deal.hunterId === selectedUserId ||
-          deal.closerId === selectedUserId ||
-          deal.farmerId === selectedUserId ||
-          deal.createdBy === selectedUserId;
+          deal.lostBy === effectiveUserId ||
+          deal.hunterId === effectiveUserId ||
+          deal.closerId === effectiveUserId ||
+          deal.farmerId === effectiveUserId ||
+          deal.createdBy === effectiveUserId;
         if (!matchesUser) return false;
       }
 
@@ -652,7 +672,7 @@ export function LostKpiView() {
         </div>
 
         {/* Filter controls row 1 */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 pt-1">
           {/* 1. Date Type */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -748,25 +768,60 @@ export function LostKpiView() {
             </select>
           </div>
 
-          {/* 6. User (Lost By or Assigned) */}
+          {/* 6. Role */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              {t('statistics.users.filters.roles', 'Role')}
+            </label>
+            <select
+              value={selectedRole}
+              onChange={e => {
+                setSelectedRole(e.target.value);
+                setCurrentPage(1);
+              }}
+              disabled={scope.isRegular}
+              className="w-full text-xs rounded-lg border border-gray-300 py-1.5 px-2 bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden disabled:bg-gray-100 disabled:text-gray-400"
+            >
+              <option value="all">{t('statistics.users.filters.allRoles', 'Všechny role')}</option>
+              <option value="hunter">{t('roles.hunter', 'Hunter')}</option>
+              <option value="closer">{t('roles.closer', 'Closer')}</option>
+              <option value="farmer">{t('roles.farmer', 'Farmer')}</option>
+              <option value="cso">{t('roles.cso', 'CSO')}</option>
+              <option value="administrator">{t('roles.administrator', 'Administrátor')}</option>
+            </select>
+          </div>
+
+          {/* 7. User (Lost By or Assigned - Role-Aware) */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               {t('statistics.lost.filters.lostBy', 'Uživatel')}
             </label>
             <select
-              value={selectedUserId}
+              value={scope.isRegular ? (currentUser?.id || '') : selectedUserId}
               onChange={e => {
                 setSelectedUserId(e.target.value);
                 setCurrentPage(1);
               }}
-              className="w-full text-xs rounded-lg border border-gray-300 py-1.5 px-2 bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden truncate"
+              disabled={scope.isRegular}
+              className="w-full text-xs rounded-lg border border-gray-300 py-1.5 px-2 bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden truncate disabled:bg-gray-100 disabled:text-gray-400"
             >
-              <option value="all">{t('statistics.lost.filters.allUsers', 'Všichni uživatelé')}</option>
-              {scope.accessibleUsers.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
+              {scope.isAll && (
+                <option value="all">{t('statistics.filters.allUsers', 'Všichni uživatelé')}</option>
+              )}
+              {scope.isManager && (
+                <option value="all">{t('statistics.filters.mySubordinates', 'Můj tým a podřízení')}</option>
+              )}
+              {scope.isRegular && (
+                <option value={currentUser?.id}>
+                  {currentUser?.name} ({t('statistics.filters.onlyMyData', 'Pouze moje data')})
                 </option>
-              ))}
+              )}
+              {!scope.isRegular &&
+                scope.accessibleUsers.map(u => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.role})
+                  </option>
+                ))}
             </select>
           </div>
         </div>

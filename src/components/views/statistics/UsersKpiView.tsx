@@ -189,6 +189,17 @@ export function UsersKpiView() {
       // Rule: Do statistik se nepocitaji testovaci prilezitosti!
       if (isTestDeal(deal, store)) return false;
 
+      // RBAC check: non-admin/cso users only see deals within their scope
+      if (!scope.isAll) {
+        const matchesScope =
+          scope.allowedUserIds.includes(deal.createdBy) ||
+          (deal.hunterId && scope.allowedUserIds.includes(deal.hunterId)) ||
+          (deal.closerId && scope.allowedUserIds.includes(deal.closerId)) ||
+          (deal.farmerId && scope.allowedUserIds.includes(deal.farmerId)) ||
+          (deal.lostBy && scope.allowedUserIds.includes(deal.lostBy));
+        if (!matchesScope) return false;
+      }
+
       // Deal creation date filter OD - DO
       if (deal.createdAt) {
         const dealDateStr = deal.createdAt.substring(0, 10);

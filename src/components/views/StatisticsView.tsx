@@ -4,14 +4,16 @@ import {
   BarChart3, 
   Layers, 
   Users, 
+  GitCommit,
   XCircle
 } from 'lucide-react';
 import { OpportunitiesKpiView } from './statistics/OpportunitiesKpiView';
 import { UsersKpiView } from './statistics/UsersKpiView';
+import { StagesKpiView } from './statistics/StagesKpiView';
 import { LostKpiView } from './statistics/LostKpiView';
 import { useStore } from '../../store';
 
-type KpiSubTab = 'opportunities' | 'users' | 'lost';
+type KpiSubTab = 'opportunities' | 'users' | 'stages' | 'lost';
 
 export function StatisticsView() {
   const { t } = useTranslation();
@@ -28,6 +30,11 @@ export function StatisticsView() {
       id: 'users',
       label: t('statistics.tabs.users', 'Uživatelé'),
       icon: Users
+    },
+    {
+      id: 'stages',
+      label: t('statistics.tabs.stages', 'Stavy'),
+      icon: GitCommit
     },
     {
       id: 'lost',
@@ -80,6 +87,7 @@ export function StatisticsView() {
       <div className="mt-4">
         {activeTab === 'opportunities' && <OpportunitiesKpiView />}
         {activeTab === 'users' && <UsersKpiView />}
+        {activeTab === 'stages' && <StagesKpiView />}
         {activeTab === 'lost' && <LostKpiView />}
       </div>
     </div>
