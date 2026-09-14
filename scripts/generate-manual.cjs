@@ -309,7 +309,13 @@ const generatePDF = (lang, outputPath) => {
 
     // 4. GUI & Ovladani
     doc.addPage();
-    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Grafické ukázky a interakce (Simulace)' : '4. UI Screenshots and Interfaces'), { underline: true });
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Pravidla hlídání neaktivity a barevné připomínky' : '4. Stage Inactivity Rules & Color Reminders'), { underline: true });
+    doc.moveDown(0.5);
+    doc.font('Helvetica').fontSize(10).text(removeDiacritics(isCS 
+      ? 'Zvýraznění karty v Kanbanu/Seznamu a odeslání notifikačního emailu nastává POUZE při současném splnění 3 podmínek:\n1. Doba v daném stavu: Uplynulo alespoň X dnů od přesunu do aktuální fáze.\n2. Doba od aktivity: Uplynulo alespoň X dnů od jakékoliv úpravy firmy/dealu, vytvoření/úpravy aktivity či smazání aktivity (smazání okamžitě restartuje lhůtu).\n3. Doba od data konání aktivity: Pokud je naplánována budoucí aktivita (např. schůzka za 10 dní), lhůta neaktivity se počítá až od data jejího uskutečnění.' 
+      : 'Card highlighting in Kanban/List and email dispatch triggers ONLY upon meeting all 3 conditions:\n1. Time in Stage: At least X days have passed since moving into the stage.\n2. Time Since Activity: At least X days have passed since any update, activity edit or deletion (deletion restarts the clock).\n3. Time Since Event Date: If a future event is scheduled, inactivity countdown begins only after the event date has passed.')).moveDown(1);
+
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '5. Grafické ukázky a interakce (Simulace)' : '5. UI Screenshots and Interfaces'), { underline: true });
     doc.moveDown();
     
     doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));

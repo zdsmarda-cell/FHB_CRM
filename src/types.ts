@@ -89,6 +89,7 @@ export interface Activity {
   externalEventId?: string;
   recordingLink?: string;
   meetingSummary?: string;
+  updatedAt?: string;
 }
 
 export interface LeadSource {

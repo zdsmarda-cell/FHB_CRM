@@ -844,20 +844,68 @@ export const useStore = create<StoreState>((set, get) => {
 
   addActivity: async (activity) => {
     const state = get();
-    const newActivity = { ...activity, id: uuidv4(), createdAt: new Date().toISOString() };
-    await syncToDb({ activities: [newActivity] });
-    set((state) => ({ activities: [newActivity, ...state.activities] }));
+    const nowIso = new Date().toISOString();
+    const newActivity = { ...activity, id: uuidv4(), createdAt: nowIso, updatedAt: nowIso };
+    const deal = state.deals.find(d => d.id === activity.dealId);
+    const updatedDeal = deal ? { ...deal, updatedAt: nowIso } : null;
+
+    await syncToDb({ 
+      activities: [newActivity],
+      ...(updatedDeal ? { deals: [updatedDeal] } : {})
+    });
+    set((state) => ({ 
+      activities: [newActivity, ...state.activities],
+      deals: updatedDeal ? state.deals.map(d => d.id === updatedDeal.id ? updatedDeal : d) : state.deals
+    }));
   },
   
   updateActivity: async (id, activityData) => {
     const state = get();
-    const updatedActivities = state.activities.map(a => a.id === id ? { ...a, ...activityData } : a);
+    const nowIso = new Date().toISOString();
+    const existing = state.activities.find(a => a.id === id);
+    const dealId = activityData.dealId || existing?.dealId;
+    const deal = dealId ? state.deals.find(d => d.id === dealId) : null;
+    const updatedDeal = deal ? { ...deal, updatedAt: nowIso } : null;
+
+    const updatedActivities = state.activities.map(a => a.id === id ? { ...a, ...activityData, updatedAt: nowIso } : a);
     const activityToSync = updatedActivities.find(a => a.id === id);
-    if (activityToSync) await syncToDb({ activities: [activityToSync] });
-    set({ activities: updatedActivities });
+    if (activityToSync) {
+      await syncToDb({ 
+        activities: [activityToSync],
+        ...(updatedDeal ? { deals: [updatedDeal] } : {})
+      });
+    }
+    set(state => ({ 
+      activities: updatedActivities,
+      deals: updatedDeal ? state.deals.map(d => d.id === updatedDeal.id ? updatedDeal : d) : state.deals
+    }));
   },
 
   deleteActivity: async (id) => {
+    const state = get();
+    const activity = state.activities.find(a => a.id === id);
+    const nowIso = new Date().toISOString();
+    
+    let auditLog: AuditLog | null = null;
+    let updatedDeal: Deal | null = null;
+
+    if (activity && activity.dealId) {
+      const deal = state.deals.find(d => d.id === activity.dealId);
+      if (deal) {
+        updatedDeal = { ...deal, updatedAt: nowIso };
+      }
+      const actDateStr = activity.date ? ` (${activity.date.substring(0, 10)})` : '';
+      auditLog = {
+        id: uuidv4(),
+        dealId: activity.dealId,
+        field: 'activity_deleted',
+        oldValue: `${activity.type}: ${activity.note || ''}${actDateStr}`,
+        newValue: 'deleted',
+        changedBy: state.currentUser?.id || 'system',
+        timestamp: nowIso
+      };
+    }
+
     await apiFetch('/api/delete-entity', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -868,8 +916,18 @@ export const useStore = create<StoreState>((set, get) => {
         throw new Error(err.error || 'Failed to delete');
       }
     });
+
+    if (auditLog || updatedDeal) {
+      await syncToDb({
+        ...(auditLog ? { audit_logs: [auditLog] } : {}),
+        ...(updatedDeal ? { deals: [updatedDeal] } : {})
+      });
+    }
+
     set(state => ({
-      activities: state.activities.filter(a => a.id !== id)
+      activities: state.activities.filter(a => a.id !== id),
+      auditLogs: auditLog ? [auditLog, ...state.auditLogs] : state.auditLogs,
+      deals: updatedDeal ? state.deals.map(d => d.id === updatedDeal!.id ? updatedDeal! : d) : state.deals
     }));
   },
   

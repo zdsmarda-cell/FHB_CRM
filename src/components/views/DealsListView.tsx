@@ -106,7 +106,7 @@ export function DealsListView({
 
     if (reminderColorFilter && reminderColorFilter !== 'all') {
       userDeals = userDeals.filter(d => {
-        const color = getDealReminderColor(d, store.stageReminders, store.auditLogs);
+        const color = getDealReminderColor(d, store.stageReminders, store.auditLogs, store.activities);
         return color === reminderColorFilter;
       });
     }

@@ -73,7 +73,8 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     }
   };
 
-  const manualUrl = `/api/manual?lang=${i18n.language}`;
+  const token = typeof window !== 'undefined' ? localStorage.getItem('jwt_token') : null;
+  const manualUrl = `/api/manual?lang=${i18n.language}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

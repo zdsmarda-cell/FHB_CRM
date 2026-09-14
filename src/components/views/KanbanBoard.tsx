@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
-import { Stage, User, Deal, StageReminder, AuditLog } from '../../types';
+import { Stage, User, Deal, StageReminder, AuditLog, Activity } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock, ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock, ArrowDown, ArrowUp, ArrowUpDown, AlertTriangle } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -79,14 +79,126 @@ export const getDealDaysInStage = (deal: Deal, auditLogs: AuditLog[]): number =>
   return Math.max(0, Math.floor((now - stageEntryTime) / (1000 * 60 * 60 * 24)));
 };
 
-export const getDealReminderColor = (deal: Deal, stageReminders: StageReminder[], auditLogs: AuditLog[]) => {
+export const checkDealStageReminder = (
+  deal: Deal,
+  ruleDays: number,
+  auditLogs: AuditLog[],
+  activities: Activity[] = [],
+  nowMs: number = Date.now()
+): boolean => {
+  // Podmínka 1: minimálně X dnů od přesunutí do daného stavu
+  const relevantLogs = (auditLogs || [])
+    .filter(a => a.dealId === deal.id && a.field === 'stage' && a.newValue === deal.stage)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  const mostRecentStageLog = relevantLogs[0];
+  const stageEntryTime = mostRecentStageLog
+    ? new Date(mostRecentStageLog.timestamp).getTime()
+    : new Date(deal.createdAt || nowMs).getTime();
+
+  const daysSinceStageMove = Math.floor((nowMs - stageEntryTime) / (1000 * 60 * 60 * 24));
+  if (daysSinceStageMove < ruleDays) {
+    return false;
+  }
+
+  // Podmínka 2: minimálně X dnů od jakékoliv aktivity u příležitosti (doplnění atributu, zadání aktivity, smazání)
+  const actionTimestamps: number[] = [
+    new Date(deal.createdAt || nowMs).getTime()
+  ];
+
+  if (deal.updatedAt) {
+    const t = new Date(deal.updatedAt).getTime();
+    if (!isNaN(t)) actionTimestamps.push(t);
+  }
+
+  (auditLogs || []).forEach(log => {
+    if (log.dealId === deal.id || (deal.companyId && log.companyId === deal.companyId)) {
+      const t = new Date(log.timestamp).getTime();
+      if (!isNaN(t)) actionTimestamps.push(t);
+    }
+  });
+
+  const dealActivities = (activities || []).filter(a => a.dealId === deal.id);
+  dealActivities.forEach(act => {
+    if (act.createdAt) {
+      const t = new Date(act.createdAt).getTime();
+      if (!isNaN(t)) actionTimestamps.push(t);
+    }
+    if (act.updatedAt) {
+      const t = new Date(act.updatedAt).getTime();
+      if (!isNaN(t)) actionTimestamps.push(t);
+    }
+  });
+
+  if (deal.notes && Array.isArray(deal.notes)) {
+    deal.notes.forEach((n: any) => {
+      if (n.createdAt) {
+        const t = new Date(n.createdAt).getTime();
+        if (!isNaN(t)) actionTimestamps.push(t);
+      }
+      if (n.updatedAt) {
+        const t = new Date(n.updatedAt).getTime();
+        if (!isNaN(t)) actionTimestamps.push(t);
+      }
+    });
+  }
+
+  if (deal.documents && Array.isArray(deal.documents)) {
+    deal.documents.forEach((d: any) => {
+      if (d.uploadedAt) {
+        const t = new Date(d.uploadedAt).getTime();
+        if (!isNaN(t)) actionTimestamps.push(t);
+      }
+    });
+  }
+
+  if (deal.pricingOffers && Array.isArray(deal.pricingOffers)) {
+    deal.pricingOffers.forEach((p: any) => {
+      if (p.dateSent) {
+        const t = new Date(p.dateSent).getTime();
+        if (!isNaN(t)) actionTimestamps.push(t);
+      }
+    });
+  }
+
+  const lastActionTime = Math.max(...actionTimestamps);
+  const daysSinceLastAction = Math.floor((nowMs - lastActionTime) / (1000 * 60 * 60 * 24));
+  if (daysSinceLastAction < ruleDays) {
+    return false;
+  }
+
+  // Podmínka 3: minimálně X dnů od datumu konání dané aktivity
+  // (příkladem schůzku si domluvím až za 10 dní, takže se to bude počítat až od daného okamžiku)
+  if (dealActivities.length > 0) {
+    const activityDates = dealActivities
+      .map(a => new Date(a.date || a.createdAt).getTime())
+      .filter(t => !isNaN(t));
+
+    if (activityDates.length > 0) {
+      const latestActivityDate = Math.max(...activityDates);
+      const daysSinceLatestActivityDate = Math.floor((nowMs - latestActivityDate) / (1000 * 60 * 60 * 24));
+      if (daysSinceLatestActivityDate < ruleDays) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+};
+
+export const getDealReminderColor = (
+  deal: Deal,
+  stageReminders: StageReminder[],
+  auditLogs: AuditLog[],
+  activities: Activity[] = []
+): string => {
   if (!stageReminders || stageReminders.length === 0 || deal.stage === 'lost') return 'none';
   const rules = stageReminders.filter(r => r.stage === deal.stage);
   if (rules.length === 0) return 'none';
 
-  const daysInStage = getDealDaysInStage(deal, auditLogs);
-
-  const matchingRules = rules.filter(r => daysInStage >= r.days);
+  const matchingRules = rules.filter(r =>
+    checkDealStageReminder(deal, r.days, auditLogs, activities)
+  );
   if (matchingRules.length === 0) return 'none';
 
   matchingRules.sort((a, b) => b.days - a.days);
@@ -240,7 +352,7 @@ export function KanbanBoard() {
 
     if (reminderColorFilter && reminderColorFilter !== 'all') {
       deals = deals.filter(d => {
-        const color = getDealReminderColor(d, state.stageReminders, state.auditLogs);
+        const color = getDealReminderColor(d, state.stageReminders, state.auditLogs, state.activities);
         return color === reminderColorFilter;
       });
     }
@@ -749,7 +861,7 @@ export function KanbanBoard() {
                   const curId = getCurrentAssigneeId(deal);
                   const ownerInfo = curId ? userInitialsAndColors[curId] : null;
 
-                  const reminderColor = getDealReminderColor(deal, state.stageReminders, state.auditLogs);
+                  const reminderColor = getDealReminderColor(deal, state.stageReminders, state.auditLogs, state.activities);
                   const daysInStage = getDealDaysInStage(deal, state.auditLogs);
                   let cardBorderStyle = 'border-gray-200';
                   if (reminderColor === 'yellow') cardBorderStyle = 'border-2 border-yellow-400 bg-yellow-50/30';
@@ -803,6 +915,18 @@ export function KanbanBoard() {
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0">
+                          {reminderColor !== 'none' && (
+                            <span 
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold ${
+                                reminderColor === 'red' ? 'bg-red-100 text-red-700 border border-red-300' :
+                                reminderColor === 'orange' ? 'bg-orange-100 text-orange-700 border border-orange-300' :
+                                'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                              }`}
+                              title={t('kanban.reminderAlert', 'Upozornění: Příležitost splňuje podmínky pro zvýraznění (stav, aktivita, datum konání)')}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                            </span>
+                          )}
                           <span 
                             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200/80"
                             title={`${daysInStage} ${daysInStage === 1 ? 'den' : daysInStage >= 2 && daysInStage <= 4 ? 'dni' : 'dní'} v tomto stavu`}

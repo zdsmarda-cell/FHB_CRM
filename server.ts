@@ -19,10 +19,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
 // Middleware to protect routes
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  let token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  if (!token && req.query && typeof req.query.token === 'string') {
+    token = req.query.token;
+  }
+  if (!token) {
     return res.status(401).json({ error: 'unauthorized', message: 'Missing or invalid token' });
   }
-  const token = authHeader.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     (req as any).user = decoded; // attach user to request
@@ -166,6 +169,7 @@ async function startServer() {
         "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
+        "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;",
       ];
       for (const m of migrations) {
         try {
@@ -635,7 +639,7 @@ async function startServer() {
   });
 
   // GET Email Logs for Admin
-  app.get('/api/email_logs', async (req, res) => {
+  app.get('/api/email_logs', authMiddleware, async (req, res) => {
     try {
       const { page = '1', limit = '10', dateFrom, dateTo, recipient, subject, status } = req.query;
       const pageNum = parseInt(page as string);
@@ -1236,7 +1240,7 @@ async function startServer() {
     }
   });
 
-  app.get('/api/manual', async (req, res) => {
+  app.get('/api/manual', authMiddleware, async (req, res) => {
     try {
       const lang = req.query.lang === 'cs' ? 'cs' : 'en';
       const isCS = lang === 'cs';
@@ -1824,11 +1828,61 @@ async function startServer() {
               <li><b>${isCS ? 'Přihlašovací logy (Login Logs)' : 'Login Logs'}:</b> ${isCS ? 'Správa IP adres, použitých prohlížečů a časů přihlášení uživatelů pro zajištění bezpečnosti.' : 'Tracking IP addresses, user agents, and login timestamps for security enforcement.'}</li>
             </ul>
 
-            <h2>${isCS ? '6. Uživatelské Rozhraní a Ovládací Prvky' : '6. User Interface & Controls'}</h2>
+            <div class="page-break"></div>
+
+            <h2>${isCS ? '6. Pravidla hlídání neaktivity, barevné připomínky a automatické e-mailové notifikace' : '6. Stage Inactivity Rules, Color Reminders & Automated Email Notifications'}</h2>
+            <p>${isCS 
+              ? 'Pro udržení vysoké dynamiky obchodního potrubí a prevenci stagnace příležitostí disponuje systém pokročilým modulem hlídání neaktivity. V administraci aplikace (sekce <b>Připomínky stavů</b>) lze pro každou fázi pipeline nadefinovat libovolný počet pravidel s určením počtu dnů neaktivity, barvy vizuálního orámování (žlutá, oranžová, červená) a případné akce automatického odeslání e-mailového upozornění.' 
+              : 'To maintain high sales pipeline velocity and eliminate stalled opportunities, the CRM features an advanced stage inactivity monitoring module. In the Administration panel (<b>Stage Reminders</b> section), administrators can configure multiple rules per pipeline stage specifying inactivity day thresholds, visual card border colors (yellow, orange, red), and automated email alert actions.'}</p>
+
+            <h3>${isCS ? 'Tři striktní podmínky pro aktivaci barevného orámování a notifikací:' : 'Three Strict Conditions for Triggering Visual Reminders & Notifications:'}</h3>
+            <p>${isCS 
+              ? 'Zvýraznění karty příležitosti v Kanban desce / Seznamu a odeslání notifikačního e-mailu se aktivuje <b>výhradně tehdy, jsou-li současně splněny všechny 3 následující podmínky</b>:' 
+              : 'A deal card is highlighted with a colored border in Kanban / List view and alert emails are dispatched <b>only when all 3 of the following conditions are simultaneously met</b>:'}</p>
+
+            <ol style="padding-left: 20px; font-size: 13px; line-height: 1.7;">
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? '1. Podmínka – Minimální doba v daném stavu:' : '1. Condition – Minimum Time in Current Stage:'}</b><br/>
+                ${isCS 
+                  ? 'Od okamžiku přesunu příležitosti do dané fáze (stavu) muselo uplynout minimálně <b>X</b> kalendářních dnů. Tato doba se počítá podle přesného časového razítka posledního přesunu do tohoto stavu zaznamenaného v auditním logu.' 
+                  : 'At least <b>X</b> calendar days must have elapsed since the deal was moved into its current stage, verified via the precise timestamp in the stage change audit log.'}
+              </li>
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? '2. Podmínka – Minimální doba od jakékoliv aktivity u příležitosti:' : '2. Condition – Minimum Time Since Any Activity or Update:'}</b><br/>
+                ${isCS 
+                  ? 'Od jakéhokoliv zásahu, doplnění atributu či zaznamenané události u příležitosti nebo její navázané firmy muselo uplynout minimálně <b>X</b> kalendářních dnů. Zahrnuje:<br/>' +
+                    '• Úpravu a doplnění jakéhokoliv pole společnosti či dealu (včetně změn zaznamenaných v auditní stopě).<br/>' +
+                    '• Zadání nové aktivity (telefonát, schůzka, MS Teams, e-mail, úkol, poznámka, nahrání nabídky v PDF či dokumentu).<br/>' +
+                    '• <b>Smazání aktivity:</b> Pokud obchodník aktivitu smaže (např. zrušenou schůzku), systém tuto akci automaticky zapíše do auditního logu a zaktualizuje časové razítko příležitosti (<code>updatedAt</code>). Tím se lhůta neaktivity začíná počítat nanovo od okamžiku tohoto smazání.' 
+                  : 'At least <b>X</b> calendar days must have elapsed since any update, attribute modification, or activity on the deal or linked company. Includes:<br/>' +
+                    '• Creating or editing any company or deal attribute (tracked in the audit log).<br/>' +
+                    '• Logging a new activity (call, meeting, MS Teams, email, task, note, pricing offer PDF, or document).<br/>' +
+                    '• <b>Activity Deletion:</b> If an activity is removed (e.g. canceled meeting), the system automatically logs this in the audit trail and updates the deal timestamp (<code>updatedAt</code>), restarting the inactivity counter from the moment of deletion.'}
+              </li>
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? '3. Podmínka – Minimální doba od data konání dané aktivity:' : '3. Condition – Minimum Time Since Scheduled Activity Event Date:'}</b><br/>
+                ${isCS 
+                  ? 'Pokud je u příležitosti naplánována budoucí aktivita (např. schůzka domluvená až za 10 dní), lhůta neaktivity se počítá <b>až od data samotného konání této aktivity</b>. Dokud aktivita neproběhne, příležitost se považuje za aktivně rozpracovanou a výstražné orámování ani e-mailové notifikace se nespustí. Až po uplynutí X dnů od uskutečnění schůzky (bez další navazující akce) dojde k aktivaci upozornění.' 
+                  : 'If a future activity is scheduled on the deal (e.g. a client meeting arranged 10 days ahead), the inactivity countdown begins <b>only after the scheduled date of that activity has passed</b>. While future events remain pending, the opportunity is treated as actively progressing and neither color borders nor emails trigger until X days after the event date without subsequent action.'}
+              </li>
+            </ol>
+
+            <h3>${isCS ? 'Vizuální úrovně upozornění a akce:' : 'Visual Alert Levels & Triggered Actions:'}</h3>
+            <ul>
+              <li><b>${isCS ? 'Žluté ohraničení (Yellow Alert)' : 'Yellow Border (Yellow Alert)'}:</b> ${isCS ? 'Informativní upozornění na blížící se hranici nečinnosti.' : 'Informational warning indicating an approaching inactivity threshold.'}</li>
+              <li><b>${isCS ? 'Oranžové ohraničení (Orange Alert)' : 'Orange Border (Orange Alert)'}:</b> ${isCS ? 'Zvýšené varování před stagnací obchodu.' : 'Elevated warning indicating opportunity stagnation.'}</li>
+              <li><b>${isCS ? 'Červené ohraničení s výstražnou ikonou (Red Alert)' : 'Red Border with Alert Icon (Red Alert)'}:</b> ${isCS ? 'Kritické překročení povolené doby neaktivity vyžadující okamžitý zásah odpovědného garanta a dohled manažera.' : 'Critical inactivity breach requiring immediate action from the deal owner and management oversight.'}</li>
+              <li><b>${isCS ? 'Automatické e-mailové notifikace' : 'Automated Email Notifications'}:</b> ${isCS ? 'U pravidel s akcí „Odeslat e-mail“ systém v rámci ranní cron úlohy (8:00) odesílá přehledný notifikační e-mail garantovi i nadřízenému manažerovi s odkazem na konkrétní příležitost a shrnutím chybějící aktivity. Všechny odeslané e-maily jsou evidovány v E-mailovém logu v Administraci.' : 'Rules configured with the "Send Email" action automatically send a notification email at 8:00 AM to the deal owner and supervisor with direct deal links and an inactivity summary. All dispatched emails are recorded in the Email Log in Administration.'}</li>
+              <li><b>${isCS ? 'Filtrování podle barvy připomínky' : 'Filtering by Reminder Color'}:</b> ${isCS ? 'V Kanban desce i Seznamu dealů je k dispozici rychlý filtr dle barvy připomínky (Vše / Žlutá / Oranžová / Červená), umožňující okamžitě vyfiltrovat všechny případy vyžadující pozornost.' : 'Both Kanban and List views feature a reminder color filter (All / Yellow / Orange / Red) enabling instant filtering of opportunities requiring immediate attention.'}</li>
+            </ul>
+
+            <h2>${isCS ? '7. Uživatelské Rozhraní a Ovládací Prvky' : '7. User Interface & Controls'}</h2>
             <ul>
               <li><b>${isCS ? 'Dvojitá lišta posuvníku (Kanban Scrollbar)' : 'Dual Kanban Scrollbar'}:</b> ${isCS ? 'Kanban deska obsahuje posuvník nahoře i dole pod sloupci, což zajišťuje pohodlný horizontální posun napříč všemi 7 fázemi i na menších obrazovkách.' : 'The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display.'}</li>
               <li><b>${isCS ? 'Filtr nepřiřazených dealů' : 'Unassigned Deals Filter'}:</b> ${isCS ? 'Tlačítko "Pouze nepřiřazené" zobrazí příležitosti, které zatím nemají v dané fázi stanoveného garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
+              <li><b>${isCS ? 'Filtr dle barvy upozornění (Připomínky)' : 'Filter by Reminder Color'}:</b> ${isCS ? 'Rychlá filtrace obchodních případů podle barvy stavové připomínky pro okamžité řešení stagnujících obchodů.' : 'Quickly filter deals by stage reminder alert color to focus immediately on stalled opportunities.'}</li>
               <li><b>${isCS ? 'Zvýraznění chybějících dat (Red Underline Alert)' : 'Red Missing Data Highlighting'}:</b> ${isCS ? 'Pokud na kartě dealu chybí povinný údaj pro posun, pole je při pokusu o uložení či posun červeně podtrženo.' : 'If a required field is missing, it is underlined in red upon saving or advancing.'}</li>
+              <li><b>${isCS ? 'Výstražný odznak u neaktivních dealů' : 'Alert Badge on Stalled Deals'}:</b> ${isCS ? 'Karta dealu v Kanbanu zobrazuje výstražnou ikonu s počtem dnů v aktuální fázi a nápovědou s vysvětlením podmínek.' : 'Kanban deal cards display an alert badge with days in current stage and tooltip explaining the condition criteria.'}</li>
             </ul>
           </div>
           <script>
@@ -2095,6 +2149,24 @@ async function startServer() {
 
         if (count > 0) {
           return res.status(400).json({ error: `Cannot delete because there are ${count} records in ${refTable} referencing this entity.` });
+        }
+      }
+
+      if (table === 'activities') {
+        const [actRows] = await pool.query('SELECT * FROM activities WHERE id = ?', [id]);
+        if ((actRows as any[]).length > 0) {
+          const act = (actRows as any[])[0];
+          if (act.dealId) {
+            const user = (req as any).user;
+            const now = new Date();
+            const auditId = uuidv4();
+            const actDateStr = act.date ? ` (${new Date(act.date).toISOString().substring(0, 10)})` : '';
+            await pool.query(
+              'INSERT INTO audit_logs (id, dealId, field, oldValue, newValue, changedBy, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [auditId, act.dealId, 'activity_deleted', `${act.type || 'activity'}: ${act.note || ''}${actDateStr}`, 'deleted', user?.id || 'system', now]
+            );
+            await pool.query('UPDATE deals SET updatedAt = ? WHERE id = ?', [now, act.dealId]);
+          }
         }
       }
 
@@ -2529,8 +2601,12 @@ setTimeout(() => {
         return [c.id, { ...c, urls, contacts }];
       }));
 
-      const [auditRows] = await connection.query("SELECT * FROM audit_logs WHERE field = 'stage' ORDER BY timestamp DESC");
-      const stageAuditLogs = auditRows as any[];
+      const [auditRows] = await connection.query("SELECT * FROM audit_logs ORDER BY timestamp DESC");
+      const allAuditLogs = auditRows as any[];
+      const stageAuditLogs = allAuditLogs.filter((a: any) => a.field === 'stage');
+
+      const [activitiesRows] = await connection.query("SELECT * FROM activities ORDER BY date DESC");
+      const allActivities = activitiesRows as any[];
 
       const stageLabels: Record<string, string> = {
         opportunity: '1. Oportunita',
@@ -2554,11 +2630,62 @@ setTimeout(() => {
         const stageReminders = reminders.filter((r: any) => r.stage === stage);
         if (stageReminders.length === 0) continue;
 
-        const lastStageLog = stageAuditLogs.find((a: any) => a.dealId === deal.id && a.field === 'stage' && a.newValue === stage);
+        const lastStageLog = stageAuditLogs.find((a: any) => a.dealId === deal.id && a.newValue === stage);
         const stageEntryTime = lastStageLog ? new Date(lastStageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
         const daysInStage = Math.max(0, Math.floor((now.getTime() - stageEntryTime) / (1000 * 60 * 60 * 24)));
 
-        const matchingEmailRules = stageReminders.filter((r: any) => r.action === 'email' && daysInStage >= r.days);
+        const dealAuditLogs = allAuditLogs.filter((a: any) => a.dealId === deal.id || (deal.companyId && a.companyId === deal.companyId));
+        const dealActivities = allActivities.filter((a: any) => a.dealId === deal.id);
+
+        const actionTimestamps: number[] = [
+          new Date(deal.createdAt || now.getTime()).getTime()
+        ];
+        if (deal.updatedAt) {
+          const t = new Date(deal.updatedAt).getTime();
+          if (!isNaN(t)) actionTimestamps.push(t);
+        }
+        dealAuditLogs.forEach((log: any) => {
+          const t = new Date(log.timestamp).getTime();
+          if (!isNaN(t)) actionTimestamps.push(t);
+        });
+        dealActivities.forEach((act: any) => {
+          if (act.createdAt) {
+            const t = new Date(act.createdAt).getTime();
+            if (!isNaN(t)) actionTimestamps.push(t);
+          }
+          if (act.updatedAt) {
+            const t = new Date(act.updatedAt).getTime();
+            if (!isNaN(t)) actionTimestamps.push(t);
+          }
+        });
+
+        const lastActionTime = Math.max(...actionTimestamps);
+        const daysSinceLastAction = Math.floor((now.getTime() - lastActionTime) / (1000 * 60 * 60 * 24));
+
+        let latestActivityDate: number | null = null;
+        if (dealActivities.length > 0) {
+          const activityDates = dealActivities
+            .map((a: any) => new Date(a.date || a.createdAt).getTime())
+            .filter((t: number) => !isNaN(t));
+          if (activityDates.length > 0) {
+            latestActivityDate = Math.max(...activityDates);
+          }
+        }
+        const daysSinceLatestActivityDate = latestActivityDate !== null
+          ? Math.floor((now.getTime() - latestActivityDate) / (1000 * 60 * 60 * 24))
+          : null;
+
+        const matchingEmailRules = stageReminders.filter((r: any) => {
+          if (r.action !== 'email') return false;
+          // 1. Podmínka: minimálně X dnů od přesunu do stavu
+          if (daysInStage < r.days) return false;
+          // 2. Podmínka: minimálně X dnů od jakékoliv aktivity
+          if (daysSinceLastAction < r.days) return false;
+          // 3. Podmínka: minimálně X dnů od data konání aktivity
+          if (daysSinceLatestActivityDate !== null && daysSinceLatestActivityDate < r.days) return false;
+          return true;
+        });
+
         if (matchingEmailRules.length === 0) continue;
 
         matchingEmailRules.sort((a: any, b: any) => b.days - a.days);
