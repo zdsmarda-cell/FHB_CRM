@@ -2291,7 +2291,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       
       // Gather and clean relevant emails (deal owner, contact emails)
       const rawEmailStrings = [
-        ...company.contacts.map(c => c.email),
+        ...(company.contacts || []).map(c => c.email),
         company.email
       ].filter(Boolean);
 
@@ -2918,7 +2918,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
               <div>
                 <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1 block">{t('activities.companyContacts', 'Kontakty společnosti')}</span>
                 <div className="flex flex-wrap gap-2 items-center">
-                  {company.contacts.map((c, i) => (
+                  {(company.contacts || []).map((c, i) => (
                     <button
                       key={i}
                       type="button"

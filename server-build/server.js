@@ -1762,8 +1762,8 @@ Tento odkaz plat\xED 10 minut.`,
         [activities]
       ] = await Promise.all([
         pool.query("SELECT * FROM deals WHERE id = ?", [dealId]),
-        pool.query("SELECT * FROM audit_logs WHERE dealId = ? ORDER BY timestamp DESC", [dealId]),
-        pool.query("SELECT * FROM activities WHERE dealId = ? ORDER BY date DESC", [dealId])
+        pool.query("SELECT * FROM audit_logs WHERE dealId = ? OR companyId = (SELECT companyId FROM deals WHERE id = ?) ORDER BY timestamp DESC LIMIT 500", [dealId, dealId]),
+        pool.query("SELECT * FROM activities WHERE dealId = ? OR (dealId IS NULL AND companyId = (SELECT companyId FROM deals WHERE id = ?)) ORDER BY date DESC LIMIT 500", [dealId, dealId])
       ]);
       const parseJsonFields = (arr, fields) => arr.map((item) => {
         fields.forEach((f) => {
@@ -1834,7 +1834,7 @@ Tento odkaz plat\xED 10 minut.`,
         [lastActivityActionRows]
       ] = await Promise.all([
         pool.query("SELECT id, name, email, role, managerId, isActive, googleIntegration, msIntegration FROM users"),
-        pool.query("SELECT id, name, companyId, address, country, region, segment, email, phone, phonePrefix, urls, isVisible FROM companies"),
+        pool.query("SELECT id, name, companyId, address, country, region, segment, email, phone, phonePrefix, urls, contacts, isVisible FROM companies"),
         pool.query(`SELECT 
           id, companyId, stage, createdBy, hunterId, closerId, farmerId, 
           leadSourceId, ecommercePlatformId, storageTypeId, estimatedYearlyParcels, 
@@ -1843,7 +1843,8 @@ Tento odkaz plat\xED 10 minut.`,
           firstStockingDate, itIntegrationCompletedDate, firstStockingDateActual, 
           integrationTestingCompletedDate, createdAt, updatedAt, postponedUntil, 
           postponedReason, postponedBy, postponedAt, lostPermanently, lostReason, 
-          lostReasonId, lostBy, lostAt, lostFromStage, deliveryCountries, pricingOffers 
+          lostReasonId, lostBy, lostAt, lostFromStage, deliveryCountries, pricingOffers,
+          documents, notes, seasonMonths, codUsage
           FROM deals`),
         pool.query("SELECT * FROM lead_sources"),
         pool.query("SELECT * FROM segments"),
@@ -1879,18 +1880,10 @@ Tento odkaz plat\xED 10 minut.`,
         }
       });
       const nowMs = Date.now();
-      const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers"]).map((deal) => {
-        if (Array.isArray(deal.pricingOffers)) {
-          deal.pricingOffers = deal.pricingOffers.map((p) => ({
-            id: p.id,
-            dateSent: p.dateSent,
-            filename: p.filename
-          }));
-        } else {
-          deal.pricingOffers = [];
-        }
-        deal.documents = [];
-        deal.notes = [];
+      const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]).map((deal) => {
+        if (!deal.pricingOffers) deal.pricingOffers = [];
+        if (!deal.documents) deal.documents = [];
+        if (!deal.notes) deal.notes = [];
         const stageTime = stageEnteredMap.get(`${deal.id}_${deal.stage}`) || (deal.createdAt ? new Date(deal.createdAt).getTime() : nowMs);
         const daysInStage = Math.max(0, Math.floor((nowMs - stageTime) / 864e5));
         deal.daysInStage = daysInStage;
@@ -1923,8 +1916,9 @@ Tento odkaz plat\xED 10 minut.`,
       res.json({
         users: parsedUsers,
         me,
-        companies: parseJsonFields(companies, ["urls"]).map((c) => {
+        companies: parseJsonFields(companies, ["urls", "contacts"]).map((c) => {
           if ("isVisible" in c) c.isVisible = c.isVisible === 1 || c.isVisible === true;
+          if (!Array.isArray(c.contacts)) c.contacts = [];
           return c;
         }),
         deals: parsedDeals,
