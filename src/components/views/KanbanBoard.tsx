@@ -3,7 +3,7 @@ import { useStore } from '../../store';
 import { STAGES, getDealsForUser, canViewStage, getSubordinateIds } from '../../lib/permissions';
 import { Stage, User, Deal, StageReminder, AuditLog, Activity } from '../../types';
 import { format, parseISO } from 'date-fns';
-import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock, ArrowDown, ArrowUp, ArrowUpDown, AlertTriangle } from 'lucide-react';
+import { Building2, Calendar, Ban, UserPlus, Users, List, Kanban, Globe, Tag, Filter, Search, User as UserIcon, X, Bell, Clock, ArrowDown, ArrowUp, ArrowUpDown, AlertTriangle, ArrowRight } from 'lucide-react';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CompanyForm } from '../modals/CompanyForm';
 import { ChangeAssigneeModal } from '../modals/ChangeAssigneeModal';
@@ -212,7 +212,45 @@ export function KanbanBoard() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [assigneeModalDeal, setAssigneeModalDeal] = useState<Deal | null>(null);
   const [lostDealId, setLostDealId] = useState<string | null>(null);
-  const [alertInfo, setAlertInfo] = useState<{ isOpen: boolean; message: string; }>({ isOpen: false, message: '' });
+  const [alertInfo, setAlertInfo] = useState<{
+    isOpen: boolean;
+    message: string;
+    title?: string;
+    type?: 'error' | 'success' | 'info';
+  }>({ isOpen: false, message: '' });
+
+  const isDealReadyForSqlAdvance = (deal: Deal): boolean => {
+    if (deal.stage !== 'lead') return false;
+    if (!deal.hunterId) return false;
+    if (!deal.leadSourceId) return false;
+    if (!deal.ecommercePlatformId) return false;
+    const parcels = Number(deal.estimatedMonthlyParcels);
+    return !isNaN(parcels) && parcels > 0;
+  };
+
+  const handleSqlAdvance = async (deal: Deal, company: any) => {
+    if (!currentUser) return;
+    try {
+      await updateDealStage(deal.id, 'discovery_proposal', currentUser.id);
+      setAlertInfo({
+        isOpen: true,
+        title: t('kanban.sqlAdvanceTitle', 'Příležitost přesunuta'),
+        message: t('kanban.sqlAdvanceSuccess', 'Příležitost společnosti {{company}} byla přesunuta do následujícího stavu Discovery & Ponuka.', {
+          company: company?.name || ''
+        }),
+        type: 'success'
+      });
+    } catch (err: any) {
+      console.error('Error advancing deal to Discovery & Proposal:', err);
+      setAlertInfo({
+        isOpen: true,
+        title: t('common.error', 'Chyba'),
+        message: err.message || t('common.errorDesc', 'Něco se pokazilo.'),
+        type: 'error'
+      });
+    }
+  };
+
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(() => {
     return localStorage.getItem('kanban_unassigned') === 'true';
   });
@@ -957,97 +995,113 @@ export function KanbanBoard() {
                           </span>
                         </div>
                         
-                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {canTakeDeal(deal) && (
+                        <div className="flex flex-col items-end gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          {isDealReadyForSqlAdvance(deal) && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                
-                                // Ošetření případu, kdy někdo jiný příležitost převzal mezitím
-                                const checkAssign = async () => {
-                                  try {
-                                    const checkRes = await fetch(`/api/deals/${deal.id}/assign`, {
-                                      method: 'POST',
-                                      headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
-                                        'X-Client-Id': localStorage.getItem('client_id') || ''
-                                      },
-                                      body: JSON.stringify({ field: getAssigneeField(deal.stage, deal), newUserId: currentUser!.id })
-                                    });
-                                    if (!checkRes.ok) {
-                                      const errorData = await checkRes.json();
-                                      alert(errorData.error || 'Neznámá chyba při převzetí');
-                                      state.refreshState();
-                                      return;
-                                    }
-                                    
-                                    const willAdvanceToDiscovery = 
-                                      deal.stage === 'lead' &&
-                                      deal.leadSourceId &&
-                                      deal.ecommercePlatformId &&
-                                      deal.estimatedMonthlyParcels &&
-                                      deal.estimatedMonthlyParcels > 0;
-                                      
-                                    const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
-                                      deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
-                                      deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
-                                      deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
-                                      deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
-                                      deal.pricingOffers && deal.pricingOffers.length > 0;
-
-                                    const willAdvanceToOnboarding = deal.stage === 'contracting' &&
-                                      deal.contractSignedDate &&
-                                      deal.pricingUploadedDate &&
-                                      deal.itIntegrationId &&
-                                      deal.firstStockingDate;
-                                      
-                                    const willAdvanceInfo = willAdvanceToDiscovery ? { stage: 'discovery_proposal', name: t('stages.discovery_proposal') }
-                                      : willAdvanceToContracting ? { stage: 'contracting', name: t('stages.contracting') }
-                                      : willAdvanceToOnboarding ? { stage: 'onboarding', name: t('stages.onboarding') }
-                                      : null;
-
-                                    if (willAdvanceInfo) {
-                                      if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${willAdvanceInfo.name}. Chcete pokračovat?`)) {
+                                handleSqlAdvance(deal, company);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded text-xs font-bold shadow-xs hover:shadow transition-all group/sql cursor-pointer border border-emerald-700"
+                              title={t('kanban.sqlAdvanceTooltip', 'Posunout do stavu Discovery & Ponuka (SQL)')}
+                            >
+                              <span>SQL</span>
+                              <ArrowRight className="w-3.5 h-3.5 group-hover/sql:translate-x-0.5 transition-transform" />
+                            </button>
+                          )}
+                          <div className="flex items-center gap-1.5">
+                            {canTakeDeal(deal) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  
+                                  // Ošetření případu, kdy někdo jiný příležitost převzal mezitím
+                                  const checkAssign = async () => {
+                                    try {
+                                      const checkRes = await fetch(`/api/deals/${deal.id}/assign`, {
+                                        method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          'Authorization': `Bearer ${localStorage.getItem('jwt_token')}`,
+                                          'X-Client-Id': localStorage.getItem('client_id') || ''
+                                        },
+                                        body: JSON.stringify({ field: getAssigneeField(deal.stage, deal), newUserId: currentUser!.id })
+                                      });
+                                      if (!checkRes.ok) {
+                                        const errorData = await checkRes.json();
+                                        alert(errorData.error || 'Neznámá chyba při převzetí');
+                                        state.refreshState();
                                         return;
                                       }
+                                      
+                                      const willAdvanceToDiscovery = 
+                                        deal.stage === 'lead' &&
+                                        deal.leadSourceId &&
+                                        deal.ecommercePlatformId &&
+                                        deal.estimatedMonthlyParcels &&
+                                        deal.estimatedMonthlyParcels > 0;
+                                        
+                                      const willAdvanceToContracting = deal.stage === 'discovery_proposal' &&
+                                        deal.deliveryCountries && deal.deliveryCountries.length > 0 &&
+                                        deal.averageItemsPerOrder && deal.averageItemsPerOrder > 0 &&
+                                        deal.averageParcelWeight && deal.averageParcelWeight > 0 &&
+                                        deal.averageParcelVolume && deal.averageParcelVolume > 0 &&
+                                        deal.pricingOffers && deal.pricingOffers.length > 0;
+
+                                      const willAdvanceToOnboarding = deal.stage === 'contracting' &&
+                                        deal.contractSignedDate &&
+                                        deal.pricingUploadedDate &&
+                                        deal.itIntegrationId &&
+                                        deal.firstStockingDate;
+                                        
+                                      const willAdvanceInfo = willAdvanceToDiscovery ? { stage: 'discovery_proposal', name: t('stages.discovery_proposal') }
+                                        : willAdvanceToContracting ? { stage: 'contracting', name: t('stages.contracting') }
+                                        : willAdvanceToOnboarding ? { stage: 'onboarding', name: t('stages.onboarding') }
+                                        : null;
+
+                                      if (willAdvanceInfo) {
+                                        if (!window.confirm(`Převzetím bude příležitost automaticky posunuta do fáze ${willAdvanceInfo.name}. Chcete pokračovat?`)) {
+                                          return;
+                                        }
+                                      }
+                                      
+                                      const updates: Partial<Deal> = { [getAssigneeField(deal.stage, deal)]: currentUser!.id };
+                                      if (willAdvanceInfo) {
+                                        updates.stage = willAdvanceInfo.stage as Stage;
+                                      }
+                                      state.updateDeal(deal.id, updates, currentUser!.id);
+                                    } catch (err) {
+                                      alert('Chyba komunikace se serverem.');
                                     }
-                                    
-                                    const updates: Partial<Deal> = { [getAssigneeField(deal.stage, deal)]: currentUser!.id };
-                                    if (willAdvanceInfo) {
-                                      updates.stage = willAdvanceInfo.stage as Stage;
-                                    }
-                                    state.updateDeal(deal.id, updates, currentUser!.id);
-                                  } catch (err) {
-                                    alert('Chyba komunikace se serverem.');
-                                  }
-                                };
-                                checkAssign();
-                              }}
-                              className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
+                                  };
+                                  checkAssign();
+                                }}
+                                className="mr-2 px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold text-xs rounded border border-indigo-200 transition-colors"
+                              >
+                                Převzít
+                              </button>
+                            )}
+                            {canChangeAssignee(deal) && (
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssigneeModalDeal(deal);
+                                }}
+                                className="p-1 rounded-full text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                title="Změnit řešitele"
+                              >
+                                <UserPlus className="w-4 h-4" />
+                              </button>
+                            )}
+                            <div 
+                              className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-2 ring-white cursor-help ${ownerInfo ? ownerInfo.color : 'bg-gray-300'}`}
+                              title={ownerInfo ? ownerInfo.name : 'bez řešitele'}
                             >
-                              Převzít
-                            </button>
-                          )}
-                          {canChangeAssignee(deal) && (
-                            <button 
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setAssigneeModalDeal(deal);
-                              }}
-                              className="p-1 rounded-full text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
-                              title="Změnit řešitele"
-                            >
-                              <UserPlus className="w-4 h-4" />
-                            </button>
-                          )}
-                          <div 
-                            className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-2 ring-white cursor-help ${ownerInfo ? ownerInfo.color : 'bg-gray-300'}`}
-                            title={ownerInfo ? ownerInfo.name : 'bez řešitele'}
-                          >
-                            {ownerInfo ? ownerInfo.initials : '?'}
+                              {ownerInfo ? ownerInfo.initials : '?'}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1084,8 +1138,9 @@ export function KanbanBoard() {
       <AlertModal
         isOpen={alertInfo.isOpen}
         onClose={() => setAlertInfo({ isOpen: false, message: '' })}
-        title={t('common.error', 'Chyba')}
+        title={alertInfo.title || t('common.error', 'Chyba')}
         message={alertInfo.message}
+        type={alertInfo.type || 'error'}
       />
     </div>
   );

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, CheckCircle, Info } from 'lucide-react';
 
 interface AlertModalProps {
   isOpen: boolean;
@@ -8,6 +8,7 @@ interface AlertModalProps {
   title: string;
   message: string;
   buttonText?: string;
+  type?: 'error' | 'success' | 'info';
 }
 
 export function AlertModal({
@@ -15,11 +16,15 @@ export function AlertModal({
   onClose,
   title,
   message,
-  buttonText
+  buttonText,
+  type = 'error'
 }: AlertModalProps) {
   const { t } = useTranslation();
 
   if (!isOpen) return null;
+
+  const isSuccess = type === 'success';
+  const isInfo = type === 'info';
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[100] transition-opacity">
@@ -33,8 +38,20 @@ export function AlertModal({
         
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-yellow-100 text-yellow-600 rounded-full">
-              <AlertCircle className="w-6 h-6" />
+            <div className={`p-2 rounded-full ${
+              isSuccess 
+                ? 'bg-emerald-100 text-emerald-600' 
+                : isInfo 
+                ? 'bg-indigo-100 text-indigo-600' 
+                : 'bg-yellow-100 text-yellow-600'
+            }`}>
+              {isSuccess ? (
+                <CheckCircle className="w-6 h-6" />
+              ) : isInfo ? (
+                <Info className="w-6 h-6" />
+              ) : (
+                <AlertCircle className="w-6 h-6" />
+              )}
             </div>
             <h2 className="text-xl font-bold text-gray-900 pr-6">{title}</h2>
           </div>
@@ -44,7 +61,11 @@ export function AlertModal({
           <div className="flex gap-3 justify-end mt-4">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              className={`px-4 py-2 text-sm font-medium text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
+                isSuccess
+                  ? 'bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500'
+                  : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500'
+              }`}
             >
               {buttonText || t('common.close', 'Zavřít')}
             </button>

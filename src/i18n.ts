@@ -177,7 +177,10 @@ const resources = {
           closerRequired: 'Closer is mandatory for the current stage and cannot be removed.',
           farmerRequired: 'Farmer is mandatory for the current stage and cannot be removed.',
           missingOnboardingAttributes: 'First you must fill in the IT integration data and 1st stocking date before moving to the Farming stage.',
-          searchCompanyPlaceholder: 'Search company...'
+          searchCompanyPlaceholder: 'Search company...',
+          sqlAdvanceTitle: 'Opportunity Moved',
+          sqlAdvanceSuccess: 'Opportunity for {{company}} has been moved to the next stage Discovery & Proposal.',
+          sqlAdvanceTooltip: 'Move opportunity to stage Discovery & Proposal (SQL)'
         }
       },
       common: {
@@ -740,7 +743,10 @@ const resources = {
           closerRequired: 'Atribut Closer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.',
           farmerRequired: 'Atribut Farmer je pro aktuální stav příležitosti nezbytný a nelze jej vymazat.',
           missingOnboardingAttributes: 'Před přesunem do fáze Farming musíte vyplnit data IT integrace a 1. naskladnění.',
-          searchCompanyPlaceholder: 'Hledat společnost...'
+          searchCompanyPlaceholder: 'Hledat společnost...',
+          sqlAdvanceTitle: 'Příležitost přesunuta',
+          sqlAdvanceSuccess: 'Příležitost společnosti {{company}} byla přesunuta do následujícího stavu Discovery & Ponuka.',
+          sqlAdvanceTooltip: 'Posunout příležitost do stavu Discovery & Ponuka (SQL)'
         }
       },
       common: {

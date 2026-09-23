@@ -57,7 +57,8 @@ const generatePDF = (lang, outputPath) => {
           'Prirazeni garanta z roli Hunter (Hunter ID).',
           'Vyplneny Zdroj leadu (Lead Source z ciselniku).',
           'Vyplnena E-commerce platforma (Shoptet, WooCommerce, Custom API apod.).',
-          'Kladny odhadovany mesicni pocet zasilok (> 0).'
+          'Kladny odhadovany mesicni pocet zasilok (> 0).',
+          'Kvalifikace SQL: Po splneni podminek se nad ikonou huntera v Kanbanu (vpravo uprostred) zobrazi tlacitko [SQL ->] pro primy posun do Discovery s potvrzujici hlaskou.'
         ]
       },
       {
@@ -117,7 +118,8 @@ const generatePDF = (lang, outputPath) => {
           'Assigned Hunter (Hunter ID).',
           'Selected Lead Source from enumeration.',
           'Selected E-commerce Platform.',
-          'Positive Estimated Monthly Parcels (> 0).'
+          'Positive Estimated Monthly Parcels (> 0).',
+          'SQL Qualification: Upon meeting requirements, an [SQL ->] button appears on the Kanban card above the hunter icon to advance directly to Discovery with a confirmation alert.'
         ]
       },
       {

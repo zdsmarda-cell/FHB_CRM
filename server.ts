@@ -1351,12 +1351,15 @@ async function startServer() {
           name: '2. Qualified Lead',
           role: 'Hunter',
           color: '#6366f1',
-          desc: 'Vetted lead with confirmed commercial potential.',
+          desc: isCS 
+            ? 'Prověřený lead s potvrzeným obchodním potenciálem (SQL). Po splnění podmínek se na kartě v Kanbanu aktivuje tlačítko [SQL →].' 
+            : 'Vetted lead with confirmed commercial potential (SQL). When conditions are met, the [SQL →] button activates on the Kanban card.',
           reqs: [
-            'Assigned Hunter (Hunter ID).',
-            'Selected Lead Source from system enumeration.',
-            'Selected E-commerce Platform (Shoptet, WooCommerce, Custom API, etc.).',
-            'Positive Estimated Monthly Parcels count (> 0).'
+            isCS ? 'Přiřazený garant z role Hunter (Hunter ID).' : 'Assigned Hunter (Hunter ID).',
+            isCS ? 'Vybraný Zdroj leadu ze systémového číselníku.' : 'Selected Lead Source from system enumeration.',
+            isCS ? 'Vybraná E-commerce platforma (Shoptet, WooCommerce, Custom API apod.).' : 'Selected E-commerce Platform (Shoptet, WooCommerce, Custom API, etc.).',
+            isCS ? 'Kladný odhadovaný měsíční počet zásilek (> 0).' : 'Positive Estimated Monthly Parcels count (> 0).',
+            isCS ? 'Po splnění těchto 4 podmínek lze deal okamžitě odeslat do fáze Discovery & Ponuka tlačítkem [SQL →] v Kanbanu.' : 'Upon fulfilling these 4 conditions, the deal can be directly dispatched to Discovery & Proposal via the [SQL →] Kanban card button.'
           ]
         },
         {
@@ -1878,6 +1881,9 @@ async function startServer() {
 
             <h2>${isCS ? '7. Uživatelské Rozhraní a Ovládací Prvky' : '7. User Interface & Controls'}</h2>
             <ul>
+              <li><b>${isCS ? 'Tlačítko posunu kvalifikovaného leadu (SQL →)' : 'Qualified Lead Advance Button (SQL →)'}:</b> ${isCS 
+                ? 'Pokud příležitost ve fázi Lead splňuje všechny podmínky pro přesun do fáze Discovery & Ponuka (přiřazený hunter, zdroj leadu, e-commerce platforma a odhadovaný počet zásilek > 0), zobrazí se přímo na kartě v Kanban desce nad ikonou garanta (vpravo uprostřed) zelené tlačítko „SQL →“. Kliknutím může kdokoliv (včetně huntera) okamžitě odeslat příležitost do následující fáze Discovery & Ponuka, přičemž systém zobrazí lokalizovanou potvrzující zprávu s názvem přesunuté firmy.' 
+                : 'When a deal in the Lead stage fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL →" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
               <li><b>${isCS ? 'Dvojitá lišta posuvníku (Kanban Scrollbar)' : 'Dual Kanban Scrollbar'}:</b> ${isCS ? 'Kanban deska obsahuje posuvník nahoře i dole pod sloupci, což zajišťuje pohodlný horizontální posun napříč všemi 7 fázemi i na menších obrazovkách.' : 'The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display.'}</li>
               <li><b>${isCS ? 'Filtr nepřiřazených dealů' : 'Unassigned Deals Filter'}:</b> ${isCS ? 'Tlačítko "Pouze nepřiřazené" zobrazí příležitosti, které zatím nemají v dané fázi stanoveného garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
               <li><b>${isCS ? 'Filtr dle barvy upozornění (Připomínky)' : 'Filter by Reminder Color'}:</b> ${isCS ? 'Rychlá filtrace obchodních případů podle barvy stavové připomínky pro okamžité řešení stagnujících obchodů.' : 'Quickly filter deals by stage reminder alert color to focus immediately on stalled opportunities.'}</li>
