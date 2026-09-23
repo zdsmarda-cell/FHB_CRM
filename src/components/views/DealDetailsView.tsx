@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot, Linkedin, ExternalLink } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -1517,7 +1517,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
     
     if (editingId) {
       const updatedContacts = contacts.map(c => 
-        c.id === editingId ? { ...c, ...newContact } as Contact : c
+        c.id === editingId ? { ...c, ...newContact, linkedin: newContact.linkedin?.trim() || undefined } as Contact : c
       );
       updateCompany(companyId, { contacts: updatedContacts }, currentUser.id);
       setEditingId(null);
@@ -1529,6 +1529,7 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
         email: newContact.email || '',
         phone: newContact.phone || '',
         phonePrefix: newContact.phonePrefix || getDefaultPhonePrefixForCountry(company.country || ''),
+        linkedin: newContact.linkedin?.trim() || undefined,
         photoUrl: newContact.photoUrl,
         photoWebpUrl: newContact.photoWebpUrl,
         isActive: newContact.isActive ?? true
@@ -1752,6 +1753,22 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
                       </span>
                     </div>
                   )}
+                  {contact.linkedin && (
+                    <div className="flex items-center gap-2 relative w-fit max-w-full">
+                      <Linkedin className="w-4 h-4 shrink-0 text-[#0A66C2]" />
+                      <a 
+                        href={contact.linkedin.startsWith('http://') || contact.linkedin.startsWith('https://') ? contact.linkedin : `https://${contact.linkedin}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[#0A66C2] hover:text-[#004182] hover:underline inline-flex items-center gap-1 font-medium text-xs sm:text-sm truncate"
+                        title={contact.linkedin}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="truncate">{contact.linkedin}</span>
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1912,6 +1929,23 @@ function ContactForm({
               value={contact.phone || ''} 
               onChange={e => setContact({...contact, phone: e.target.value})} 
               className={`flex-1 px-3 py-2 border ${missingEmailPhone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'} rounded text-sm outline-none`} 
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            LinkedIn <span className="text-gray-400 font-normal">({t('common.optional', 'nepovinné')})</span>
+          </label>
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <Linkedin className="w-4 h-4 text-[#0A66C2]" />
+            </div>
+            <input 
+              type="url"
+              placeholder="https://www.linkedin.com/in/..." 
+              value={contact.linkedin || ''} 
+              onChange={e => setContact({...contact, linkedin: e.target.value})} 
+              className="w-full pl-9 pr-3 py-2 border border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded text-sm outline-none" 
             />
           </div>
         </div>
@@ -2242,11 +2276,28 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       const provider = currentUser.googleIntegration?.connected ? 'google' : 'microsoft';
       const credentials = provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration;
       
-      // Gather relevant emails (deal owner, contact emails)
-      const relevantEmails = [
+      // Gather and clean relevant emails (deal owner, contact emails)
+      const rawEmailStrings = [
         ...company.contacts.map(c => c.email),
         company.email
       ].filter(Boolean);
+
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+      const relevantEmails: string[] = [];
+      const seen = new Set<string>();
+      for (const str of rawEmailStrings) {
+        if (!str) continue;
+        const matches = str.match(emailRegex);
+        if (matches) {
+          for (const m of matches) {
+            const clean = m.trim().toLowerCase();
+            if (clean && !seen.has(clean)) {
+              seen.add(clean);
+              relevantEmails.push(clean);
+            }
+          }
+        }
+      }
 
       if (relevantEmails.length === 0) {
         useStore.getState().addNotification(t('deal.activities.noEmailsToSync', 'Nelze synchronizovat aktivity, není zadán e-mail (ani u příležitosti, ani u kontaktu).'), 'info');

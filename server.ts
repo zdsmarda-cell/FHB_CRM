@@ -994,6 +994,22 @@ async function startServer() {
     }
   });
 
+function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emails = new Set<string>();
+  for (const input of inputs) {
+    if (!input || typeof input !== 'string') continue;
+    const matches = input.match(emailRegex);
+    if (matches) {
+      for (const m of matches) {
+        const clean = m.trim().toLowerCase();
+        if (clean) emails.add(clean);
+      }
+    }
+  }
+  return Array.from(emails);
+}
+
   app.post('/api/sync/fetch-calendar', authMiddleware, async (req, res) => {
     const { provider, credentials, relevantEmails } = req.body;
     let events: any[] = [];
@@ -1037,12 +1053,16 @@ async function startServer() {
       
       // Filter if relevantEmails provided
       if (relevantEmails !== undefined) {
-        if (relevantEmails.length === 0) {
+        const cleanEmails = extractCleanEmails(Array.isArray(relevantEmails) ? relevantEmails : [relevantEmails]);
+        if (cleanEmails.length === 0) {
           events = [];
         } else {
-          const emailsLower = relevantEmails.map((e: string) => e.toLowerCase());
           events = events.filter(ev => {
-             return ev.attendees.some((attObj: string) => emailsLower.includes((attObj || '').toLowerCase()));
+             return ev.attendees.some((attObj: string) => {
+               if (!attObj) return false;
+               const attLower = attObj.toLowerCase();
+               return cleanEmails.some(ce => attLower.includes(ce));
+             });
           });
         }
       }
@@ -1060,56 +1080,62 @@ async function startServer() {
     let emailResults: any[] = [];
 
     try {
-      if (relevantEmails && relevantEmails.length > 0) {
-        if (provider === 'google' && credentials?.tokens) {
-          const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
-          oAuth2Client.setCredentials(credentials.tokens);
-          const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
-          
-          const query = relevantEmails.map((e: string) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ');
-          const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 10 });
-          
-          if (listRes.data.messages) {
-            for (const msg of listRes.data.messages) {
-              if (!msg.id) continue;
-              const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
-              
-              const headers = msgRes.data.payload?.headers || [];
-              const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
-              const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
-              const to = headers.find(h => h.name?.toLowerCase() === 'to')?.value || '';
-              const cc = headers.find(h => h.name?.toLowerCase() === 'cc')?.value || '';
-              const date = headers.find(h => h.name?.toLowerCase() === 'date')?.value || new Date().toISOString();
-              
-              // Extract attachments from parts
-              const attachments: string[] = [];
-              const extractAttachments = (parts: any[]) => {
-                for (const part of parts) {
-                  if (part.filename && part.filename.length > 0) {
-                    attachments.push(part.filename);
-                  }
-                  if (part.parts) extractAttachments(part.parts);
+      const uniqueEmails = extractCleanEmails(Array.isArray(relevantEmails) ? relevantEmails : []);
+      if (uniqueEmails.length === 0) {
+        return res.json({ emails: [] });
+      }
+
+      if (provider === 'google' && credentials?.tokens) {
+        const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+        oAuth2Client.setCredentials(credentials.tokens);
+        const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+        
+        const query = uniqueEmails.map((e: string) => `(from:${e} OR to:${e} OR cc:${e})`).join(' OR ');
+        const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 10 });
+        
+        if (listRes.data.messages) {
+          for (const msg of listRes.data.messages) {
+            if (!msg.id) continue;
+            const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+            
+            const headers = msgRes.data.payload?.headers || [];
+            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+            const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+            const to = headers.find(h => h.name?.toLowerCase() === 'to')?.value || '';
+            const cc = headers.find(h => h.name?.toLowerCase() === 'cc')?.value || '';
+            const date = headers.find(h => h.name?.toLowerCase() === 'date')?.value || new Date().toISOString();
+            
+            // Extract attachments from parts
+            const attachments: string[] = [];
+            const extractAttachments = (parts: any[]) => {
+              for (const part of parts) {
+                if (part.filename && part.filename.length > 0) {
+                  attachments.push(part.filename);
                 }
-              };
-              if (msgRes.data.payload?.parts) {
-                extractAttachments(msgRes.data.payload.parts);
+                if (part.parts) extractAttachments(part.parts);
               }
-              
-              emailResults.push({
-                id: msg.id,
-                subject,
-                from,
-                to,
-                cc,
-                attachments,
-                date,
-                body: msgRes.data.snippet || ''
-              });
+            };
+            if (msgRes.data.payload?.parts) {
+              extractAttachments(msgRes.data.payload.parts);
             }
+            
+            emailResults.push({
+              id: msg.id,
+              subject,
+              from,
+              to,
+              cc,
+              attachments,
+              date,
+              body: msgRes.data.snippet || ''
+            });
           }
-        } else if (provider === 'microsoft' && credentials?.tokens) {
-          const uniqueEmails = Array.from(new Set(relevantEmails));
-          const searchQuery = '"' + uniqueEmails.map((e: string) => `participants:${e}`).join(' OR ') + '"';
+        }
+      } else if (provider === 'microsoft' && credentials?.tokens) {
+        // In Microsoft Graph KQL:
+        // Logical operators like OR must be outside double quotes: "participants:email1" OR "participants:email2"
+        const searchQuery = uniqueEmails.map((e: string) => `"participants:${e}"`).join(' OR ');
+        try {
           const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
             return await client.api('/me/messages')
               .header('ConsistencyLevel', 'eventual')
@@ -1132,6 +1158,8 @@ async function startServer() {
               body: msg.bodyPreview
             }));
           }
+        } catch (graphErr: any) {
+          console.warn('MS Graph search warning:', graphErr?.message || graphErr);
         }
       }
       res.json({ emails: emailResults });
@@ -2754,7 +2782,7 @@ setTimeout(() => {
         const segment = segments.find((s: any) => s.id === company.segment)?.name || company.segment || '-';
 
         const contactsText = Array.isArray(company.contacts) && company.contacts.length > 0
-          ? company.contacts.map((c: any) => `${c.name}${c.email ? ' <' + c.email + '>' : ''}${c.phone ? ' (' + c.phone + ')' : ''}`).join(', ')
+          ? company.contacts.map((c: any) => `${c.name}${c.email ? ' <' + c.email + '>' : ''}${c.phone ? ' (' + c.phone + ')' : ''}${c.linkedin ? ' [' + c.linkedin + ']' : ''}`).join(', ')
           : '-';
 
         itemsToNotify.push({

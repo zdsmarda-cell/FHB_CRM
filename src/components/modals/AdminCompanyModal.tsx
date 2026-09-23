@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore } from '../../store';
 import { Company, Region, Segment, Contact } from '../../types';
-import { X, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
+import { X, Plus, Trash2, Eye, EyeOff, Linkedin, ExternalLink } from 'lucide-react';
 import { COUNTRIES, getRegionForCountry, PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/countryMapping';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -30,6 +30,7 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
   const [newContactPosition, setNewContactPosition] = useState('');
   const [newContactEmail, setNewContactEmail] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+  const [newContactLinkedin, setNewContactLinkedin] = useState('');
 
   const handleCountryChange = (country: string) => {
     const region = getRegionForCountry(country as any) as Region;
@@ -124,6 +125,7 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
       position: newContactPosition,
       email: newContactEmail || '',
       phone: newContactPhone || '',
+      linkedin: newContactLinkedin.trim() || undefined,
       isActive: true
     };
     const newContacts = [...contacts, newContact];
@@ -133,6 +135,7 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
     setNewContactPosition('');
     setNewContactEmail('');
     setNewContactPhone('');
+    setNewContactLinkedin('');
   };
 
   const handleRemoveContact = (id: string) => {
@@ -287,6 +290,10 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                     <label className="block text-xs font-medium text-gray-600 mb-1">Telefon</label>
                     <input type="tel" value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} className={`w-full px-3 py-2 text-sm border rounded focus:ring-1 outline-none ${contactSubmitAttempted && !newContactEmail.trim() && !newContactPhone.trim() ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500'}`} />
                   </div>
+                  <div className="flex-1 w-full">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">LinkedIn</label>
+                    <input type="url" placeholder="https://..." value={newContactLinkedin} onChange={e => setNewContactLinkedin(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none" />
+                  </div>
                   <button 
                     onClick={handleAddContact}
                     className="px-4 py-2 bg-indigo-600 text-white rounded font-medium text-sm hover:bg-indigo-700 w-full sm:w-auto"
@@ -313,9 +320,22 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                             </span>
                           )}
                         </div>
-                        <div className="text-sm text-gray-500 truncate flex gap-4">
+                        <div className="text-sm text-gray-500 truncate flex flex-wrap gap-x-4 gap-y-1 mt-1">
                           {c.email && <span>{c.email}</span>}
                           {c.phone && <span>{c.phone}</span>}
+                          {c.linkedin && (
+                            <a 
+                              href={c.linkedin.startsWith('http://') || c.linkedin.startsWith('https://') ? c.linkedin : `https://${c.linkedin}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-[#0A66C2] hover:underline inline-flex items-center gap-1"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <Linkedin className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-[200px]">{c.linkedin}</span>
+                              <ExternalLink className="w-3 h-3 opacity-70" />
+                            </a>
+                          )}
                         </div>
                       </div>
                       <button onClick={() => handleRemoveContact(c.id)} className="p-2 text-red-500 hover:bg-red-50 rounded transition-colors" title="Smazat kontakt">

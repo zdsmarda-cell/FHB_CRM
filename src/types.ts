@@ -48,6 +48,7 @@ export interface Contact {
   phonePrefix?: string;
   photoUrl?: string;
   photoWebpUrl?: string;
+  linkedin?: string;
   isActive?: boolean;
   doNotContact?: boolean;
   doNotContactReason?: string;
