@@ -1756,15 +1756,6 @@ Tento odkaz plat\xED 10 minut.`,
   app.get("/api/deals/:id/details", authMiddleware, async (req, res) => {
     try {
       const dealId = req.params.id;
-      const [
-        [deals],
-        [auditLogs],
-        [activities]
-      ] = await Promise.all([
-        pool.query("SELECT * FROM deals WHERE id = ?", [dealId]),
-        pool.query("SELECT * FROM audit_logs WHERE dealId = ? OR companyId = (SELECT companyId FROM deals WHERE id = ?) ORDER BY timestamp DESC LIMIT 500", [dealId, dealId]),
-        pool.query("SELECT * FROM activities WHERE dealId = ? OR (dealId IS NULL AND companyId = (SELECT companyId FROM deals WHERE id = ?)) ORDER BY date DESC LIMIT 500", [dealId, dealId])
-      ]);
       const parseJsonFields = (arr, fields) => arr.map((item) => {
         fields.forEach((f) => {
           if (typeof item[f] === "string") {
@@ -1778,14 +1769,23 @@ Tento odkaz plat\xED 10 minut.`,
         if ("isVisible" in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
         return item;
       });
-      const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]);
+      const [dealsRows] = await pool.query("SELECT * FROM deals WHERE id = ?", [dealId]);
+      const parsedDeals = parseJsonFields(dealsRows, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]);
       const parsedDeal = parsedDeals[0] || null;
-      let company = null;
-      if (parsedDeal && parsedDeal.companyId) {
-        const [compRows] = await pool.query("SELECT * FROM companies WHERE id = ?", [parsedDeal.companyId]);
-        const parsedCompanies = parseJsonFields(compRows, ["urls", "contacts"]);
-        company = parsedCompanies[0] || null;
+      if (!parsedDeal) {
+        return res.status(404).json({ error: "Deal not found" });
       }
+      const [
+        [auditLogs],
+        [activities],
+        [compRows]
+      ] = await Promise.all([
+        parsedDeal.companyId ? pool.query("SELECT * FROM audit_logs WHERE dealId = ? OR companyId = ? ORDER BY timestamp DESC LIMIT 500", [dealId, parsedDeal.companyId]) : pool.query("SELECT * FROM audit_logs WHERE dealId = ? ORDER BY timestamp DESC LIMIT 500", [dealId]),
+        pool.query("SELECT * FROM activities WHERE dealId = ? ORDER BY date DESC LIMIT 500", [dealId]),
+        parsedDeal.companyId ? pool.query("SELECT * FROM companies WHERE id = ?", [parsedDeal.companyId]) : Promise.resolve([[]])
+      ]);
+      const parsedCompanies = parseJsonFields(compRows, ["urls", "contacts"]);
+      const company = parsedCompanies[0] || null;
       const parsedActivities = parseJsonFields(activities, ["participants"]);
       parsedActivities.forEach((act) => {
         if ("isVisible" in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
