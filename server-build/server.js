@@ -17,10 +17,13 @@ import { v4 as uuidv4 } from "uuid";
 var JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-for-dev";
 var authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  let token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
+  if (!token && req.query && typeof req.query.token === "string") {
+    token = req.query.token;
+  }
+  if (!token) {
     return res.status(401).json({ error: "unauthorized", message: "Missing or invalid token" });
   }
-  const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
@@ -91,7 +94,6 @@ async function startServer() {
         }
       }
       const migrations = [
-        "UPDATE deals SET stage='lead_opportunity' WHERE stage='lead';",
         "ALTER TABLE deals ADD COLUMN postponedReason TEXT;",
         "ALTER TABLE deals ADD COLUMN postponedBy VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN postponedAt DATETIME;",
@@ -115,9 +117,6 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN documents JSON;",
         "ALTER TABLE lead_sources ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE ecommerce_platforms ADD COLUMN isActive BOOLEAN DEFAULT TRUE;",
-        "UPDATE deals SET hunterId = ownerId WHERE stage = 'lead_opportunity' AND ownerId IS NOT NULL;",
-        "UPDATE deals SET closerId = ownerId WHERE (stage = 'discovery_proposal' OR stage = 'contracting' OR stage = 'onboarding') AND ownerId IS NOT NULL;",
-        "UPDATE deals SET farmerId = ownerId WHERE stage = 'farming' AND ownerId IS NOT NULL;",
         "ALTER TABLE activities ADD COLUMN transcript TEXT;",
         "ALTER TABLE activities ADD COLUMN isVisible BOOLEAN DEFAULT TRUE;",
         "ALTER TABLE activities ADD COLUMN participants JSON;",
@@ -138,7 +137,6 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS it_integrations (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS lost_reasons (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS login_logs (id VARCHAR(50) PRIMARY KEY, userId VARCHAR(50) NOT NULL, timestamp DATETIME NOT NULL, ip VARCHAR(100), resolvedHost VARCHAR(255));",
-        "UPDATE deals SET stage='opportunity' WHERE stage='lead_opportunity';",
         "ALTER TABLE activities ADD COLUMN duration INT;",
         "ALTER TABLE deals ADD COLUMN storageTypeId VARCHAR(50);",
         "ALTER TABLE deals ADD COLUMN estimatedYearlyParcels INT;",
@@ -147,7 +145,11 @@ async function startServer() {
         "ALTER TABLE deals ADD COLUMN productsSold TEXT;",
         "ALTER TABLE deals ADD COLUMN codUsage JSON;",
         "ALTER TABLE deals ADD COLUMN b2cShare INT;",
-        "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;"
+        "ALTER TABLE users ADD COLUMN isTestAccount BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
+        "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
+        "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
+        "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;"
       ];
       for (const m of migrations) {
         try {
@@ -191,6 +193,64 @@ async function startServer() {
         }
       } catch (e) {
         console.error("[DB INIT] Error seeding segments:", e.message);
+      }
+      try {
+        const [rows] = await connection.query("SELECT COUNT(*) as count FROM contact_positions");
+        const count = rows[0].count;
+        if (count === 0) {
+          const defaultPositions = [
+            "CEO / Majitel",
+            "C-Level / \u0158editel",
+            "Logistick\xFD mana\u017Eer",
+            "E-commerce Manager",
+            "N\xE1kup\u010D\xED / Sourcing Manager",
+            "IT / Provozn\xED mana\u017Eer",
+            "Finan\u010Dn\xED \u0159editel / CFO",
+            "Ostatn\xED"
+          ];
+          for (const p of defaultPositions) {
+            await connection.query("INSERT INTO contact_positions (id, name, isActive) VALUES (UUID(), ?, TRUE)", [p]);
+          }
+          console.log(`[DB INIT] Seeded ${defaultPositions.length} default contact positions.`);
+        }
+        const [comps] = await connection.query("SELECT id, contacts FROM companies");
+        for (const comp of comps) {
+          if (comp.contacts) {
+            let contactsArr = typeof comp.contacts === "string" ? JSON.parse(comp.contacts) : comp.contacts;
+            if (Array.isArray(contactsArr) && contactsArr.length > 0) {
+              let modified = false;
+              contactsArr = contactsArr.map((c) => {
+                if (c.position !== void 0 && c.position !== "") {
+                  modified = true;
+                  return { ...c, position: "" };
+                }
+                return c;
+              });
+              if (modified) {
+                await connection.query("UPDATE companies SET contacts = ? WHERE id = ?", [JSON.stringify(contactsArr), comp.id]);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[DB INIT] Error seeding/migrating contact_positions:", e.message);
+      }
+      try {
+        const [remRows] = await connection.query("SELECT COUNT(*) as count FROM stage_reminders");
+        if (remRows[0].count === 0) {
+          const defaultReminders = [
+            { id: uuidv4(), stage: "opportunity", days: 7, action: "", color: "yellow" },
+            { id: uuidv4(), stage: "opportunity", days: 14, action: "email", color: "orange" },
+            { id: uuidv4(), stage: "lead", days: 7, action: "", color: "yellow" },
+            { id: uuidv4(), stage: "lead", days: 14, action: "email", color: "orange" }
+          ];
+          for (const r of defaultReminders) {
+            await connection.query("INSERT INTO stage_reminders (id, stage, days, action, color) VALUES (?, ?, ?, ?, ?)", [r.id, r.stage, r.days, r.action, r.color]);
+          }
+          console.log(`[DB INIT] Seeded default stage reminders.`);
+        }
+      } catch (e) {
+        console.error("[DB INIT] Error seeding stage_reminders:", e.message);
       }
       try {
         const [rows] = await connection.query("SELECT id, ip, resolvedHost FROM login_logs WHERE resolvedHost IS NULL OR resolvedHost = '' OR resolvedHost = '-'");
@@ -492,7 +552,22 @@ Tento odkaz plat\xED 10 minut.`,
       res.status(500).json({ error: "Failed to fetch login logs" });
     }
   });
-  app.get("/api/email_logs", async (req, res) => {
+  app.get("/api/user_login_counts", authMiddleware, async (req, res) => {
+    try {
+      const [rows] = await pool.query("SELECT userId, COUNT(*) as count FROM login_logs GROUP BY userId");
+      const counts = {};
+      for (const row of rows) {
+        if (row.userId) {
+          counts[row.userId] = Number(row.count) || 0;
+        }
+      }
+      res.json(counts);
+    } catch (err) {
+      console.error("Failed to fetch user login counts:", err);
+      res.status(500).json({ error: "Failed to fetch user login counts" });
+    }
+  });
+  app.get("/api/email_logs", authMiddleware, async (req, res) => {
     try {
       const { page = "1", limit = "10", dateFrom, dateTo, recipient, subject, status } = req.query;
       const pageNum = parseInt(page);
@@ -604,10 +679,30 @@ Tento odkaz plat\xED 10 minut.`,
       const { tokens } = await oAuth2Client.getToken(code);
       res.json({ tokens });
     } catch (err) {
-      console.error(err);
+      console.error("Calendar error:", err.message);
       res.status(500).json({ error: err.message });
     }
   });
+  const fetchWithRetry = async (url, options = {}, retries = 2, delayMs = 1e3, timeoutMs = 15e3) => {
+    let lastError;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(timer);
+        return response;
+      } catch (err) {
+        clearTimeout(timer);
+        lastError = err;
+        if (attempt < retries) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+        }
+      }
+    }
+    const msg = lastError?.name === "AbortError" ? `Connection timeout after ${timeoutMs}ms (${url})` : lastError?.message || String(lastError);
+    throw new Error(msg);
+  };
   app.post("/api/auth/microsoft/exchange", authMiddleware, async (req, res) => {
     const { code } = req.body;
     try {
@@ -618,7 +713,7 @@ Tento odkaz plat\xED 10 minut.`,
       }
       const origin = req.headers["x-forwarded-host"] ? `https://${req.headers["x-forwarded-host"]}` : `http://${req.headers.host}`;
       const redirectUri = `${origin}/api/auth/microsoft/callback`;
-      const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+      const response = await fetchWithRetry("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
@@ -633,7 +728,7 @@ Tento odkaz plat\xED 10 minut.`,
       if (tokens.error) throw new Error(tokens.error_description || tokens.error);
       res.json({ tokens });
     } catch (err) {
-      console.error(err);
+      console.error("Microsoft exchange error:", err.message);
       res.status(500).json({ error: err.message });
     }
   });
@@ -643,20 +738,29 @@ Tento odkaz plat\xED 10 minut.`,
       const client = GraphClient.init({ authProvider: (done) => done(null, currentTokens.access_token) });
       return await apiCall(client);
     } catch (e) {
-      if (e.statusCode === 401 || e.message && (e.message.includes("expired") || e.message.includes("InvalidAuthenticationToken"))) {
+      const isAuthError = e.statusCode === 401 || e.message && (e.message.includes("expired") || e.message.includes("InvalidAuthenticationToken") || e.message.includes("Access token has expired") || e.message.includes("token is expired"));
+      if (isAuthError) {
         if (!currentTokens.refresh_token) throw new Error("Missing Microsoft refresh token");
-        const response = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({
-            client_id: process.env.MS_CLIENT_ID || "",
-            client_secret: process.env.MS_CLIENT_SECRET || "",
-            refresh_token: currentTokens.refresh_token,
-            grant_type: "refresh_token"
-          })
-        });
+        let response;
+        try {
+          response = await fetchWithRetry("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: process.env.MS_CLIENT_ID || "",
+              client_secret: process.env.MS_CLIENT_SECRET || "",
+              refresh_token: currentTokens.refresh_token,
+              grant_type: "refresh_token"
+            })
+          }, 2, 1e3, 15e3);
+        } catch (fetchErr) {
+          throw new Error(`Microsoft token endpoint unreachable (${fetchErr.message || fetchErr})`);
+        }
         const newTokens = await response.json();
-        if (newTokens.error) throw new Error(newTokens.error_description || newTokens.error);
+        if (newTokens.error) {
+          await pool2.query("UPDATE users SET msIntegration = NULL WHERE id = ?", [userId]);
+          throw new Error("Microsoft authentication expired or revoked. Please sign in again. (" + (newTokens.error_description || newTokens.error) + ")");
+        }
         const mergedTokens = { ...currentTokens, ...newTokens };
         const [rows] = await pool2.query("SELECT msIntegration FROM users WHERE id = ?", [userId]);
         if (rows[0]) {
@@ -672,6 +776,15 @@ Tento odkaz plat\xED 10 minut.`,
         }
         const retryClient = GraphClient.init({ authProvider: (done) => done(null, mergedTokens.access_token) });
         return await apiCall(retryClient);
+      }
+      if (e.message && (e.message.includes("fetch failed") || e.message.includes("UND_ERR") || e.message.includes("timeout"))) {
+        try {
+          await new Promise((r) => setTimeout(r, 1e3));
+          const retryClient = GraphClient.init({ authProvider: (done) => done(null, currentTokens.access_token) });
+          return await apiCall(retryClient);
+        } catch (retryErr) {
+          throw new Error(`Microsoft Graph request failed (network error): ${retryErr.message || retryErr}`);
+        }
       }
       throw e;
     }
@@ -762,6 +875,21 @@ Tento odkaz plat\xED 10 minut.`,
       res.status(500).json({ error: err.message });
     }
   });
+  function extractCleanEmails(inputs) {
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const emails = /* @__PURE__ */ new Set();
+    for (const input of inputs) {
+      if (!input || typeof input !== "string") continue;
+      const matches = input.match(emailRegex);
+      if (matches) {
+        for (const m of matches) {
+          const clean = m.trim().toLowerCase();
+          if (clean) emails.add(clean);
+        }
+      }
+    }
+    return Array.from(emails);
+  }
   app.post("/api/sync/fetch-calendar", authMiddleware, async (req, res) => {
     const { provider, credentials, relevantEmails } = req.body;
     let events = [];
@@ -802,11 +930,19 @@ Tento odkaz plat\xED 10 minut.`,
           };
         });
       }
-      if (relevantEmails && relevantEmails.length > 0) {
-        const emailsLower = relevantEmails.map((e) => e.toLowerCase());
-        events = events.filter((ev) => {
-          return ev.attendees.some((attObj) => emailsLower.includes((attObj || "").toLowerCase()));
-        });
+      if (relevantEmails !== void 0) {
+        const cleanEmails = extractCleanEmails(Array.isArray(relevantEmails) ? relevantEmails : [relevantEmails]);
+        if (cleanEmails.length === 0) {
+          events = [];
+        } else {
+          events = events.filter((ev) => {
+            return ev.attendees.some((attObj) => {
+              if (!attObj) return false;
+              const attLower = attObj.toLowerCase();
+              return cleanEmails.some((ce) => attLower.includes(ce));
+            });
+          });
+        }
       }
       res.json({ events });
     } catch (err) {
@@ -818,50 +954,53 @@ Tento odkaz plat\xED 10 minut.`,
     const { provider, credentials, relevantEmails } = req.body;
     let emailResults = [];
     try {
-      if (relevantEmails && relevantEmails.length > 0) {
-        if (provider === "google" && credentials?.tokens) {
-          const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
-          oAuth2Client.setCredentials(credentials.tokens);
-          const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
-          const query = relevantEmails.map((e) => `from:${e} OR to:${e} OR cc:${e}`).join(" OR ");
-          const listRes = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 10 });
-          if (listRes.data.messages) {
-            for (const msg of listRes.data.messages) {
-              if (!msg.id) continue;
-              const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
-              const headers = msgRes.data.payload?.headers || [];
-              const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
-              const from = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
-              const to = headers.find((h) => h.name?.toLowerCase() === "to")?.value || "";
-              const cc = headers.find((h) => h.name?.toLowerCase() === "cc")?.value || "";
-              const date = headers.find((h) => h.name?.toLowerCase() === "date")?.value || (/* @__PURE__ */ new Date()).toISOString();
-              const attachments = [];
-              const extractAttachments = (parts) => {
-                for (const part of parts) {
-                  if (part.filename && part.filename.length > 0) {
-                    attachments.push(part.filename);
-                  }
-                  if (part.parts) extractAttachments(part.parts);
+      const uniqueEmails = extractCleanEmails(Array.isArray(relevantEmails) ? relevantEmails : []);
+      if (uniqueEmails.length === 0) {
+        return res.json({ emails: [] });
+      }
+      if (provider === "google" && credentials?.tokens) {
+        const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+        oAuth2Client.setCredentials(credentials.tokens);
+        const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+        const query = uniqueEmails.map((e) => `(from:${e} OR to:${e} OR cc:${e})`).join(" OR ");
+        const listRes = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 10 });
+        if (listRes.data.messages) {
+          for (const msg of listRes.data.messages) {
+            if (!msg.id) continue;
+            const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
+            const headers = msgRes.data.payload?.headers || [];
+            const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
+            const from = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
+            const to = headers.find((h) => h.name?.toLowerCase() === "to")?.value || "";
+            const cc = headers.find((h) => h.name?.toLowerCase() === "cc")?.value || "";
+            const date = headers.find((h) => h.name?.toLowerCase() === "date")?.value || (/* @__PURE__ */ new Date()).toISOString();
+            const attachments = [];
+            const extractAttachments = (parts) => {
+              for (const part of parts) {
+                if (part.filename && part.filename.length > 0) {
+                  attachments.push(part.filename);
                 }
-              };
-              if (msgRes.data.payload?.parts) {
-                extractAttachments(msgRes.data.payload.parts);
+                if (part.parts) extractAttachments(part.parts);
               }
-              emailResults.push({
-                id: msg.id,
-                subject,
-                from,
-                to,
-                cc,
-                attachments,
-                date,
-                body: msgRes.data.snippet || ""
-              });
+            };
+            if (msgRes.data.payload?.parts) {
+              extractAttachments(msgRes.data.payload.parts);
             }
+            emailResults.push({
+              id: msg.id,
+              subject,
+              from,
+              to,
+              cc,
+              attachments,
+              date,
+              body: msgRes.data.snippet || ""
+            });
           }
-        } else if (provider === "microsoft" && credentials?.tokens) {
-          const uniqueEmails = Array.from(new Set(relevantEmails));
-          const searchQuery = '"' + uniqueEmails.map((e) => `participants:${e}`).join(" OR ") + '"';
+        }
+      } else if (provider === "microsoft" && credentials?.tokens) {
+        const searchQuery = uniqueEmails.map((e) => `"participants:${e}"`).join(" OR ");
+        try {
           const messages = await callMsGraphWithRetry(credentials.tokens, req.user.id, pool, async (client) => {
             return await client.api("/me/messages").header("ConsistencyLevel", "eventual").search(searchQuery).select("id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview").expand("attachments($select=name,contentType)").top(10).get();
           });
@@ -877,6 +1016,8 @@ Tento odkaz plat\xED 10 minut.`,
               body: msg.bodyPreview
             }));
           }
+        } catch (graphErr) {
+          console.warn("MS Graph search warning:", graphErr?.message || graphErr);
         }
       }
       res.json({ emails: emailResults });
@@ -960,136 +1101,301 @@ Tento odkaz plat\xED 10 minut.`,
       res.status(500).json({ error: err.message });
     }
   });
-  app.get("/api/manual", async (req, res) => {
+  app.get("/api/manual", authMiddleware, async (req, res) => {
     try {
       const lang = req.query.lang === "cs" ? "cs" : "en";
       const isCS = lang === "cs";
-      const stages = isCS ? [
-        { name: "Lead & Opportunita", requirements: "Vy\u017Eaduje pouh\xE9 zalo\u017Een\xED p\u0159es Kanban desku. Tuto f\xE1z\xED b\u011B\u017En\u011B operuje Hunter." },
-        { name: "Discovery & Proposal", requirements: "Pro p\u0159echod do t\xE9to f\xE1ze mus\xED Hunter prov\xE9zt \xFAvodn\xED sch\u016Fzku. Zde prob\xEDh\xE1 komunikace, odes\xEDlaj\xED se nab\xEDdky." },
-        { name: "Contracting (Smlouv\xE1n\xED)", requirements: "Kl\xED\u010Dov\xFD p\u0159echod. Nutno vyplnit: Doru\u010Dovac\xED zem\u011B (Delivery countries), Pr\u016Fm\u011Brn\xFD po\u010Det kus\u016F v objedn\xE1vce (Items), V\xE1ha (Weight), Objem (Volume). Nutno nahr\xE1t cenovou nab\xEDdku." },
-        { name: "Onboarding", requirements: "Smlouva je podeps\xE1na. Vy\u017Eadovan\xE1 pole pro p\u0159echod: Datum podpisu smlouvy (Contract Signed Date), Datum nahr\xE1n\xED cen\xEDku, Preferovan\xFD za\u010D\xE1tek IT integrace a O\u010Dek\xE1van\xE9 prvn\xED naskladn\u011Bn\xED." },
-        { name: "Farming (\u017Div\xFD provoz)", requirements: "Kone\u010Dn\xE1 f\xE1ze. Vy\u017Eaduje: Potvrzen\xED o dokon\u010Den\xED IT integrace, Ostr\xE9 datum prvn\xEDho naskladn\u011Bn\xED (Actual First Stocking) a dokon\u010Den\xE9 UAT testov\xE1n\xED." },
-        { name: "Lost & Postponed", requirements: "Z jak\xE9koliv f\xE1ze lze p\u0159ej\xEDt do rozezn\xE1n\xED ztr\xE1ty (Lost - vy\u017Eaduje vybr\xE1n\xED d\u016Fvodu \xFAbytku ze sd\xEDlen\xE9ho \u010D\xEDseln\xEDku) nebo Odlo\u017Een\xED (Postponed - vy\u017Eaduje zad\xE1n\xED data p\u0159ipomenut\xED a d\u016Fvodu odlo\u017Een\xED)." }
+      const stagesDetailed = isCS ? [
+        {
+          id: "opportunity",
+          name: "1. Opportunity (Oportunita / Z\xE1jemce)",
+          role: "Hunter",
+          color: "#3b82f6",
+          desc: "\xDAvodn\xED zachycen\xED potenci\xE1ln\xEDho klienta do obchodn\xEDho potrub\xED.",
+          reqs: [
+            "P\u0159i\u0159azen\xED garanta z rol\xED Hunter (Hunter ID).",
+            "Vypln\u011Bn\xE9 I\u010CO v profilu spole\u010Dnosti (Identifika\u010Dn\xED \u010D\xEDslo firmy).",
+            "Alespo\u0148 1 realizovan\xE1 aktivita (Telefonn\xED hovor, MS Teams nebo Osobn\xED sch\u016Fzka) s datem v minulosti nebo p\u0159\xEDtomnosti."
+          ]
+        },
+        {
+          id: "lead",
+          name: "2. Lead (Kvalifikovan\xFD lead)",
+          role: "Hunter",
+          color: "#6366f1",
+          desc: "Prov\u011B\u0159en\xFD z\xE1jemce s potvrzen\xFDm obchodn\xEDm potenci\xE1lem a kvalifikovan\xFDm profilem.",
+          reqs: [
+            "P\u0159i\u0159azen\xED garanta z rol\xED Hunter (Hunter ID).",
+            "Vypln\u011Bn\xFD Zdroj leadu (Lead Source) - v\xFDb\u011Br ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku.",
+            "Vypln\u011Bn\xE1 E-commerce platforma (Shoptet, WooCommerce, Shopify, Custom API apod.).",
+            "Kladn\xFD odhadovan\xFD m\u011Bs\xED\u010Dn\xED po\u010Det z\xE1silek (Estimated Monthly Parcels > 0)."
+          ]
+        },
+        {
+          id: "discovery_proposal",
+          name: "3. Discovery & Proposal (Objevov\xE1n\xED & Nab\xEDdka)",
+          role: "Closer",
+          color: "#8b5cf6",
+          desc: "Sb\u011Br technick\xFDch parametr\u016F z\xE1silek, logistick\xE9 specifikace a tvorba schv\xE1len\xE9 cenov\xE9 nab\xEDdky.",
+          reqs: [
+            "P\u0159i\u0159azen\xED garanta z rol\xED Closer (Closer ID).",
+            "V\xFDb\u011Br doru\u010Dovac\xEDch zem\xED (Delivery Countries - alespo\u0148 1 zem\u011B v multi-select poli).",
+            "Pr\u016Fm\u011Brn\xFD po\u010Det kus\u016F na objedn\xE1vku (Average Items Per Order > 0).",
+            "Pr\u016Fm\u011Brn\xE1 v\xE1ha bal\xEDku v kg (Average Parcel Weight > 0 kg).",
+            "Pr\u016Fm\u011Brn\xFD objem bal\xEDku v m\xB3 (Average Parcel Volume > 0 m\xB3).",
+            "Nahran\xE1 alespo\u0148 1 cenov\xE1 nab\xEDdka ve form\xE1tu PDF v sekci Cenov\xE9 nab\xEDdky (Pricing Offers)."
+          ]
+        },
+        {
+          id: "contracting",
+          name: "4. Contracting (Smluvn\xED jedn\xE1n\xED)",
+          role: "Closer",
+          color: "#ec4899",
+          desc: "P\u0159\xEDprava a podpis smluvn\xED dokumentace, dojedn\xE1n\xED garanc\xED a v\xFDb\u011Br IT napojen\xED.",
+          reqs: [
+            "P\u0159i\u0159azen\xED garanta z rol\xED Closer (Closer ID).",
+            "Vypln\u011Bn\xE9 datum podpisu smlouvy (Contract Signed Date).",
+            "Vypln\u011Bn\xE9 datum nahr\xE1n\xED schv\xE1len\xE9ho cen\xEDku (Pricing Uploaded Date).",
+            "Vybran\xFD syst\xE9m IT integrace (IT Integration ID z \u010D\xEDseln\xEDku).",
+            "Vypln\u011Bn\xE9 o\u010Dek\xE1van\xE9 datum 1. naskladn\u011Bn\xED (Expected First Stocking Date)."
+          ]
+        },
+        {
+          id: "onboarding",
+          name: "5. Onboarding (Integrace & Nasklad\u0148ov\xE1n\xED)",
+          role: "Farmer",
+          color: "#f59e0b",
+          desc: "Technick\xE9 napojen\xED syst\xE9m\u016F, fyzick\xFD p\u0159ej\xEDmkov\xFD proces zbo\u017E\xED na sklad a testov\xE1n\xED.",
+          reqs: [
+            "Skute\u010Dn\xE9 datum dokon\u010Den\xED IT integrace (IT Integration Completed Date).",
+            "Skute\u010Dn\xE9 datum prvn\xEDho naskladn\u011Bn\xED zbo\u017E\xED (Actual First Stocking Date).",
+            "Skute\u010Dn\xE9 datum dokon\u010Den\xED akcepta\u010Dn\xEDho testov\xE1n\xED UAT (Integration Testing Completed Date)."
+          ]
+        },
+        {
+          id: "farming",
+          name: "6. Farming (\u017Div\xFD provoz)",
+          role: "Farmer",
+          color: "#10b981",
+          desc: "Pln\xFD ostr\xFD fulfillment provoz z\xE1kazn\xEDka, dlouhodob\xE1 p\xE9\u010De, rozvoj \xFA\u010Dtu a sledov\xE1n\xED spokojenosti.",
+          reqs: [
+            "Kone\u010Dn\xE1 produk\u010Dn\xED f\xE1ze. Klient generuje \u017Eiv\xE9 objedn\xE1vky v syst\xE9mu."
+          ]
+        },
+        {
+          id: "lost_postponed",
+          name: "7. Lost (Ztraceno) & Postponed (Odlo\u017Eeno)",
+          role: "V\u0161ichni",
+          color: "#ef4444",
+          desc: "Mimo\u0159\xE1dn\xE9 stavy dostupn\xE9 z jak\xE9koliv f\xE1ze pipeline.",
+          reqs: [
+            "Ztraceno (Lost): Vy\u017Eaduje vybr\xE1n\xED D\u016Fvodu ztr\xE1ty ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku (Lost Reason) a nepovinn\xFD koment\xE1\u0159. Ukl\xE1d\xE1 p\u016Fvodn\xED stav (Lost From Stage) pro mo\u017Enost pozd\u011Bj\u0161\xEDho obnoven\xED.",
+            "Odlo\u017Eeno (Postponed): Vy\u017Eaduje datum obnoven\xED jedn\xE1n\xED (Postponed Until) a zd\u016Fvodn\u011Bn\xED odlo\u017Een\xED."
+          ]
+        }
       ] : [
-        { name: "Lead & Opportunity", requirements: "Only requires creation via Kanban board. Fully operated by Hunter." },
-        { name: "Discovery & Proposal", requirements: "Transitioned by Hunter after initial meeting. Used for communication and proposals." },
-        { name: "Contracting", requirements: "Critical transition. Mandatory attributes: Delivery countries, Average Items, Weight, Volume. Must upload a pricing offer." },
-        { name: "Onboarding", requirements: "Contract signed. Required fields: Contract Signed Date, Pricing Upload Date, IT Integration ID/Start, and Expected First Stocking Date." },
-        { name: "Farming (Live operations)", requirements: "Final stage. Requires: IT Integration Completed Date, Actual First Stocking Date, and Testing Completed Date." },
-        { name: "Lost & Postponed", requirements: "Can be transitioned to from any stage. Lost requires a reason from enumerations. Postponed requires resume date and reason." }
+        {
+          id: "opportunity",
+          name: "1. Opportunity",
+          role: "Hunter",
+          color: "#3b82f6",
+          desc: "Initial entry of a potential client into the sales pipeline.",
+          reqs: [
+            "Assigned Hunter (Hunter ID).",
+            "Company ID / Registration Number filled in Company profile.",
+            "At least 1 completed activity (Call, MS Teams, or Meeting) dated present or past."
+          ]
+        },
+        {
+          id: "lead",
+          name: "2. Qualified Lead",
+          role: "Hunter",
+          color: "#6366f1",
+          desc: isCS ? "Prov\u011B\u0159en\xFD lead s potvrzen\xFDm obchodn\xEDm potenci\xE1lem (SQL). Po spln\u011Bn\xED podm\xEDnek se na kart\u011B v Kanbanu aktivuje tla\u010D\xEDtko [SQL \u2192]." : "Vetted lead with confirmed commercial potential (SQL). When conditions are met, the [SQL \u2192] button activates on the Kanban card.",
+          reqs: [
+            isCS ? "P\u0159i\u0159azen\xFD garant z role Hunter (Hunter ID)." : "Assigned Hunter (Hunter ID).",
+            isCS ? "Vybran\xFD Zdroj leadu ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku." : "Selected Lead Source from system enumeration.",
+            isCS ? "Vybran\xE1 E-commerce platforma (Shoptet, WooCommerce, Custom API apod.)." : "Selected E-commerce Platform (Shoptet, WooCommerce, Custom API, etc.).",
+            isCS ? "Kladn\xFD odhadovan\xFD m\u011Bs\xED\u010Dn\xED po\u010Det z\xE1silek (> 0)." : "Positive Estimated Monthly Parcels count (> 0).",
+            isCS ? "Po spln\u011Bn\xED t\u011Bchto 4 podm\xEDnek lze deal okam\u017Eit\u011B odeslat do f\xE1ze Discovery & Ponuka tla\u010D\xEDtkem [SQL \u2192] v Kanbanu." : "Upon fulfilling these 4 conditions, the deal can be directly dispatched to Discovery & Proposal via the [SQL \u2192] Kanban card button."
+          ]
+        },
+        {
+          id: "discovery_proposal",
+          name: "3. Discovery & Proposal",
+          role: "Closer",
+          color: "#8b5cf6",
+          desc: "Gathering logistics metrics, defining delivery matrix, and issuing pricing offers.",
+          reqs: [
+            "Assigned Closer (Closer ID).",
+            "Selected Delivery Countries (at least 1 country in multi-select).",
+            "Average Items Per Order (> 0).",
+            "Average Parcel Weight (> 0 kg).",
+            "Average Parcel Volume (> 0 m\xB3).",
+            "Uploaded at least 1 Pricing Offer PDF in the Offers section."
+          ]
+        },
+        {
+          id: "contracting",
+          name: "4. Contracting",
+          role: "Closer",
+          color: "#ec4899",
+          desc: "Preparing and signing contracts, agreeing SLAs, selecting IT integration.",
+          reqs: [
+            "Assigned Closer (Closer ID).",
+            "Contract Signed Date.",
+            "Pricing Upload Date.",
+            "Selected IT Integration system from enumeration.",
+            "Expected First Stocking Date."
+          ]
+        },
+        {
+          id: "onboarding",
+          name: "5. Onboarding",
+          role: "Farmer",
+          color: "#f59e0b",
+          desc: "Technical IT integration, inventory intake, and order testing.",
+          reqs: [
+            "IT Integration Completed Date.",
+            "Actual First Stocking Date.",
+            "UAT Testing Completed Date."
+          ]
+        },
+        {
+          id: "farming",
+          name: "6. Farming (Live operations)",
+          role: "Farmer",
+          color: "#10b981",
+          desc: "Full live fulfillment operation, account management, and growth.",
+          reqs: [
+            "Final production stage. Live orders processing."
+          ]
+        },
+        {
+          id: "lost_postponed",
+          name: "7. Lost & Postponed",
+          role: "All Roles",
+          color: "#ef4444",
+          desc: "Special states accessible from any stage.",
+          reqs: [
+            "Lost: Requires selecting a Lost Reason from enumeration and optional note. Preserves Lost From Stage.",
+            "Postponed: Requires Postponed Until date and reason."
+          ]
+        }
       ];
       const rolesCS = [
         {
           name: "Hunter",
-          privileges: "Operuje prim\xE1rn\u011B v za\u010D\xE1tc\xEDch (Lead & Opportunita -> Proposal).",
+          privileges: "Fokus na za\u010D\xE1tek obchodn\xEDho cyklu (Opportunity & Lead).",
           actions: [
-            "Vytv\xE1\u0159en\xED nov\xFDch Deal\u016F (Company Name, I\u010CO, Zdroj).",
-            "Vypl\u0148ov\xE1n\xED z\xE1kladn\xEDch e-commerce platforem a Lead Sources.",
-            "Zad\xE1v\xE1n\xED a spr\xE1va kontaktn\xEDch osob dan\xE9 firmy (titul, jm\xE9no, email, telefon).",
-            "Vytv\xE1\u0159en\xED meeting\u016F a logov\xE1n\xED historie (i kdy\u017E pozd\u011Bji p\u0159eb\xEDr\xE1 n\u011Bkdo jin\xFD, Hunter m\xE1 read-only)."
+            "Zad\xE1v\xE1 nov\xE9 z\xE1jemce a spole\u010Dnosti (N\xE1zev, I\u010CO, Adresa, Kontakty).",
+            "Dopl\u0148uje Zdroje lead\u016F a E-commerce platformy.",
+            "Pl\xE1nuje a realizuje \xFAvodn\xED sch\u016Fzky a telefon\xE1ty pro kvalifikaci.",
+            "Garantuje p\u0159echod z Opportunity do Lead a n\xE1sledn\u011B do Discovery & Proposal."
           ]
         },
         {
           name: "Closer",
-          privileges: "P\u0159ij\xEDm\xE1 Deal po f\xE1zi Proposal, zam\u011B\u0159uje se na vykouzlen\xED Contractu.",
+          privileges: "P\u0159eb\xEDr\xE1 obchod ve f\xE1zi Discovery & Proposal a Contracting.",
           actions: [
-            "Spr\xE1va atribut\u016F bal\xEDk\u016F (V\xE1ha [Weight], Objem [Volume], Po\u010Det).",
-            "Ur\u010Dov\xE1n\xED doru\u010Dovac\xEDch zem\xED (Delivery countries - z multi-select v\xFDb\u011Bru).",
-            "M\u016F\u017Ee prov\xE1d\u011Bt DNC (Do Not Contact) ozna\u010Den\xED klienta v p\u0159\xEDpad\u011B nespokojenosti.",
-            'Kliknut\xEDm na "Add Offer" nahr\xE1v\xE1 k dealu historicky nezni\u010Diteln\xE9 cenov\xE9 nab\xEDdky (v PDF).'
+            "Definuje doru\u010Dovac\xED zem\u011B, pr\u016Fm\u011Brnou v\xE1hu, objem a kusovost bal\xEDk\u016F.",
+            "Nahr\xE1v\xE1 a spravuje z\xE1vazn\xE9 Cenov\xE9 nab\xEDdky v PDF.",
+            "Dojedn\xE1v\xE1 smluvn\xED podm\xEDnky, term\xEDny podpis\u016F a cen\xEDk\u016F.",
+            "Ozna\u010Duje kontakty p\u0159\xEDznakem DNC (Do Not Contact) v p\u0159\xEDpad\u011B odm\xEDtnut\xED."
           ]
         },
         {
           name: "Farmer (Account Manager)",
-          privileges: "Star\xE1 se o \u017Eiv\xE9ho (Farming) a onboarduj\xEDc\xEDho klienta.",
+          privileges: "Odpov\xEDd\xE1 za Onboarding a dlouhodob\xFD \u017Div\xFD provoz (Farming).",
           actions: [
-            'Komunikuje s IT pro dopln\u011Bn\xED datumu "IT Integration Completed".',
-            "Identifikuje re\xE1ln\xFD start obchodu a p\u0159episuje odhady.",
-            'P\u0159i\u0159azuje klientsk\xFDm kontakt\u016Fm tag "Inactive", pokud dan\xE1 osoba opustila firmu.'
+            "Dohl\xED\u017E\xED na IT integraci a zaznamen\xE1v\xE1 data dokon\u010Den\xED a testov\xE1n\xED UAT.",
+            "Eviduje ostr\xFD start 1. naskladn\u011Bn\xED zbo\u017E\xED.",
+            "Spravuje \u017Eiv\xFD \xFA\u010Det klienta, \u0159e\u0161\xED rozvoj a ozna\u010Duje neaktivn\xED kontakty."
           ]
         },
         {
-          name: "Vedouc\xED",
-          privileges: "Nad\u0159\xEDzen\xFD k rol\xEDm (Hunter/Closer/Farmer).",
+          name: "Vedouc\xED (Manager)",
+          privileges: "Nad\u0159\xEDzen\xFD t\xFDmu (Hunter / Closer / Farmer).",
           actions: [
-            "Vid\xED Dealy vlastn\u011Bn\xE9 t\u011Bmi pod\u0159\xEDzen\xFDmi skrz cel\xFD syst\xE9m Kanbanu.",
-            "Z pohledu \xFAprav z\xEDsk\xE1v\xE1 stejn\xE1 pr\xE1va (M\u016F\u017Ee editovat, ps\xE1t pozn\xE1mky).",
-            "Monitoruje Email logy a kalend\xE1\u0159."
+            "P\u0159\xEDstup ke v\u0161em obchod\u016Fm sv\xFDch pod\u0159\xEDzen\xFDch nap\u0159\xED\u010D v\u0161emi f\xE1zemi.",
+            "Pln\xE1 pr\xE1va \xFAprav, psan\xED pozn\xE1mek a posunu f\xE1z\xED u pod\u0159\xEDzen\xFDch deal\u016F.",
+            "Sledov\xE1n\xED auditn\xEDch log\u016F, kalend\xE1\u0159\u016F a e-mailov\xE9 komunikace."
           ]
         },
         {
           name: "CSO (Chief Sales Officer)",
-          privileges: "Absolutn\xED p\u0159\xEDstup k Sales potrub\xED (Pipeline).",
+          privileges: "Glob\xE1ln\xED dohled nad cel\xFDm obchodn\xEDm potrub\xEDm (Sales Pipeline).",
           actions: [
-            'U libovoln\xE9ho Dealu m\u016F\u017Ee v z\xE1lo\u017Ece "Company Details" m\u011Bnit aktu\xE1ln\xED p\u0159i\u0159azen\xED v re\xE1ln\xE9m \u010Dase.',
-            'Ozna\u010Den\xEDm z\xE1znamu "Visible: false" je m\u016F\u017Ee utajit p\u0159ed ni\u017E\u0161\xEDmi rolemi.'
+            "Vid\xED a upravuje jak\xFDkoliv deal v syst\xE9mu bez ohledu na garanta.",
+            "P\u0159i\u0159azuje a m\u011Bn\xED garanty (Hunter, Closer, Farmer) v re\xE1ln\xE9m \u010Dase.",
+            "Mo\u017Enost skr\xFDvat citliv\xE9 aktivity (Visible: false)."
           ]
         },
         {
-          name: "Admin",
-          privileges: "Zaji\u0161\u0165uje technick\xFD chod aplikace.",
+          name: "Administr\xE1tor (Admin)",
+          privileges: "Spr\xE1va u\u017Eivatel\u016F, syst\xE9mov\xFDch \u010D\xEDseln\xEDk\u016F a technick\xE9ho chodu.",
           actions: [
-            'Sekce "Admin Panel": Zakl\xE1d\xE1 ostatn\xED u\u017Eivatele, resetuje hesla.',
-            'M\u011Bn\xED konstantn\xED \u010D\xEDseln\xEDky: "Lead Sources", "Lost Reasons", atd.',
-            "Spravuje tabulky s podrobn\xFDmi Login logy (historie p\u0159ihl\xE1\u0161en\xED)."
+            "Spr\xE1va u\u017Eivatelsk\xFDch \xFA\u010Dt\u016F, reset hesla, nastavov\xE1n\xED rol\xED a mana\u017Eer\u016F.",
+            "Editace glob\xE1ln\xEDch \u010D\xEDseln\xEDk\u016F (D\u016Fvody ztr\xE1ty, Zdroje lead\u016F, IT Integrace, Segmenty, Skladov\xE1n\xED).",
+            "Prohl\xED\u017Een\xED p\u0159ihla\u0161ovac\xEDch log\u016F (Login logs) a prov\xE1d\u011Bn\xED e-mailov\xE9ho auditu nad Workspace/M365."
           ]
         }
       ];
       const rolesEN = [
         {
           name: "Hunter",
-          privileges: "Operates primarily in the early stages (Lead & Opportunity -> Proposal).",
+          privileges: "Focus on early pipeline (Opportunity & Lead).",
           actions: [
-            "Creates new Deals (Company Name, ID, Source).",
-            "Fills basic e-commerce platforms and Lead Sources.",
-            "Enters and manages contact persons for the company.",
-            "Creates meetings and logs history (read-only for others later)."
+            "Enters new deals and companies (Name, Company ID, Address, Contacts).",
+            "Fills Lead Sources and E-commerce Platforms.",
+            "Schedules and conducts initial qualification meetings/calls.",
+            "Guarantees transition from Opportunity to Lead and Discovery."
           ]
         },
         {
           name: "Closer",
-          privileges: "Receives the Deal after Proposal, focuses on Contracting.",
+          privileges: "Takes over during Discovery & Proposal and Contracting.",
           actions: [
-            "Manages parcel attributes (Weight, Volume, Items).",
-            "Defines delivery countries (Delivery countries multi-select).",
-            "Can mark client contacts as DNC (Do Not Contact).",
-            'Uploads pricing offers (PDFs) clicking "Add Offer".'
+            "Defines delivery countries, average weight, volume, and items per order.",
+            "Uploads and manages binding Pricing Offer PDFs.",
+            "Negotiates terms, contract signed dates, and pricing upload dates.",
+            "Can mark contacts as DNC (Do Not Contact) if needed."
           ]
         },
         {
           name: "Farmer (Account Manager)",
-          privileges: "Handles live (Farming) and onboarding clients.",
+          privileges: "Responsible for Onboarding and live Farming.",
           actions: [
-            'Communicates with IT to log "IT Integration Completed" dates.',
-            "Identifies actual launch metadata and overrides estimates.",
-            'Can tag client contacts as "Inactive" if they leave their company.'
+            "Oversees IT integration, logs completion and UAT testing dates.",
+            "Records actual first stocking date.",
+            "Manages live customer accounts and marks inactive contacts."
           ]
         },
         {
           name: "Manager",
-          privileges: "Supervisor of Hunter/Closer/Farmer roles.",
+          privileges: "Supervisor of team members (Hunter / Closer / Farmer).",
           actions: [
-            "Sees Deals owned by their subordinates across the Kanban board.",
-            "Inherits edit permissions for subordinate deals.",
-            "Monitors Email logs and synced calendars."
+            "Full visibility over all deals owned by subordinates across all stages.",
+            "Inherits full editing, note-taking, and stage advancement rights.",
+            "Monitors audit logs, calendars, and email communications."
           ]
         },
         {
           name: "CSO (Chief Sales Officer)",
-          privileges: "Absolute access to the Sales Pipeline.",
+          privileges: "Global oversight over the entire Sales Pipeline.",
           actions: [
-            'Can change role assignments (Hunter, Closer, Farmer) in real-time via the "Company Details" tab.',
-            "Can hide sensitive activities (Visible: false) from lower roles."
+            "Views and edits any deal in the system regardless of ownership.",
+            "Reassigns stage owners (Hunter, Closer, Farmer) in real-time.",
+            "Can toggle visibility of sensitive activities."
           ]
         },
         {
-          name: "Admin",
-          privileges: "Ensures technical operation.",
+          name: "Administrator (Admin)",
+          privileges: "User management, enumerations, and technical audit.",
           actions: [
-            '"Admin Panel": Creates users, resets passwords.',
-            'Manages enumerations: "Lead Sources", "Lost Reasons", etc.',
-            "Manages Login logs and the full audit trail (tracking all field changes)."
+            "Manages user accounts, password resets, role assignments.",
+            "Edits global enumerations (Lost Reasons, Lead Sources, IT Integrations, Storage Types).",
+            "Inspects Login Logs and performs M365/Google Workspace Email Audits."
           ]
         }
       ];
@@ -1101,47 +1407,129 @@ Tento odkaz plat\xED 10 minut.`,
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Manual - FHB CRM</title>
-          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+          <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
           <style>
+            * { box-sizing: border-box; }
             body { 
               font-family: 'Roboto', 'Helvetica', sans-serif; 
               line-height: 1.6; 
-              padding: 40px; 
-              max-width: 800px; 
+              padding: 30px; 
+              max-width: 900px; 
               margin: 0 auto; 
-              color: #333; 
-              background-color: #fcfcfc;
+              color: #1f2937; 
+              background-color: #f8fafc;
             }
             .content-wrapper {
               background-color: white;
               padding: 40px;
-              border-radius: 8px;
-              box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-              border: 1px solid #eee;
+              border-radius: 12px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+              border: 1px solid #e2e8f0;
             }
-            h1, h2, h3 { color: #111; }
-            h1 { text-align: center; margin-bottom: 20px; font-size: 28px; }
-            .subtitle { text-align: justify; margin-bottom: 40px; color: #555; }
+            h1 { text-align: center; margin-bottom: 12px; font-size: 26px; color: #0f172a; }
+            .subtitle { text-align: center; margin-bottom: 32px; color: #64748b; font-size: 14px; }
             h2 { 
-              margin-top: 40px; 
-              border-bottom: 2px solid #eee; 
+              margin-top: 36px; 
+              border-bottom: 2px solid #cbd5e1; 
               padding-bottom: 8px; 
-              font-size: 20px;
+              font-size: 18px;
+              color: #1e293b;
             }
-            .role { background: #f9fafb; padding: 20px; margin: 20px 0; border-radius: 8px; border: 1px solid #e5e7eb; page-break-inside: avoid; }
-            .role-name { margin-top: 0; color: #2563eb; font-size: 18px; }
-            .role-privilege { font-style: italic; color: #4b5563; margin-bottom: 12px; }
-            ul { padding-left: 24px; margin-top: 8px; }
-            li { margin-bottom: 8px; }
-            .screenshot { width: 100%; max-width: 600px; display: block; margin: 20px auto; border: 1px solid #eaeaea; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); page-break-inside: avoid; }
-            .stage-block { margin-bottom: 16px; page-break-inside: avoid; }
-            .stage-name { font-weight: bold; color: #1f2937; }
+            h3 { font-size: 15px; color: #334155; margin-top: 20px; }
+            .role { background: #f8fafc; padding: 18px; margin: 16px 0; border-radius: 8px; border: 1px solid #e2e8f0; page-break-inside: avoid; }
+            .role-name { margin-top: 0; color: #2563eb; font-size: 16px; font-weight: 700; }
+            .role-privilege { font-style: italic; color: #475569; margin-bottom: 10px; font-size: 13px; }
+            ul { padding-left: 20px; margin-top: 6px; font-size: 13px; }
+            li { margin-bottom: 6px; }
+            
+            .stage-card {
+              background: #ffffff;
+              border: 1px solid #e2e8f0;
+              border-left-width: 6px;
+              border-radius: 8px;
+              padding: 16px 20px;
+              margin-bottom: 16px;
+              box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+              page-break-inside: avoid;
+            }
+            .stage-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 8px;
+            }
+            .stage-title {
+              font-size: 16px;
+              font-weight: 700;
+              color: #0f172a;
+            }
+            .stage-badge {
+              font-size: 11px;
+              font-weight: 700;
+              padding: 3px 8px;
+              border-radius: 12px;
+              background: #f1f5f9;
+              color: #334155;
+            }
+            .stage-desc {
+              font-size: 13px;
+              color: #475569;
+              margin-bottom: 10px;
+            }
+            .req-title {
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #dc2626;
+              margin-bottom: 6px;
+            }
+            .req-list {
+              list-style-type: none;
+              padding-left: 0;
+              margin: 0;
+            }
+            .req-list li {
+              position: relative;
+              padding-left: 18px;
+              font-size: 13px;
+              color: #1e293b;
+              margin-bottom: 4px;
+            }
+            .req-list li::before {
+              content: '\u2713';
+              position: absolute;
+              left: 0;
+              color: #10b981;
+              font-weight: bold;
+            }
+
+            .attr-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 12px;
+              font-size: 13px;
+            }
+            .attr-table th {
+              background: #f1f5f9;
+              text-align: left;
+              padding: 8px 12px;
+              border: 1px solid #cbd5e1;
+              font-weight: 700;
+              color: #334155;
+            }
+            .attr-table td {
+              padding: 8px 12px;
+              border: 1px solid #e2e8f0;
+              color: #1e293b;
+            }
+
             .page-break { page-break-before: always; }
             .print-btn {
                display: block;
-               width: 200px;
-               margin: 0 auto 30px auto;
-               padding: 12px 24px;
+               width: 220px;
+               margin: 0 auto 24px auto;
+               padding: 10px 20px;
                background-color: #2563eb;
                color: white;
                text-align: center;
@@ -1150,7 +1538,7 @@ Tento odkaz plat\xED 10 minut.`,
                font-weight: bold;
                cursor: pointer;
                border: none;
-               font-size: 16px;
+               font-size: 15px;
             }
             .print-btn:hover { background-color: #1d4ed8; }
             @media print {
@@ -1162,38 +1550,122 @@ Tento odkaz plat\xED 10 minut.`,
         </head>
         <body>
           <button class="print-btn no-print" onclick="window.print()">
-            ${isCS ? "Tisk do PDF" : "Print to PDF"}
+            ${isCS ? "\u{1F5A8}\uFE0F Tisk / Ulo\u017Eit PDF" : "\u{1F5A8}\uFE0F Print / Save PDF"}
           </button>
           
           <div class="content-wrapper">
-            <h1>${isCS ? "Podrobn\xFD u\u017Eivatelsk\xFD manu\xE1l aplikace" : "Detailed Application User Manual"}</h1>
-            <p class="subtitle">${isCS ? "Tento dokument slou\u017E\xED jako detailn\xED pr\u016Fvodce pro ve\u0161ker\xE9 role syst\xE9mu CRM, specifikuje stavy, datov\xE9 atributy a p\u0159echody." : "This document serves as a detailed guide for all CRM roles, specifying stages, data attributes, and transitions."}</p>
+            <h1>${isCS ? "Podrobn\xFD u\u017Eivatelsk\xFD manu\xE1l FHB CRM" : "Detailed FHB CRM User Manual"}</h1>
+            <p class="subtitle">${isCS ? "Kompletn\xED p\u0159\xEDru\u010Dka: F\xE1ze potrub\xED, podm\xEDnky p\u0159echod\u016F, datov\xE9 atributy, role a integrace." : "Complete guide: Pipeline stages, transition rules, data attributes, roles, and integrations."}</p>
             
-            <h2>${isCS ? "1. \xDAvod a p\u0159\xEDstup do syst\xE9mu" : "1. Introduction and System Access"}</h2>
-            <p>${isCS ? "P\u0159\xEDstup do syst\xE9mu je zaji\u0161t\u011Bn v\xFDhradn\u011B na z\xE1klad\u011B p\u0159id\u011Blen\xFDch p\u0159\xEDstupov\xFDch \xFAdaj\u016F (email a heslo). Prvotn\xED heslo by m\u011Blo b\xFDt co nejd\u0159\xEDve zm\u011Bn\u011Bno v sekci Profil. B\u011Bhem pou\u017E\xEDv\xE1n\xED komunikuje syst\xE9m bezpe\u010Dn\u011B pomoc\xED \u0161ifrovan\xE9ho spojen\xED. Data se organizuj\xED dle jednotliv\xFDch obchodn\xEDch p\u0159\xEDpad\u016F (Deals)." : "System access is provided strictly through assigned credentials (email and password). The initial password should be changed as soon as possible in the Profile section. The system organizes data into commercial opportunities called Deals."}</p>
-            
-            <h2>${isCS ? "2. U\u017Eivatelsk\xE9 rozhran\xED (N\xE1st\u011Bnka vs Seznam)" : "2. User Interface (Board vs List)"}</h2>
-            <p>${isCS ? "Ka\u017Ed\xFD u\u017Eivatel m\xE1 mo\u017Enost p\u0159ep\xEDnat mezi vizu\xE1ln\xEDm zobrazen\xEDm Kanban (sloupce dle f\xE1z\xED) a tabulkov\xFDm Seznamem p\u0159es p\u0159ep\xEDna\u010D v prav\xE9m horn\xEDm rohu. Ob\u011B zobrazen\xED reflektuj\xED ta sam\xE1 pr\xE1va a omezen\xED. Ze Seznamu i N\xE1st\u011Bnky se lze prokliknout do detailu p\u0159\xEDle\u017Eitosti. Sloupce listu obsahuj\xED mo\u017Enost filtrovat dle stavu (Stage) \u010Di zem\u011B." : "Every user can toggle between the visual Kanban Board and a Tabular List view using the toggle in the top right corner. Both views respect the same permissions and constraints. Users can click into the Deal detail from both views. The list allows filtering by Stage or Country."}</p>
-            
-            <h2>${isCS ? "3. P\u0159echody mezi stavy (Pipeline Transitions)" : "3. Pipeline Stages and Transitions"}</h2>
-            <p>${isCS ? "\u017Divotn\xED cyklus obchodn\xEDho p\u0159\xEDpadu (Deal) proch\xE1z\xED pevn\u011B stanoven\xFDmi f\xE1zemi. Pro p\u0159echod mezi nimi jsou vy\u017Eadov\xE1na konkr\xE9tn\xED data a pr\xE1va." : "The lifecycle of a Deal progresses through fixed stages. Specific data and permissions are required to move between them."}</p>
+            <h2>${isCS ? "1. \xDAvod a P\u0159\xEDstup do Syst\xE9mu" : "1. Introduction & System Access"}</h2>
+            <p>${isCS ? "FHB CRM slou\u017E\xED k \u0159\xEDzen\xED akvizice, smlouv\xE1n\xED a onboarding procesu nov\xFDch kl\xED\u010Dov\xFDch klient\u016F pro fulfillment. P\u0159\xEDstup je zabezpe\u010Den e-mailem a heslem. Z bezpe\u010Dnostn\xEDch d\u016Fvod\u016F si po prvn\xEDm p\u0159ihl\xE1\u0161en\xED zm\u011B\u0148te heslo v sekci Profil." : "FHB CRM manages the acquisition, contracting, and onboarding process for new fulfillment clients. Access is secured by email and password. Please change your password upon initial login in the Profile section."}</p>
+
+            <h2>${isCS ? "2. P\u0159echody mezi stavy (Pipeline Transitions & Requirements)" : "2. Pipeline Stages & Transition Requirements"}</h2>
+            <p>${isCS ? "Pro p\u0159esun obchodn\xEDho p\u0159\xEDpadu (Deal) do dal\u0161\xED f\xE1ze je nutn\xE9 splnit striktn\xED podm\xEDnky validace dat. Pokud jak\xFDkoliv povinn\xFD \xFAdaj chyb\xED, syst\xE9m p\u0159esun neumo\u017En\xED a chyb\u011Bj\xEDc\xED pole v detailu firmy zv\xFDrazn\xED \u010Derven\u011B." : "To move a deal to the next stage, strict data validation rules must be met. If any required attribute is missing, the transition is blocked and missing fields are highlighted in red."}</p>
             
             <div>
-              ${stages.map((s) => `
-                <div class="stage-block">
-                  <div class="stage-name">${s.name}</div>
-                  <div class="stage-req">${s.requirements}</div>
+              ${stagesDetailed.map((s) => `
+                <div class="stage-card" style="border-left-color: ${s.color};">
+                  <div class="stage-header">
+                    <span class="stage-title">${s.name}</span>
+                    <span class="stage-badge">${isCS ? "Garant" : "Owner"}: ${s.role}</span>
+                  </div>
+                  <div class="stage-desc">${s.desc}</div>
+                  <div class="req-title">${isCS ? "Podm\xEDnky pro posun do t\xE9to / dal\u0161\xED f\xE1ze:" : "Requirements for advancement:"}</div>
+                  <ul class="req-list">
+                    ${s.reqs.map((r) => `<li>${r}</li>`).join("")}
+                  </ul>
                 </div>
               `).join("")}
             </div>
             
             <div class="page-break"></div>
+
+            <h2>${isCS ? "3. P\u0159ehled V\u0161ech Datov\xFDch Atribut\u016F" : "3. Complete Data Attributes Reference"}</h2>
+            <p>${isCS ? "Detailn\xED struktura pol\xED a atribut\u016F evidovan\xFDch u firmy a obchodn\xEDho p\u0159\xEDpadu:" : "Detailed field structure recorded for companies and deal opportunities:"}</p>
             
-            <h2>${isCS ? "4. Seznam rol\xED a jejich operace" : "4. User Roles and Operations"}</h2>
+            <table class="attr-table">
+              <thead>
+                <tr>
+                  <th>${isCS ? "Kategorie / N\xE1zev atributu" : "Category / Attribute Name"}</th>
+                  <th>${isCS ? "Technick\xE9 pole" : "Technical Field"}</th>
+                  <th>${isCS ? "Popis & V\xFDznam" : "Description & Meaning"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>${isCS ? "Identifikace firmy (I\u010CO)" : "Company ID (I\u010CO)"}</b></td>
+                  <td><code>companyId</code></td>
+                  <td>${isCS ? "Identifika\u010Dn\xED \u010D\xEDslo firmy. Povinn\xE9 pro posun z Opportunity." : "Company registration ID. Required to advance from Opportunity."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Zdroj leadu" : "Lead Source"}</b></td>
+                  <td><code>leadSourceId</code></td>
+                  <td>${isCS ? "Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinn\xE9 pro Lead." : "Acquisition source. Required for Lead stage."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "E-commerce platforma" : "E-commerce Platform"}</b></td>
+                  <td><code>ecommercePlatformId</code></td>
+                  <td>${isCS ? "E-shopov\xE9 \u0159e\u0161en\xED (Shoptet, WooCommerce, Custom API). Povinn\xE9 pro Lead." : "E-commerce platform. Required for Lead stage."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "M\u011Bs\xED\u010Dn\xED po\u010Det bal\xEDk\u016F" : "Estimated Monthly Parcels"}</b></td>
+                  <td><code>estimatedMonthlyParcels</code></td>
+                  <td>${isCS ? "Odhadovan\xFD m\u011Bs\xED\u010Dn\xED objem z\xE1silek (>0). Povinn\xE9 pro Lead." : "Estimated monthly parcel volume (>0). Required for Lead stage."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Doru\u010Dovac\xED zem\u011B" : "Delivery Countries"}</b></td>
+                  <td><code>deliveryCountries</code></td>
+                  <td>${isCS ? "C\xEDlov\xE9 zem\u011B doru\u010Dov\xE1n\xED (multi-select). Povinn\xE9 pro Discovery." : "Target delivery countries (multi-select). Required for Discovery."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Kusovost na objedn\xE1vku" : "Average Items Per Order"}</b></td>
+                  <td><code>averageItemsPerOrder</code></td>
+                  <td>${isCS ? "Pr\u016Fm\u011Brn\xFD po\u010Det kus\u016F v bal\xEDku. Povinn\xE9 pro Discovery." : "Average items per order. Required for Discovery."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "V\xE1ha & Objem bal\xEDku" : "Parcel Weight & Volume"}</b></td>
+                  <td><code>averageParcelWeight / Volume</code></td>
+                  <td>${isCS ? "Pr\u016Fm\u011Brn\xE1 v\xE1ha (kg) a objem (m\xB3). Povinn\xE9 pro Discovery." : "Average weight (kg) and volume (m\xB3). Required for Discovery."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Cenov\xE1 nab\xEDdka (Offers)" : "Pricing Offers"}</b></td>
+                  <td><code>pricingOffers</code></td>
+                  <td>${isCS ? "Nahran\xFD PDF dokument nab\xEDdky. Povinn\xE9 pro Discovery." : "Uploaded offer PDF document. Required for Discovery."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Smluvn\xED data" : "Contract Dates"}</b></td>
+                  <td><code>contractSignedDate / pricingUploadedDate</code></td>
+                  <td>${isCS ? "Datum podpisu smlouvy a nahran\xED cen\xEDku. Povinn\xE9 pro Contracting." : "Contract signed & pricing upload dates. Required for Contracting."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "IT Integrace ID" : "IT Integration ID"}</b></td>
+                  <td><code>itIntegrationId</code></td>
+                  <td>${isCS ? "Typ IT propojen\xED ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku. Povinn\xE9 pro Contracting." : "Selected IT integration type. Required for Contracting."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Dokon\u010Den\xED IT & Naskladn\u011Bn\xED" : "IT Completion & First Stocking"}</b></td>
+                  <td><code>itIntegrationCompletedDate / firstStockingDateActual</code></td>
+                  <td>${isCS ? "Skute\u010Dn\xE1 data dokon\u010Den\xED integrace a 1. naskladn\u011Bn\xED. Povinn\xE9 pro Farming." : "Actual IT completion and first stocking dates. Required for Farming."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "UAT Testov\xE1n\xED" : "UAT Testing"}</b></td>
+                  <td><code>integrationTestingCompletedDate</code></td>
+                  <td>${isCS ? "Potvrzen\xED o dokon\u010Den\xED testov\xE1n\xED zku\u0161ebn\xEDch zak\xE1zek. Povinn\xE9 pro Farming." : "Confirmed completion of UAT order testing. Required for Farming."}</td>
+                </tr>
+                <tr>
+                  <td><b>${isCS ? "Kontaktn\xED osoby & DNC" : "Contacts & DNC Status"}</b></td>
+                  <td><code>contacts / doNotContact</code></td>
+                  <td>${isCS ? 'E-maily, telefony a prvek "Nechce kontaktovat (DNC)" s \u010Dasov\xFDm raz\xEDtkem.' : 'Emails, phone numbers, and "Do Not Contact (DNC)" status with timestamp.'}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h2>${isCS ? "4. Seznam Rol\xED a Opr\xE1vn\u011Bn\xED" : "4. User Roles & Permissions"}</h2>
             <div>
               ${rolesList.map((r) => `
                 <div class="role">
-                  <h3 class="role-name">Role: ${r.name}</h3>
+                  <div class="role-name">${r.name}</div>
                   <div class="role-privilege">${r.privileges}</div>
                   <ul>
                     ${r.actions.map((a) => `<li>${a}</li>`).join("")}
@@ -1204,149 +1676,56 @@ Tento odkaz plat\xED 10 minut.`,
 
             <div class="page-break"></div>
 
-            <h2>${isCS ? "4. Grafick\xE9 uk\xE1zky a interakce (Simulace)" : "4. UI Screenshots and Interfaces"}</h2>
-            
-            <h3>${isCS ? "D1: Horn\xED panel (Header)" : "D1: Header Panel"}</h3>
-            <p>${isCS ? "Na prav\xE9 stran\u011B vedle avatara u\u017Eivatele naleznete p\u0159ep\xEDna\u010D jazyk\u016F, ikonu ozuben\xE9ho kola (Nastaven\xED integrace kalend\xE1\u0159e - Google & Microsoft) a rozklinut\xEDm avatara se otev\u0159e tento profil. Zde je mo\u017En\xE9 zm\u011Bnit heslo i st\xE1hnout si tento manu\xE1l." : "On the right side next to the user avatar, you can find language switchers, a gear icon (Calendar Integrations - Google & MS), and clicking your avatar opens this profile. Here you can change your password and download this manual."}</p>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; background-color: white; border: 1px solid #e5e7eb; padding: 15px 20px; border-radius: 8px; font-family: sans-serif; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: 20px 0; page-break-inside: avoid;">
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <div style="width: 24px; height: 24px; background: #3b82f6; border-radius: 4px;"></div>
-                <div style="font-weight: bold; font-size: 18px; color: #111827;">FHB CRM</div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 15px; color: #4b5563;">
-                <span style="font-size: 14px; padding: 6px 12px; background: #f3f4f6; border-radius: 20px;">\u{1F50D} ${isCS ? "Hledat dle I\u010CO \u010Di n\xE1zvu" : "Search by ID or name"}...</span>
-                <span style="font-size: 18px;" title="${isCS ? "Integrace kalend\xE1\u0159e" : "Calendar Integration"}">\u{1F4C5}</span>
-                <span style="display: inline-block; padding: 4px 8px; font-size: 14px; border: 1px solid #d1d5db; border-radius: 4px;">CS \u25BE</span>
-                <span style="display: inline-flex; justify-content: center; align-items: center; width: 36px; height: 36px; background: #3b82f6; color: white; border-radius: 50%; font-weight: bold; font-size: 14px;">JD</span>
-              </div>
-            </div>
-
-            <h3>${isCS ? "D2: Kanban n\xE1st\u011Bnka (Pipeline)" : "D2: Kanban Board (Pipeline)"}</h3>
-            <p>${isCS ? 'Z\xE1kladn\xED obrazovka po p\u0159ihl\xE1\u0161en\xED. Dealy (p\u0159\xEDle\u017Eitosti) jsou zobrazeny jako karty ve sloupc\xEDch podle sv\xE9 f\xE1ze. Lze mezi nimi p\u0159esouvat, ale pouze pokud jsou spln\u011Bny datov\xE9 po\u017Eadavky konkr\xE9tn\xED role. Nov\xFD deal vytvo\u0159\xEDte kliknut\xEDm na tla\u010D\xEDtko "Add Deal".' : 'The main screen after logging in. Deals (opportunities) are displayed as cards in columns according to their stage. You can move them, but only if the data requirements for your role are met. Create a new deal by clicking "Add Deal".'}</p>            
-            <div style="display: flex; gap: 10px; font-family: sans-serif; background: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0; page-break-inside: avoid;">
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">LEAD & OPP... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">1</span></div>
-                 <div style="background: white; padding: 10px; border-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); font-size: 13px;">
-                    <div style="font-weight: bold; color: #111;">ABC s.r.o.</div>
-                    <div style="color: #6b7280; font-size: 11px; margin-top: 4px;">Web Form</div>
-                 </div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">DISCOVERY &... <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">CONTRACTING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-              <div style="flex: 1; background: #e5e7eb; border-radius: 6px; padding: 10px;">
-                 <div style="font-weight: bold; font-size: 12px; margin-bottom: 10px; color: #374151;">ONBOARDING <span style="background: white; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">0</span></div>
-              </div>
-            </div>
+            <h2>${isCS ? "5. Kalend\xE1\u0159, Sch\u016Fzky, E-mail Audit a Logy" : "5. Calendar Integrations, Meetings, Email Audit & Logs"}</h2>
+            <p>${isCS ? "Aplikace disponuje pokro\u010Dil\xFDm propojen\xEDm na extern\xED syst\xE9my a bezpe\u010Dnostn\xEDm auditem:" : "The application features advanced external integrations and security auditing:"}</p>
+            <ul>
+              <li><b>${isCS ? "Synchronizace Kalend\xE1\u0159e (Google & Microsoft 365)" : "Calendar Sync (Google & Microsoft 365)"}:</b> ${isCS ? "U\u017Eivatel si m\u016F\u017Ee v Nastaven\xED profilu p\u0159ipojit sv\u016Fj Google nebo Microsoft \xFA\u010Det. Sch\u016Fzky napl\xE1novan\xE9 v CRM se automaticky vytv\xE1\u0159ej\xED v extern\xEDm kalend\xE1\u0159i v\u010Detn\u011B odkaz\u016F na Google Meet nebo MS Teams." : "Users can connect Google or Microsoft accounts in Settings. Meetings created in CRM automatically populate external calendars with Meet/Teams links."}</li>
+              <li><b>${isCS ? "E-mailov\xFD Audit (Workspace & M365)" : "Email Audit Search"}:</b> ${isCS ? "Administr\xE1tor m\xE1 k dispozici modul pro dohled nad e-mailovou komunikac\xED. Umo\u017E\u0148uje vyhled\xE1vat v doru\u010Den\xE9 i odchoz\xED po\u0161t\u011B propojen\xFDch \xFA\u010Dt\u016F dle I\u010CO nebo n\xE1zvu firmy pro zp\u011Btn\xE9 ov\u011B\u0159en\xED dohod." : "Admins can search incoming and outgoing email communications across connected workspace accounts by Company ID or name."}</li>
+              <li><b>${isCS ? "Auditn\xED stopa zm\u011Bn (Audit Trail)" : "Audit Trail"}:</b> ${isCS ? "U ka\u017Ed\xE9ho dealu je uchov\xE1v\xE1na kompletn\xED historie \xFAprav pol\xED, v\u010Detn\u011B autora zm\u011Bn, p\u016Fvodn\xED a nov\xE9 hodnoty a \u010Dasov\xE9ho raz\xEDtka." : "Every deal maintains a complete field change history, recording the author, old/new values, and timestamp."}</li>
+              <li><b>${isCS ? "P\u0159ihla\u0161ovac\xED logy (Login Logs)" : "Login Logs"}:</b> ${isCS ? "Spr\xE1va IP adres, pou\u017Eit\xFDch prohl\xED\u017Ee\u010D\u016F a \u010Das\u016F p\u0159ihl\xE1\u0161en\xED u\u017Eivatel\u016F pro zaji\u0161t\u011Bn\xED bezpe\u010Dnosti." : "Tracking IP addresses, user agents, and login timestamps for security enforcement."}</li>
+            </ul>
 
             <div class="page-break"></div>
 
-            <h3>${isCS ? "D3: Detail firmy (Deal View) a pl\xE1nov\xE1n\xED sch\u016Fzek" : "D3: Deal View and Event Planning"}</h3>
-            <p>${isCS ? "Rozd\u011Blen\xE9 obrazovky:<br/><b>LEV\xDD PANEL:</b> \xDAdaje firmy, Tagy, Produktov\xE1 \u010D\xE1st, Dodatkov\xE9 kontaktn\xED osoby, P\u0159enosy f\xE1z\xED (Dal\u0161\xED f\xE1ze = Zelen\xE9 tla\u010D\xEDtko vpravo naho\u0159e). Pokud podtrhnut\xE9 pole sv\xEDt\xED \u010Derven\u011B, znamen\xE1 to chyb\u011Bj\xEDc\xED data pro p\u0159echod.<br/><b>PRAV\xDD PANEL:</b> Kalend\xE1\u0159 sch\u016Fzek, Log aktivit (hovory, zpr\xE1vy), Uploadovan\xE9 dokumenty a p\u0159id\xE1v\xE1n\xED nab\xEDdek (PDF)." : "Split view:<br/><b>LEFT PANEL:</b> Company details, Tags, Products, Additional contact persons, Stage transitions (Next stage = Green button top right). If an underlined field shines red, data is missing for the transition.<br/><b>RIGHT PANEL:</b> Calendar events, Activity Logs, Uploaded documents and adding Offers (PDF)."}</p>
-            
-            <div style="display: flex; gap: 20px; font-family: sans-serif; background: #f9fafb; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
-              <div style="flex: 2; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                  <h3 style="margin-top: 0; margin-bottom: 10px; color: #111;">Detail Firmy: ABC s.r.o.</h3>
-                  <div style="background: #10b981; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 14px;">Advance to Discovery & Proposal \u2192</div>
-                </div>
-                
-                <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                   <span style="padding: 4px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 12px; font-weight: 600;">Stav / Stage: Lead & Opportunity</span>
-                   <span style="padding: 4px 8px; background: #f3f4f6; color: #374151; border-radius: 4px; font-size: 12px;">Zdroj: Web Form</span>
-                </div>
-                
-                <div style="display: flex; gap: 20px; margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 6px; border: 1px dashed #d1d5db;">
-                   <div style="flex: 1;">
-                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Z\xE1kladn\xED \xFAdaje</div>
-                     <div style="margin-top: 8px; font-size: 14px;"><strong>I\u010CO:</strong> <span style="color: #ef4444; border-bottom: 1px dashed #ef4444;" title="Chyb\u011Bj\xEDc\xED \xFAdaj pro p\u0159echod">Nevypln\u011Bno</span></div>
-                     <div style="margin-top: 5px; font-size: 14px;"><strong>Zem\u011B:</strong> CZ, SK</div>
-                   </div>
-                   <div style="flex: 1;">
-                     <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Kontaktn\xED osoby (+ P\u0159idat)</div>
-                     <div style="margin-top: 8px; font-size: 14px; background: #fff; padding: 5px; border: 1px solid #eee;">
-                        <b>Jan Nov\xE1k</b> (CEO) <br> <span style="color: #6b7280; font-size: 12px;">jan.novak@abc.cz | +420 123 456 789</span>
-                     </div>
-                   </div>
-                </div>
-              </div>
-              
-              <div style="flex: 1; background: white; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column;">
-                <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 15px;">
-                   <span style="font-weight: bold; font-size: 14px; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: -11px;">Timeline</span>
-                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Documents</span>
-                   <span style="font-weight: bold; font-size: 14px; color: #6b7280;">Emails</span>
-                </div>
-                
-                <div style="flex: 1;">
-                  <div style="background: #fdf2f8; border: 1px solid #fbcfe8; padding: 10px; border-radius: 6px; margin-bottom: 15px;">
-                    <div style="font-size: 12px; color: #db2777; font-weight: bold;">\u{1F4C5} Pl\xE1novan\xE1 sch\u016Fzka</div>
-                    <div style="font-size: 13px; margin-top: 4px;">Dnes 15:00 - Google Meet (Sync)</div>
-                  </div>
+            <h2>${isCS ? "6. Pravidla hl\xEDd\xE1n\xED neaktivity, barevn\xE9 p\u0159ipom\xEDnky a automatick\xE9 e-mailov\xE9 notifikace" : "6. Stage Inactivity Rules, Color Reminders & Automated Email Notifications"}</h2>
+            <p>${isCS ? "Pro udr\u017Een\xED vysok\xE9 dynamiky obchodn\xEDho potrub\xED a prevenci stagnace p\u0159\xEDle\u017Eitost\xED disponuje syst\xE9m pokro\u010Dil\xFDm modulem hl\xEDd\xE1n\xED neaktivity. V administraci aplikace (sekce <b>P\u0159ipom\xEDnky stav\u016F</b>) lze pro ka\u017Edou f\xE1zi pipeline nadefinovat libovoln\xFD po\u010Det pravidel s ur\u010Den\xEDm po\u010Dtu dn\u016F neaktivity, barvy vizu\xE1ln\xEDho or\xE1mov\xE1n\xED (\u017Elut\xE1, oran\u017Eov\xE1, \u010Derven\xE1) a p\u0159\xEDpadn\xE9 akce automatick\xE9ho odesl\xE1n\xED e-mailov\xE9ho upozorn\u011Bn\xED." : "To maintain high sales pipeline velocity and eliminate stalled opportunities, the CRM features an advanced stage inactivity monitoring module. In the Administration panel (<b>Stage Reminders</b> section), administrators can configure multiple rules per pipeline stage specifying inactivity day thresholds, visual card border colors (yellow, orange, red), and automated email alert actions."}</p>
 
-                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; margin-bottom: 15px; position: relative;">
-                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #3b82f6;"></div>
-                    <div style="font-size: 12px; color: #6b7280;">Dnes 14:00 \u2022 <b>Hunter</b></div>
-                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Telefon\xE1t s klientem - dohodnuta sch\u016Fzka.</div>
-                  </div>
-                  
-                  <div style="border-left: 2px solid #e5e7eb; padding-left: 15px; position: relative;">
-                    <div style="position: absolute; left: -5px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af;"></div>
-                    <div style="font-size: 12px; color: #6b7280;">V\u010Dera 10:00 \u2022 <b>Hunter</b></div>
-                    <div style="font-size: 14px; margin-top: 4px; color: #374151;">Zalo\u017Een\xED dealu z formul\xE1\u0159e.</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <h3>${isCS ? "T\u0159i striktn\xED podm\xEDnky pro aktivaci barevn\xE9ho or\xE1mov\xE1n\xED a notifikac\xED:" : "Three Strict Conditions for Triggering Visual Reminders & Notifications:"}</h3>
+            <p>${isCS ? "Zv\xFDrazn\u011Bn\xED karty p\u0159\xEDle\u017Eitosti v Kanban desce / Seznamu a odesl\xE1n\xED notifika\u010Dn\xEDho e-mailu se aktivuje <b>v\xFDhradn\u011B tehdy, jsou-li sou\u010Dasn\u011B spln\u011Bny v\u0161echny 3 n\xE1sleduj\xEDc\xED podm\xEDnky</b>:" : "A deal card is highlighted with a colored border in Kanban / List view and alert emails are dispatched <b>only when all 3 of the following conditions are simultaneously met</b>:"}</p>
 
-            <div class="page-break"></div>
+            <ol style="padding-left: 20px; font-size: 13px; line-height: 1.7;">
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? "1. Podm\xEDnka \u2013 Minim\xE1ln\xED doba v dan\xE9m stavu:" : "1. Condition \u2013 Minimum Time in Current Stage:"}</b><br/>
+                ${isCS ? "Od okam\u017Eiku p\u0159esunu p\u0159\xEDle\u017Eitosti do dan\xE9 f\xE1ze (stavu) muselo uplynout minim\xE1ln\u011B <b>X</b> kalend\xE1\u0159n\xEDch dn\u016F. Tato doba se po\u010D\xEDt\xE1 podle p\u0159esn\xE9ho \u010Dasov\xE9ho raz\xEDtka posledn\xEDho p\u0159esunu do tohoto stavu zaznamenan\xE9ho v auditn\xEDm logu." : "At least <b>X</b> calendar days must have elapsed since the deal was moved into its current stage, verified via the precise timestamp in the stage change audit log."}
+              </li>
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? "2. Podm\xEDnka \u2013 Minim\xE1ln\xED doba od jak\xE9koliv aktivity u p\u0159\xEDle\u017Eitosti:" : "2. Condition \u2013 Minimum Time Since Any Activity or Update:"}</b><br/>
+                ${isCS ? "Od jak\xE9hokoliv z\xE1sahu, dopln\u011Bn\xED atributu \u010Di zaznamenan\xE9 ud\xE1losti u p\u0159\xEDle\u017Eitosti nebo jej\xED nav\xE1zan\xE9 firmy muselo uplynout minim\xE1ln\u011B <b>X</b> kalend\xE1\u0159n\xEDch dn\u016F. Zahrnuje:<br/>\u2022 \xDApravu a dopln\u011Bn\xED jak\xE9hokoliv pole spole\u010Dnosti \u010Di dealu (v\u010Detn\u011B zm\u011Bn zaznamenan\xFDch v auditn\xED stop\u011B).<br/>\u2022 Zad\xE1n\xED nov\xE9 aktivity (telefon\xE1t, sch\u016Fzka, MS Teams, e-mail, \xFAkol, pozn\xE1mka, nahr\xE1n\xED nab\xEDdky v PDF \u010Di dokumentu).<br/>\u2022 <b>Smaz\xE1n\xED aktivity:</b> Pokud obchodn\xEDk aktivitu sma\u017Ee (nap\u0159. zru\u0161enou sch\u016Fzku), syst\xE9m tuto akci automaticky zap\xED\u0161e do auditn\xEDho logu a zaktualizuje \u010Dasov\xE9 raz\xEDtko p\u0159\xEDle\u017Eitosti (<code>updatedAt</code>). T\xEDm se lh\u016Fta neaktivity za\u010D\xEDn\xE1 po\u010D\xEDtat nanovo od okam\u017Eiku tohoto smaz\xE1n\xED." : "At least <b>X</b> calendar days must have elapsed since any update, attribute modification, or activity on the deal or linked company. Includes:<br/>\u2022 Creating or editing any company or deal attribute (tracked in the audit log).<br/>\u2022 Logging a new activity (call, meeting, MS Teams, email, task, note, pricing offer PDF, or document).<br/>\u2022 <b>Activity Deletion:</b> If an activity is removed (e.g. canceled meeting), the system automatically logs this in the audit trail and updates the deal timestamp (<code>updatedAt</code>), restarting the inactivity counter from the moment of deletion."}
+              </li>
+              <li style="margin-bottom: 10px;">
+                <b>${isCS ? "3. Podm\xEDnka \u2013 Minim\xE1ln\xED doba od data kon\xE1n\xED dan\xE9 aktivity:" : "3. Condition \u2013 Minimum Time Since Scheduled Activity Event Date:"}</b><br/>
+                ${isCS ? "Pokud je u p\u0159\xEDle\u017Eitosti napl\xE1nov\xE1na budouc\xED aktivita (nap\u0159. sch\u016Fzka domluven\xE1 a\u017E za 10 dn\xED), lh\u016Fta neaktivity se po\u010D\xEDt\xE1 <b>a\u017E od data samotn\xE9ho kon\xE1n\xED t\xE9to aktivity</b>. Dokud aktivita neprob\u011Bhne, p\u0159\xEDle\u017Eitost se pova\u017Euje za aktivn\u011B rozpracovanou a v\xFDstra\u017En\xE9 or\xE1mov\xE1n\xED ani e-mailov\xE9 notifikace se nespust\xED. A\u017E po uplynut\xED X dn\u016F od uskute\u010Dn\u011Bn\xED sch\u016Fzky (bez dal\u0161\xED navazuj\xEDc\xED akce) dojde k aktivaci upozorn\u011Bn\xED." : "If a future activity is scheduled on the deal (e.g. a client meeting arranged 10 days ahead), the inactivity countdown begins <b>only after the scheduled date of that activity has passed</b>. While future events remain pending, the opportunity is treated as actively progressing and neither color borders nor emails trigger until X days after the event date without subsequent action."}
+              </li>
+            </ol>
 
-            <h3>${isCS ? "D4: Sekce Administrace (Admin Panel)" : "D4: Administration Section (Admin Panel)"}</h3>
-            <p>${isCS ? "Vyhrazen\xE1 sekce pro roli Admin. Slou\u017E\xED ke spr\xE1v\u011B u\u017Eivatel\u016F (zm\u011Bny hesel a opr\xE1vn\u011Bn\xED - rol\xED). Umo\u017E\u0148uje editaci glob\xE1ln\xEDch \u010D\xEDseln\xEDk\u016F (D\u016Fvody ztr\xE1ty, Zdroje lead\u016F). Poskytuje pohled na Loginy a mo\u017Enost auditovat syst\xE9m d\xEDky integrovan\xE9mu vyhled\xE1v\xE1n\xED email\u016F nad Workspace \xFA\u010Dty (M365, Google)." : "A dedicated section for the Admin role. Used for user management (password resets, role assignment). Allows editing global enumerations (Lost Reasons, Lead Sources). Provides access to Login logs and system audits with integrated email search across Workspace accounts (M365, Google)."}</p>
-            
-            <div style="font-family: sans-serif; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e5e7eb; margin: 20px 0; page-break-inside: avoid;">
-               <div style="display: flex; gap: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 15px; margin-bottom: 15px;">
-                 <span style="font-weight: bold; color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 13px; margin-bottom: -15px;">Spr\xE1va U\u017Eivatel\u016F</span>
-                 <span style="font-weight: bold; color: #6b7280;">\u010C\xEDseln\xEDky (Enums)</span>
-                 <span style="font-weight: bold; color: #6b7280;">Audit (Emaily)</span>
-                 <span style="font-weight: bold; color: #6b7280;">Login Logy</span>
-               </div>
-               
-               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                 <b>V\u0161ichni u\u017Eivatel\xE9 syst\xE9mu:</b>
-                 <button style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; font-weight: bold;">+ P\u0159idat U\u017Eivatele</button>
-               </div>
-               
-               <table style="width: 100%; text-align: left; border-collapse: collapse; font-size: 14px;">
-                 <tr style="background: #f9fafb; border-bottom: 1px solid #e5e7eb;">
-                   <th style="padding: 10px;">Email</th>
-                   <th style="padding: 10px;">Role</th>
-                   <th style="padding: 10px;">Vytvo\u0159eno</th>
-                   <th style="padding: 10px;">Akce</th>
-                 </tr>
-                 <tr style="border-bottom: 1px solid #e5e7eb;">
-                   <td style="padding: 10px;">admin@fhb.com</td>
-                   <td style="padding: 10px;"><span style="background: #fee2e2; color: #991b1b; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Admin</span></td>
-                   <td style="padding: 10px;">1. 1. 2026</td>
-                   <td style="padding: 10px; color: #3b82f6;">Zm\u011Bnit heslo</td>
-                 </tr>
-                 <tr>
-                   <td style="padding: 10px;">hunter@fhb.com</td>
-                   <td style="padding: 10px;"><span style="background: #dbeafe; color: #1e40af; padding: 2px 6px; border-radius: 4px; font-size: 12px;">Hunter</span></td>
-                   <td style="padding: 10px;">2. 1. 2026</td>
-                   <td style="padding: 10px; color: #3b82f6;">Zm\u011Bnit heslo</td>
-                 </tr>
-               </table>
-               
-               <div style="margin-top: 30px; background: #fff8f1; padding: 15px; border-left: 4px solid #f97316; border-radius: 4px;">
-                  <b>Tip: Audit (Vyhled\xE1v\xE1n\xED Email\u016F)</b> 
-                  <p style="font-size: 13px; margin-top: 5px; color: #431407;">V z\xE1lo\u017Ece Audit m\xE1 administr\xE1tor mo\u017Enost vyhled\xE1vat p\u0159\xEDchoz\xED i odchoz\xED zpr\xE1vy p\u0159es propojen\xE9 Microsoft 365 a Google Workspace \xFA\u010Dty u\u017Eivatel\u016F (nap\u0159. fulltextov\xE9 vyhled\xE1v\xE1n\xED dle I\u010CO nebo dom\xE9ny klienta), co\u017E slou\u017E\xED k dohledu a z\xE1lohov\xE1n\xED d\u016Fle\u017Eit\xE9 komunikace ke konkr\xE9tn\xEDm deal\u016Fm.</p>
-               </div>
-            </div>
+            <h3>${isCS ? "Vizu\xE1ln\xED \xFArovn\u011B upozorn\u011Bn\xED a akce:" : "Visual Alert Levels & Triggered Actions:"}</h3>
+            <ul>
+              <li><b>${isCS ? "\u017Dlut\xE9 ohrani\u010Den\xED (Yellow Alert)" : "Yellow Border (Yellow Alert)"}:</b> ${isCS ? "Informativn\xED upozorn\u011Bn\xED na bl\xED\u017E\xEDc\xED se hranici ne\u010Dinnosti." : "Informational warning indicating an approaching inactivity threshold."}</li>
+              <li><b>${isCS ? "Oran\u017Eov\xE9 ohrani\u010Den\xED (Orange Alert)" : "Orange Border (Orange Alert)"}:</b> ${isCS ? "Zv\xFD\u0161en\xE9 varov\xE1n\xED p\u0159ed stagnac\xED obchodu." : "Elevated warning indicating opportunity stagnation."}</li>
+              <li><b>${isCS ? "\u010Cerven\xE9 ohrani\u010Den\xED s v\xFDstra\u017Enou ikonou (Red Alert)" : "Red Border with Alert Icon (Red Alert)"}:</b> ${isCS ? "Kritick\xE9 p\u0159ekro\u010Den\xED povolen\xE9 doby neaktivity vy\u017Eaduj\xEDc\xED okam\u017Eit\xFD z\xE1sah odpov\u011Bdn\xE9ho garanta a dohled mana\u017Eera." : "Critical inactivity breach requiring immediate action from the deal owner and management oversight."}</li>
+              <li><b>${isCS ? "Automatick\xE9 e-mailov\xE9 notifikace" : "Automated Email Notifications"}:</b> ${isCS ? "U pravidel s akc\xED \u201EOdeslat e-mail\u201C syst\xE9m v r\xE1mci rann\xED cron \xFAlohy (8:00) odes\xEDl\xE1 p\u0159ehledn\xFD notifika\u010Dn\xED e-mail garantovi i nad\u0159\xEDzen\xE9mu mana\u017Eerovi s odkazem na konkr\xE9tn\xED p\u0159\xEDle\u017Eitost a shrnut\xEDm chyb\u011Bj\xEDc\xED aktivity. V\u0161echny odeslan\xE9 e-maily jsou evidov\xE1ny v E-mailov\xE9m logu v Administraci." : 'Rules configured with the "Send Email" action automatically send a notification email at 8:00 AM to the deal owner and supervisor with direct deal links and an inactivity summary. All dispatched emails are recorded in the Email Log in Administration.'}</li>
+              <li><b>${isCS ? "Filtrov\xE1n\xED podle barvy p\u0159ipom\xEDnky" : "Filtering by Reminder Color"}:</b> ${isCS ? "V Kanban desce i Seznamu deal\u016F je k dispozici rychl\xFD filtr dle barvy p\u0159ipom\xEDnky (V\u0161e / \u017Dlut\xE1 / Oran\u017Eov\xE1 / \u010Cerven\xE1), umo\u017E\u0148uj\xEDc\xED okam\u017Eit\u011B vyfiltrovat v\u0161echny p\u0159\xEDpady vy\u017Eaduj\xEDc\xED pozornost." : "Both Kanban and List views feature a reminder color filter (All / Yellow / Orange / Red) enabling instant filtering of opportunities requiring immediate attention."}</li>
+            </ul>
+
+            <h2>${isCS ? "7. U\u017Eivatelsk\xE9 Rozhran\xED a Ovl\xE1dac\xED Prvky" : "7. User Interface & Controls"}</h2>
+            <ul>
+              <li><b>${isCS ? "Tla\u010D\xEDtko posunu kvalifikovan\xE9ho leadu (SQL \u2192)" : "Qualified Lead Advance Button (SQL \u2192)"}:</b> ${isCS ? "Pokud p\u0159\xEDle\u017Eitost ve f\xE1zi Lead spl\u0148uje v\u0161echny podm\xEDnky pro p\u0159esun do f\xE1ze Discovery & Ponuka (p\u0159i\u0159azen\xFD hunter, zdroj leadu, e-commerce platforma a odhadovan\xFD po\u010Det z\xE1silek > 0), zobraz\xED se p\u0159\xEDmo na kart\u011B v Kanban desce nad ikonou garanta (vpravo uprost\u0159ed) zelen\xE9 tla\u010D\xEDtko \u201ESQL \u2192\u201C. Kliknut\xEDm m\u016F\u017Ee kdokoliv (v\u010Detn\u011B huntera) okam\u017Eit\u011B odeslat p\u0159\xEDle\u017Eitost do n\xE1sleduj\xEDc\xED f\xE1ze Discovery & Ponuka, p\u0159i\u010Dem\u017E syst\xE9m zobraz\xED lokalizovanou potvrzuj\xEDc\xED zpr\xE1vu s n\xE1zvem p\u0159esunut\xE9 firmy." : 'When a deal in the Lead stage fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL \u2192" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
+              <li><b>${isCS ? "Dvojit\xE1 li\u0161ta posuvn\xEDku (Kanban Scrollbar)" : "Dual Kanban Scrollbar"}:</b> ${isCS ? "Kanban deska obsahuje posuvn\xEDk naho\u0159e i dole pod sloupci, co\u017E zaji\u0161\u0165uje pohodln\xFD horizont\xE1ln\xED posun nap\u0159\xED\u010D v\u0161emi 7 f\xE1zemi i na men\u0161\xEDch obrazovk\xE1ch." : "The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display."}</li>
+              <li><b>${isCS ? "Filtr nep\u0159i\u0159azen\xFDch deal\u016F" : "Unassigned Deals Filter"}:</b> ${isCS ? 'Tla\u010D\xEDtko "Pouze nep\u0159i\u0159azen\xE9" zobraz\xED p\u0159\xEDle\u017Eitosti, kter\xE9 zat\xEDm nemaj\xED v dan\xE9 f\xE1zi stanoven\xE9ho garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
+              <li><b>${isCS ? "Filtr dle barvy upozorn\u011Bn\xED (P\u0159ipom\xEDnky)" : "Filter by Reminder Color"}:</b> ${isCS ? "Rychl\xE1 filtrace obchodn\xEDch p\u0159\xEDpad\u016F podle barvy stavov\xE9 p\u0159ipom\xEDnky pro okam\u017Eit\xE9 \u0159e\u0161en\xED stagnuj\xEDc\xEDch obchod\u016F." : "Quickly filter deals by stage reminder alert color to focus immediately on stalled opportunities."}</li>
+              <li><b>${isCS ? "Zv\xFDrazn\u011Bn\xED chyb\u011Bj\xEDc\xEDch dat (Red Underline Alert)" : "Red Missing Data Highlighting"}:</b> ${isCS ? "Pokud na kart\u011B dealu chyb\xED povinn\xFD \xFAdaj pro posun, pole je p\u0159i pokusu o ulo\u017Een\xED \u010Di posun \u010Derven\u011B podtr\u017Eeno." : "If a required field is missing, it is underlined in red upon saving or advancing."}</li>
+              <li><b>${isCS ? "V\xFDstra\u017En\xFD odznak u neaktivn\xEDch deal\u016F" : "Alert Badge on Stalled Deals"}:</b> ${isCS ? "Karta dealu v Kanbanu zobrazuje v\xFDstra\u017Enou ikonu s po\u010Dtem dn\u016F v aktu\xE1ln\xED f\xE1zi a n\xE1pov\u011Bdou s vysv\u011Btlen\xEDm podm\xEDnek." : "Kanban deal cards display an alert badge with days in current stage and tooltip explaining the condition criteria."}</li>
+            </ul>
           </div>
           <script>
             setTimeout(() => {
@@ -1365,11 +1744,27 @@ Tento odkaz plat\xED 10 minut.`,
       }
     }
   });
+  app.get("/api/audit-logs", authMiddleware, async (req, res) => {
+    try {
+      const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
+      res.json(auditRows);
+    } catch (err) {
+      console.error("Audit logs fetch error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get("/api/deals/:id/details", authMiddleware, async (req, res) => {
     try {
       const dealId = req.params.id;
-      const [auditLogs] = await pool.query("SELECT * FROM audit_logs WHERE dealId = ?", [dealId]);
-      const [activities] = await pool.query("SELECT * FROM activities WHERE dealId = ?", [dealId]);
+      const [
+        [deals],
+        [auditLogs],
+        [activities]
+      ] = await Promise.all([
+        pool.query("SELECT * FROM deals WHERE id = ?", [dealId]),
+        pool.query("SELECT * FROM audit_logs WHERE dealId = ? ORDER BY timestamp DESC", [dealId]),
+        pool.query("SELECT * FROM activities WHERE dealId = ? ORDER BY date DESC", [dealId])
+      ]);
       const parseJsonFields = (arr, fields) => arr.map((item) => {
         fields.forEach((f) => {
           if (typeof item[f] === "string") {
@@ -1379,13 +1774,18 @@ Tento odkaz plat\xED 10 minut.`,
             }
           }
         });
+        if ("isActive" in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ("isVisible" in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
         return item;
       });
+      const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]);
+      const parsedDeal = parsedDeals[0] || null;
       const parsedActivities = parseJsonFields(activities, ["participants"]);
       parsedActivities.forEach((act) => {
         if ("isVisible" in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
       });
       res.json({
+        deal: parsedDeal,
         auditLogs,
         activities: parsedActivities
       });
@@ -1396,15 +1796,6 @@ Tento odkaz plat\xED 10 minut.`,
   });
   app.get("/api/state", authMiddleware, async (req, res) => {
     try {
-      const [users] = await pool.query("SELECT * FROM users");
-      const [companies] = await pool.query("SELECT * FROM companies");
-      const [deals] = await pool.query("SELECT * FROM deals");
-      const [leadSources] = await pool.query("SELECT * FROM lead_sources");
-      const [segments] = await pool.query("SELECT * FROM segments");
-      const [ecommercePlatforms] = await pool.query("SELECT * FROM ecommerce_platforms");
-      const [storageTypes] = await pool.query("SELECT * FROM storage_types");
-      const [itIntegrations] = await pool.query("SELECT * FROM it_integrations");
-      const [lostReasons] = await pool.query("SELECT * FROM lost_reasons");
       const parseJsonFields = (arr, fields) => arr.map((item) => {
         fields.forEach((f) => {
           if (typeof item[f] === "string") {
@@ -1419,22 +1810,71 @@ Tento odkaz plat\xED 10 minut.`,
         if ("passwordHash" in item) delete item.passwordHash;
         return item;
       });
+      const [
+        [users],
+        [companies],
+        [deals],
+        [leadSources],
+        [segments],
+        [ecommercePlatforms],
+        [storageTypes],
+        [itIntegrations],
+        [lostReasons],
+        [contactPositions],
+        [stageReminders],
+        [auditRows],
+        [activityRows]
+      ] = await Promise.all([
+        pool.query("SELECT * FROM users"),
+        pool.query("SELECT * FROM companies"),
+        pool.query(`SELECT 
+          id, companyId, stage, createdBy, hunterId, closerId, farmerId, 
+          leadSourceId, ecommercePlatformId, storageTypeId, estimatedYearlyParcels, 
+          estimatedMonthlyParcels, b2cShare, averageItemsPerOrder, averageParcelWeight, 
+          averageParcelVolume, contractSignedDate, pricingUploadedDate, itIntegrationId, 
+          firstStockingDate, itIntegrationCompletedDate, firstStockingDateActual, 
+          integrationTestingCompletedDate, createdAt, updatedAt, postponedUntil, 
+          postponedReason, postponedBy, postponedAt, lostPermanently, lostReason, 
+          lostReasonId, lostBy, lostAt, lostFromStage, deliveryCountries, pricingOffers 
+          FROM deals`),
+        pool.query("SELECT * FROM lead_sources"),
+        pool.query("SELECT * FROM segments"),
+        pool.query("SELECT * FROM ecommerce_platforms"),
+        pool.query("SELECT * FROM storage_types"),
+        pool.query("SELECT * FROM it_integrations"),
+        pool.query("SELECT * FROM lost_reasons"),
+        pool.query("SELECT * FROM contact_positions"),
+        pool.query("SELECT * FROM stage_reminders"),
+        pool.query("SELECT id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp FROM audit_logs WHERE field = 'stage' OR timestamp >= NOW() - INTERVAL 60 DAY ORDER BY timestamp DESC LIMIT 2000"),
+        pool.query("SELECT id, dealId, companyId, type, date, completed, completedAt, completedBy, createdBy, createdAt, updatedAt, isVisible FROM activities WHERE date >= NOW() - INTERVAL 90 DAY OR createdAt >= NOW() - INTERVAL 90 DAY ORDER BY date DESC LIMIT 1000")
+      ]);
       const parsedUsers = parseJsonFields(users, ["googleIntegration", "msIntegration"]);
       const currentUserId = req.user?.id;
       const me = parsedUsers.find((u) => u.id === currentUserId) || null;
+      const parsedActivities = parseJsonFields(activityRows, ["participants"]).map((act) => {
+        if ("isVisible" in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
+        return act;
+      });
+      const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers"]).map((deal) => {
+        if (!deal.documents) deal.documents = [];
+        if (!deal.notes) deal.notes = [];
+        return deal;
+      });
       res.json({
         users: parsedUsers,
         me,
         companies: parseJsonFields(companies, ["urls", "contacts"]),
-        deals: parseJsonFields(deals, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]),
+        deals: parsedDeals,
         leadSources: parseJsonFields(leadSources, []),
         segments: parseJsonFields(segments, []),
         ecommercePlatforms: parseJsonFields(ecommercePlatforms, []),
         storageTypes: parseJsonFields(storageTypes, []),
         itIntegrations: parseJsonFields(itIntegrations, []),
         lostReasons: parseJsonFields(lostReasons, []),
-        auditLogs: [],
-        activities: []
+        contactPositions: parseJsonFields(contactPositions, []),
+        stageReminders: parseJsonFields(stageReminders, []),
+        auditLogs: auditRows,
+        activities: parsedActivities
       });
     } catch (err) {
       console.error("DB State Error:", err);
@@ -1531,7 +1971,7 @@ Tento odkaz plat\xED 10 minut.`,
       if (!table || !id) {
         return res.status(400).json({ error: "Missing table or id" });
       }
-      const allowedTables = ["lead_sources", "segments", "ecommerce_platforms", "it_integrations", "lost_reasons", "activities"];
+      const allowedTables = ["lead_sources", "segments", "ecommerce_platforms", "it_integrations", "lost_reasons", "activities", "storage_types", "contact_positions", "stage_reminders"];
       if (!allowedTables.includes(table)) {
         return res.status(403).json({ error: "Deletion not allowed for this table" });
       }
@@ -1554,6 +1994,23 @@ Tento odkaz plat\xED 10 minut.`,
         const count = rows[0].count;
         if (count > 0) {
           return res.status(400).json({ error: `Cannot delete because there are ${count} records in ${refTable} referencing this entity.` });
+        }
+      }
+      if (table === "activities") {
+        const [actRows] = await pool.query("SELECT * FROM activities WHERE id = ?", [id]);
+        if (actRows.length > 0) {
+          const act = actRows[0];
+          if (act.dealId) {
+            const user2 = req.user;
+            const now = /* @__PURE__ */ new Date();
+            const auditId = uuidv4();
+            const actDateStr = act.date ? ` (${new Date(act.date).toISOString().substring(0, 10)})` : "";
+            await pool.query(
+              "INSERT INTO audit_logs (id, dealId, field, oldValue, newValue, changedBy, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+              [auditId, act.dealId, "activity_deleted", `${act.type || "activity"}: ${act.note || ""}${actDateStr}`, "deleted", user2?.id || "system", now]
+            );
+            await pool.query("UPDATE deals SET updatedAt = ? WHERE id = ?", [now, act.dealId]);
+          }
         }
       }
       await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
@@ -1652,7 +2109,10 @@ Tento odkaz plat\xED 10 minut.`,
         auth: process.env.SMTP_USER ? {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
-        } : void 0
+        } : void 0,
+        tls: {
+          rejectUnauthorized: false
+        }
       });
       const appUrl = process.env.VITE_APP_URL || "http://localhost:3000";
       const link = `${appUrl}/deal/${dealId}`;
@@ -1679,7 +2139,7 @@ Odkaz: ${link}`
       const connection = await pool.getConnection();
       try {
         const [rows] = await connection.query(`
-        SELECT DISTINCT d.id 
+        SELECT DISTINCT d.id, d.companyId 
         FROM deals d
         JOIN activities a ON d.id = a.dealId
         WHERE d.stage = 'opportunity' 
@@ -1692,6 +2152,12 @@ Odkaz: ${link}`
         if (dealsToAdvance.length > 0) {
           for (const deal of dealsToAdvance) {
             await connection.query("UPDATE deals SET stage = 'lead', updatedAt = NOW() WHERE id = ?", [deal.id]);
+            const auditLogId = uuidv4();
+            await connection.query(
+              `INSERT INTO audit_logs (id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+              [auditLogId, deal.id, deal.companyId, "stage", "opportunity", "lead", "System Cron"]
+            );
             console.log(`[JOBS] Deal ${deal.id} advanced to lead.`);
           }
         }
@@ -1814,7 +2280,7 @@ Odkaz: ${link}`
                   meetingId = meetings.value[0].id;
                 }
               } catch (e) {
-                console.error("[Worker] Failed to resolve online meeting. Make sure the OAuth user has OnlineMeetings.Read or equivalent application permissions.", e.message);
+                console.warn(`[Worker] Could not resolve online meeting for activity ${activity.id} (requires OnlineMeetings.Read or OnlineMeetings.ReadWrite scope):`, e.message || e);
               }
               if (!meetingId) return;
               let newRecordingLink = activity.recordingLink;
@@ -1874,5 +2340,334 @@ Odkaz: ${link}`
     }, 1e3 * 60 * 60);
   };
   startTeamsActivityWorker();
+  async function processStageReminders() {
+    console.log("[STAGE REMINDERS] Starting stage reminders check...");
+    const connection = await pool.getConnection();
+    try {
+      const [remindersRows] = await connection.query("SELECT * FROM stage_reminders");
+      const reminders = remindersRows;
+      if (reminders.length === 0) {
+        console.log("[STAGE REMINDERS] No stage reminders configured.");
+        return { checked: 0, sent: 0 };
+      }
+      const [dealsRows] = await connection.query('SELECT * FROM deals WHERE stage != "lost"');
+      const deals = dealsRows;
+      if (deals.length === 0) {
+        return { checked: 0, sent: 0 };
+      }
+      const [companiesRows] = await connection.query("SELECT * FROM companies");
+      const companies = companiesRows;
+      const [usersRows] = await connection.query("SELECT * FROM users");
+      const users = usersRows;
+      const [leadSourcesRows] = await connection.query("SELECT * FROM lead_sources");
+      const leadSources = leadSourcesRows;
+      const [ecomRows] = await connection.query("SELECT * FROM ecommerce_platforms");
+      const ecomPlatforms = ecomRows;
+      const [storageRows] = await connection.query("SELECT * FROM storage_types");
+      const storageTypes = storageRows;
+      const [itRows] = await connection.query("SELECT * FROM it_integrations");
+      const itIntegrations = itRows;
+      const [segmentsRows] = await connection.query("SELECT * FROM segments");
+      const segments = segmentsRows;
+      const companiesMap = new Map(companies.map((c) => {
+        let urls = c.urls;
+        if (typeof urls === "string") {
+          try {
+            urls = JSON.parse(urls);
+          } catch (e) {
+          }
+        }
+        let contacts = c.contacts;
+        if (typeof contacts === "string") {
+          try {
+            contacts = JSON.parse(contacts);
+          } catch (e) {
+          }
+        }
+        return [c.id, { ...c, urls, contacts }];
+      }));
+      const [auditRows] = await connection.query("SELECT * FROM audit_logs ORDER BY timestamp DESC");
+      const allAuditLogs = auditRows;
+      const stageAuditLogs = allAuditLogs.filter((a) => a.field === "stage");
+      const [activitiesRows] = await connection.query("SELECT * FROM activities ORDER BY date DESC");
+      const allActivities = activitiesRows;
+      const stageLabels = {
+        opportunity: "1. Oportunita",
+        lead: "2. Lead",
+        discovery_proposal: "3. Discovery & Ponuka",
+        contracting: "4. Contracting",
+        onboarding: "5. Onboarding",
+        farming: "6. Farming",
+        lost: "7. Lost"
+      };
+      let checkedCount = 0;
+      let sentCount = 0;
+      const now = /* @__PURE__ */ new Date();
+      const itemsToNotify = [];
+      for (const deal of deals) {
+        checkedCount++;
+        const stage = deal.stage;
+        const stageReminders = reminders.filter((r) => r.stage === stage);
+        if (stageReminders.length === 0) continue;
+        const lastStageLog = stageAuditLogs.find((a) => a.dealId === deal.id && a.newValue === stage);
+        const stageEntryTime = lastStageLog ? new Date(lastStageLog.timestamp).getTime() : new Date(deal.createdAt || Date.now()).getTime();
+        const daysInStage = Math.max(0, Math.floor((now.getTime() - stageEntryTime) / (1e3 * 60 * 60 * 24)));
+        const dealAuditLogs = allAuditLogs.filter((a) => a.dealId === deal.id || deal.companyId && a.companyId === deal.companyId);
+        const dealActivities = allActivities.filter((a) => a.dealId === deal.id);
+        const actionTimestamps = [
+          new Date(deal.createdAt || now.getTime()).getTime()
+        ];
+        if (deal.updatedAt) {
+          const t = new Date(deal.updatedAt).getTime();
+          if (!isNaN(t)) actionTimestamps.push(t);
+        }
+        dealAuditLogs.forEach((log) => {
+          const t = new Date(log.timestamp).getTime();
+          if (!isNaN(t)) actionTimestamps.push(t);
+        });
+        dealActivities.forEach((act) => {
+          if (act.createdAt) {
+            const t = new Date(act.createdAt).getTime();
+            if (!isNaN(t)) actionTimestamps.push(t);
+          }
+          if (act.updatedAt) {
+            const t = new Date(act.updatedAt).getTime();
+            if (!isNaN(t)) actionTimestamps.push(t);
+          }
+        });
+        const lastActionTime = Math.max(...actionTimestamps);
+        const daysSinceLastAction = Math.floor((now.getTime() - lastActionTime) / (1e3 * 60 * 60 * 24));
+        let latestActivityDate = null;
+        if (dealActivities.length > 0) {
+          const activityDates = dealActivities.map((a) => new Date(a.date || a.createdAt).getTime()).filter((t) => !isNaN(t));
+          if (activityDates.length > 0) {
+            latestActivityDate = Math.max(...activityDates);
+          }
+        }
+        const daysSinceLatestActivityDate = latestActivityDate !== null ? Math.floor((now.getTime() - latestActivityDate) / (1e3 * 60 * 60 * 24)) : null;
+        const matchingEmailRules = stageReminders.filter((r) => {
+          if (r.action !== "email") return false;
+          if (daysInStage < r.days) return false;
+          if (daysSinceLastAction < r.days) return false;
+          if (daysSinceLatestActivityDate !== null && daysSinceLatestActivityDate < r.days) return false;
+          return true;
+        });
+        if (matchingEmailRules.length === 0) continue;
+        matchingEmailRules.sort((a, b) => b.days - a.days);
+        const activeRule = matchingEmailRules[0];
+        const stageEntryDate = new Date(stageEntryTime);
+        const [existingLogs] = await connection.query(
+          `SELECT id FROM activities 
+           WHERE dealId = ? AND type = 'email' AND createdBy = 'System Cron' AND createdAt >= ? 
+           AND (note LIKE ? OR note LIKE ? OR note LIKE ?)`,
+          [
+            deal.id,
+            stageEntryDate,
+            `%P\u0159ipom\xEDnka ${activeRule.days} dn\xED%`,
+            `%P\u0159ipom\xEDnka ${activeRule.days} dn\u016F%`,
+            `%ruleId:${activeRule.id}%`
+          ]
+        );
+        if (existingLogs.length > 0) {
+          continue;
+        }
+        let assignedUserIds = [];
+        if (stage === "opportunity" || stage === "lead") {
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+        } else if (stage === "discovery_proposal") {
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+        } else if (stage === "contracting") {
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+        } else if (stage === "onboarding" || stage === "farming") {
+          if (deal.farmerId) assignedUserIds.push(deal.farmerId);
+        }
+        if (assignedUserIds.length === 0) {
+          if (deal.createdBy) assignedUserIds.push(deal.createdBy);
+          if (deal.hunterId) assignedUserIds.push(deal.hunterId);
+          if (deal.closerId) assignedUserIds.push(deal.closerId);
+          if (deal.farmerId) assignedUserIds.push(deal.farmerId);
+        }
+        assignedUserIds = Array.from(new Set(assignedUserIds));
+        const recipientUsers = users.filter((u) => assignedUserIds.includes(u.id) && u.email && u.isActive);
+        if (recipientUsers.length === 0) {
+          console.log(`[STAGE REMINDERS] No active recipient users for deal ${deal.id}`);
+          continue;
+        }
+        const company = companiesMap.get(deal.companyId) || { name: "Nezn\xE1m\xE1 spole\u010Dnost" };
+        const stageName = stageLabels[stage] || stage;
+        const hunterUser = users.find((u) => u.id === deal.hunterId);
+        const closerUser = users.find((u) => u.id === deal.closerId);
+        const farmerUser = users.find((u) => u.id === deal.farmerId);
+        const leadSource = leadSources.find((ls) => ls.id === deal.leadSourceId)?.name || "-";
+        const ecommercePlatform = ecomPlatforms.find((e) => e.id === deal.ecommercePlatformId)?.name || "-";
+        const storageType = storageTypes.find((s) => s.id === deal.storageTypeId)?.name || "-";
+        const itIntegration = itIntegrations.find((it) => it.id === deal.itIntegrationId)?.name || "-";
+        const segment = segments.find((s) => s.id === company.segment)?.name || company.segment || "-";
+        const contactsText = Array.isArray(company.contacts) && company.contacts.length > 0 ? company.contacts.map((c) => `${c.name}${c.email ? " <" + c.email + ">" : ""}${c.phone ? " (" + c.phone + ")" : ""}${c.linkedin ? " [" + c.linkedin + "]" : ""}`).join(", ") : "-";
+        itemsToNotify.push({
+          deal,
+          company,
+          stage,
+          stageName,
+          daysInStage,
+          activeRule,
+          recipientUsers,
+          hunterUser,
+          closerUser,
+          farmerUser,
+          leadSource,
+          ecommercePlatform,
+          storageType,
+          itIntegration,
+          segment,
+          contactsText
+        });
+      }
+      const userNotificationsMap = /* @__PURE__ */ new Map();
+      for (const item of itemsToNotify) {
+        for (const recipientUser of item.recipientUsers) {
+          if (!userNotificationsMap.has(recipientUser.id)) {
+            userNotificationsMap.set(recipientUser.id, { user: recipientUser, items: [] });
+          }
+          userNotificationsMap.get(recipientUser.id).items.push(item);
+        }
+      }
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || "localhost",
+        port: parseInt(process.env.SMTP_PORT || "1025", 10),
+        secure: process.env.SMTP_SECURE === "true",
+        auth: process.env.SMTP_USER ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS || ""
+        } : void 0,
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+      for (const [userId, { user, items }] of userNotificationsMap.entries()) {
+        if (items.length === 0) continue;
+        let subject = "";
+        let introText = "";
+        if (items.length === 1) {
+          const item = items[0];
+          subject = `[Upozorn\u011Bn\xED] P\u0159\xEDle\u017Eitost ${item.company.name} je ve f\xE1zi "${item.stageName}" ji\u017E ${item.daysInStage} dn\xED`;
+          introText = `uplynulo <strong style="color: #dc2626; font-size: 16px;">${item.daysInStage} dn\u016F</strong> od vlo\u017Een\xED / p\u0159esunu p\u0159\xEDle\u017Eitosti <strong>${item.company.name}</strong> do f\xE1ze <strong>${item.stageName}</strong>, ani\u017E by se posunula do dal\u0161\xEDho stavu.`;
+        } else {
+          subject = `[Upozorn\u011Bn\xED] Souhrn neaktivn\xEDch p\u0159\xEDle\u017Eitost\xED (${items.length})`;
+          introText = `v syst\xE9mu evidujeme <strong style="color: #dc2626; font-size: 16px;">${items.length} neaktivn\xEDch p\u0159\xEDle\u017Eitost\xED</strong>, kter\xE9 vy\u017Eaduj\xED va\u0161i pozornost a posun do dal\u0161\xEDho stavu:`;
+        }
+        const itemsHtml = items.map((item) => `
+          <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin-bottom: 20px; background-color: #fafafa;">
+            <div style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+              <h3 style="margin: 0; font-size: 16px; color: #111827;">${item.company.name}</h3>
+              <span style="font-size: 12px; font-weight: 600; color: #dc2626; background-color: #fee2e2; padding: 4px 8px; border-radius: 4px;">
+                ${item.daysInStage} dn\xED ve f\xE1zi (${item.stageName})
+              </span>
+            </div>
+            <div style="background-color: #f3f4f6; padding: 8px 12px; border-radius: 6px; font-size: 12px; color: #4b5563; margin-bottom: 12px;">
+              <strong>Aktivovan\xE9 pravidlo:</strong> ${item.activeRule.days} dn\xED bez posunu (F\xE1ze: ${item.stageName})
+            </div>
+
+            <table style="width: 100%; text-align: left; font-size: 13px; border-collapse: collapse;">
+              <tbody>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280; width: 190px;">Spole\u010Dnost:</td><td style="padding: 4px 0; font-weight: 600; color: #111827;">${item.company.name}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">I\u010CO:</td><td style="padding: 4px 0;">${item.company.companyId || "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Region / Segment:</td><td style="padding: 4px 0;">${item.company.region || "-"} / ${item.segment}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Adresa:</td><td style="padding: 4px 0;">${item.company.address || "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">E-mail / Telefon:</td><td style="padding: 4px 0;">${item.company.email || "-"} / ${item.company.phone || "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Webov\xE9 str\xE1nky:</td><td style="padding: 4px 0;">${Array.isArray(item.company.urls) ? item.company.urls.join(", ") : "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Kontaktn\xED osoby:</td><td style="padding: 4px 0;">${item.contactsText}</td></tr>
+                <tr style="border-top: 1px dashed #e5e7eb;"><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Aktu\xE1ln\xED f\xE1ze:</td><td style="padding: 4px 0; font-weight: 600; color: #4f46e5;">${item.stageName}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Zdroj leadu:</td><td style="padding: 4px 0;">${item.leadSource}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">E-commerce platforma:</td><td style="padding: 4px 0;">${item.ecommercePlatform}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Typ skladov\xE1n\xED:</td><td style="padding: 4px 0;">${item.storageType}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">IT Integrace:</td><td style="padding: 4px 0;">${item.itIntegration}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Odhad bal\xEDk\u016F (m\u011Bs./rok):</td><td style="padding: 4px 0;">${item.deal.estimatedMonthlyParcels || "-"} / ${item.deal.estimatedYearlyParcels || "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Hunter / Closer / Farmer:</td><td style="padding: 4px 0;">${item.hunterUser?.name || "-"} / ${item.closerUser?.name || "-"} / ${item.farmerUser?.name || "-"}</td></tr>
+                <tr><td style="padding: 4px 0; font-weight: 600; color: #6b7280;">Datum vlo\u017Een\xED:</td><td style="padding: 4px 0;">${item.deal.createdAt ? new Date(item.deal.createdAt).toLocaleDateString("cs-CZ") : "-"}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        `).join("");
+        const htmlContent = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; color: #1f2937; background-color: #ffffff;">
+            <div style="border-bottom: 2px solid #4f46e5; padding-bottom: 12px; margin-bottom: 20px;">
+              <h2 style="color: #4f46e5; margin: 0; font-size: 20px;">Upozorn\u011Bn\xED na neaktivitu p\u0159\xEDle\u017Eitost\xED</h2>
+            </div>
+            <p style="font-size: 15px; line-height: 1.5; margin-bottom: 20px;">
+              Dobr\xFD den ${user.name || ""},<br/>
+              ${introText}
+            </p>
+
+            ${itemsHtml}
+
+            <div style="border-top: 1px solid #e5e7eb; margin-top: 24px; padding-top: 16px; font-size: 12px; color: #9ca3af; text-align: center;">
+              Tato zpr\xE1va byla automaticky vygenerov\xE1na syst\xE9mem p\u0159ipom\xEDnek.
+            </div>
+          </div>
+        `;
+        try {
+          const mailOptions = {
+            from: process.env.SMTP_FROM || "noreply@crm-system.cz",
+            to: user.email,
+            subject,
+            html: htmlContent
+          };
+          await transporter.sendMail(mailOptions);
+          sentCount++;
+          await connection.query(
+            "INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())",
+            [uuidv4(), user.email, subject, "sent", null]
+          );
+        } catch (mailErr) {
+          console.error(`[STAGE REMINDERS] Error sending mail to ${user.email}:`, mailErr.message);
+          await connection.query(
+            "INSERT INTO email_logs (id, recipient, subject, status, error, sentAt) VALUES (?, ?, ?, ?, ?, NOW())",
+            [uuidv4(), user.email, subject, "error", mailErr.message || String(mailErr)]
+          );
+        }
+      }
+      for (const item of itemsToNotify) {
+        const recipientNames = item.recipientUsers.map((u) => `${u.name} (${u.email})`).join(", ");
+        const activityNote = `Automatick\xE9 upozorn\u011Bn\xED (P\u0159ipom\xEDnka ${item.activeRule.days} dn\xED, ruleId:${item.activeRule.id}): Uplynulo ${item.daysInStage} dn\u016F ve f\xE1zi "${item.stageName}". E-mail odesl\xE1n na: ${recipientNames}`;
+        await connection.query(
+          "INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt) VALUES (?, ?, 'email', NOW(), ?, 'System Cron', NOW())",
+          [uuidv4(), item.deal.id, activityNote]
+        );
+        await connection.query(
+          "INSERT INTO audit_logs (id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp) VALUES (?, ?, ?, 'reminder_email', '', ?, 'System Cron', NOW())",
+          [uuidv4(), item.deal.id, item.deal.companyId, `Email sent for stage reminder (${item.daysInStage} days in ${item.stageName}) to ${recipientNames}`]
+        );
+      }
+      console.log(`[STAGE REMINDERS] Finished check. Checked: ${checkedCount}, Sent emails: ${sentCount}`);
+      return { checked: checkedCount, sent: sentCount };
+    } finally {
+      connection.release();
+    }
+  }
+  app.post("/api/run-reminders-cron", authMiddleware, async (req, res) => {
+    try {
+      const result = await processStageReminders();
+      res.json({ success: true, ...result });
+    } catch (err) {
+      console.error("Run reminders cron failed:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  let lastCronRunDay = -1;
+  setInterval(async () => {
+    const now = /* @__PURE__ */ new Date();
+    const currentDay = now.getDate();
+    if (now.getHours() === 0 && now.getMinutes() === 1 && lastCronRunDay !== currentDay) {
+      lastCronRunDay = currentDay;
+      console.log("[CRON] Executing scheduled daily stage reminders check at 00:01...");
+      try {
+        await processStageReminders();
+      } catch (err) {
+        console.error("[CRON] Scheduled stage reminders check failed:", err);
+      }
+    }
+  }, 6e4);
 }
 startServer().catch(console.error);

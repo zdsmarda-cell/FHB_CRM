@@ -92,46 +92,13 @@ export const formatAuditValue = (state: StoreState, field: string, val: any): st
   return String(val);
 };
 
+let inflightRefreshPromise: Promise<void> | null = null;
+
 export const useStore = create<StoreState>((set, get) => {
   // Try loading initial state from DB after a small delay
-  setTimeout(async () => {
-    try {
-      const res = await apiFetch('/api/state');
-      if (res.ok) {
-        const data = await res.json();
-        set({
-          isInitialized: true,
-          users: data.users || [],
-          companies: data.companies || [],
-          deals: data.deals || [],
-          leadSources: data.leadSources || [],
-          segments: data.segments || [],
-          ecommercePlatforms: data.ecommercePlatforms || [],
-          storageTypes: data.storageTypes || [],
-          itIntegrations: data.itIntegrations || [],
-          lostReasons: data.lostReasons || [],
-          contactPositions: data.contactPositions || [],
-          auditLogs: data.auditLogs || [],
-          activities: data.activities || [],
-          currentUser: data.me || null
-        });
-      } else {
-        throw new Error('Failed to fetch from DB');
-      }
-    } catch (err) {
-      console.warn('DB state not available', err);
-      // Empty state if DB fails
-      set({
-        isInitialized: true,
-        users: [],
-        companies: [],
-        deals: [],
-        auditLogs: [],
-        activities: [],
-        currentUser: null
-      });
-    }
-  }, 10);
+  setTimeout(() => {
+    get().refreshState();
+  }, 0);
 
   // Helper function to sync with DB
   const syncToDb = async (entities: Record<string, any[]>) => {
@@ -148,30 +115,40 @@ export const useStore = create<StoreState>((set, get) => {
 
   return {
     refreshState: async () => {
-      try {
-        const res = await apiFetch('/api/state');
-        if (res.ok) {
-          const data = await res.json();
-          set((state) => ({
-            users: data.users || [],
-            companies: data.companies || [],
-            deals: data.deals || [],
-            leadSources: data.leadSources || [],
-            segments: data.segments || [],
-            ecommercePlatforms: data.ecommercePlatforms || [],
-            storageTypes: data.storageTypes || [],
-            itIntegrations: data.itIntegrations || [],
-            lostReasons: data.lostReasons || [],
-            contactPositions: data.contactPositions || [],
-            stageReminders: data.stageReminders || [],
-            auditLogs: data.auditLogs !== undefined ? data.auditLogs : state.auditLogs,
-            activities: data.activities !== undefined ? data.activities : state.activities,
-            currentUser: data.me || null // keep matching data.me
-          }));
-        }
-      } catch (err) {
-        console.warn('DB state not available', err);
+      if (inflightRefreshPromise) {
+        return inflightRefreshPromise;
       }
+      inflightRefreshPromise = (async () => {
+        try {
+          const res = await apiFetch('/api/state');
+          if (res.ok) {
+            const data = await res.json();
+            set((state) => ({
+              users: data.users || [],
+              companies: data.companies || [],
+              deals: data.deals || [],
+              leadSources: data.leadSources || [],
+              segments: data.segments || [],
+              ecommercePlatforms: data.ecommercePlatforms || [],
+              storageTypes: data.storageTypes || [],
+              itIntegrations: data.itIntegrations || [],
+              lostReasons: data.lostReasons || [],
+              contactPositions: data.contactPositions || [],
+              stageReminders: data.stageReminders || [],
+              auditLogs: data.auditLogs !== undefined ? data.auditLogs : state.auditLogs,
+              activities: data.activities !== undefined ? data.activities : state.activities,
+              currentUser: data.me || null,
+              isInitialized: true
+            }));
+          }
+        } catch (err) {
+          console.warn('DB state not available', err);
+          set({ isInitialized: true });
+        } finally {
+          inflightRefreshPromise = null;
+        }
+      })();
+      return inflightRefreshPromise;
     },
     fetchDealDetails: async (dealId: string) => {
       try {
@@ -179,6 +156,9 @@ export const useStore = create<StoreState>((set, get) => {
         if (res.ok) {
           const data = await res.json();
           set(state => ({
+            deals: data.deal
+              ? state.deals.map(d => d.id === dealId ? { ...d, ...data.deal } : d)
+              : state.deals,
             auditLogs: [
               ...state.auditLogs.filter(log => log.dealId !== dealId),
               ...(data.auditLogs || [])
@@ -191,6 +171,17 @@ export const useStore = create<StoreState>((set, get) => {
         }
       } catch (err) {
         console.warn('Failed to fetch deal details', err);
+      }
+    },
+    fetchFullAuditLogs: async () => {
+      try {
+        const res = await apiFetch('/api/audit-logs');
+        if (res.ok) {
+          const data = await res.json();
+          set({ auditLogs: data || [] });
+        }
+      } catch (err) {
+        console.warn('Failed to fetch full audit logs', err);
       }
     },
     isInitialized: false,

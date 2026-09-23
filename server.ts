@@ -1938,11 +1938,28 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     }
   });
 
+  app.get('/api/audit-logs', authMiddleware, async (req, res) => {
+    try {
+      const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
+      res.json(auditRows);
+    } catch (err: any) {
+      console.error('Audit logs fetch error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/deals/:id/details', authMiddleware, async (req, res) => {
     try {
       const dealId = req.params.id;
-      const [auditLogs] = await pool.query('SELECT * FROM audit_logs WHERE dealId = ?', [dealId]);
-      const [activities] = await pool.query('SELECT * FROM activities WHERE dealId = ?', [dealId]);
+      const [
+        [deals],
+        [auditLogs],
+        [activities]
+      ] = await Promise.all([
+        pool.query('SELECT * FROM deals WHERE id = ?', [dealId]),
+        pool.query('SELECT * FROM audit_logs WHERE dealId = ? ORDER BY timestamp DESC', [dealId]),
+        pool.query('SELECT * FROM activities WHERE dealId = ? ORDER BY date DESC', [dealId])
+      ]);
       
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
@@ -1950,8 +1967,13 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
             try { item[f] = JSON.parse(item[f]); } catch (e) { /* ignore */ }
           }
         });
+        if ('isActive' in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ('isVisible' in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
         return item;
       });
+
+      const parsedDeals = parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers', 'documents', 'notes', 'seasonMonths', 'codUsage']);
+      const parsedDeal = parsedDeals[0] || null;
 
       const parsedActivities = parseJsonFields(activities as any[], ['participants']);
       // convert boolean
@@ -1960,6 +1982,7 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       });
 
       res.json({
+        deal: parsedDeal,
         auditLogs: auditLogs,
         activities: parsedActivities
       });
@@ -1971,33 +1994,6 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
 
   app.get('/api/state', authMiddleware, async (req, res) => {
     try {
-      const [users] = await pool.query('SELECT * FROM users');
-      const [companies] = await pool.query('SELECT * FROM companies');
-      const [deals] = await pool.query('SELECT * FROM deals');
-      const [leadSources] = await pool.query('SELECT * FROM lead_sources');
-      const [segments] = await pool.query('SELECT * FROM segments');
-      const [ecommercePlatforms] = await pool.query('SELECT * FROM ecommerce_platforms');
-      const [storageTypes] = await pool.query('SELECT * FROM storage_types');
-      const [itIntegrations] = await pool.query('SELECT * FROM it_integrations');
-      const [lostReasons] = await pool.query('SELECT * FROM lost_reasons');
-      const [contactPositions] = await pool.query('SELECT * FROM contact_positions');
-      const [stageReminders] = await pool.query('SELECT * FROM stage_reminders');
-      let allAuditLogs: any[] = [];
-      try {
-        const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
-        allAuditLogs = auditRows as any[];
-      } catch (e) {
-        console.warn('Could not fetch audit_logs in /api/state:', e);
-      }
-
-      let allActivities: any[] = [];
-      try {
-        const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC");
-        allActivities = activityRows as any[];
-      } catch (e) {
-        console.warn('Could not fetch activities in /api/state:', e);
-      }
-
       const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
         fields.forEach(f => {
           if (typeof item[f] === 'string') {
@@ -2012,20 +2008,67 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         return item;
       });
 
+      // Execute all state queries in parallel to eliminate sequential roundtrip latency
+      const [
+        [users],
+        [companies],
+        [deals],
+        [leadSources],
+        [segments],
+        [ecommercePlatforms],
+        [storageTypes],
+        [itIntegrations],
+        [lostReasons],
+        [contactPositions],
+        [stageReminders],
+        [auditRows],
+        [activityRows]
+      ] = await Promise.all([
+        pool.query('SELECT * FROM users'),
+        pool.query('SELECT * FROM companies'),
+        pool.query(`SELECT 
+          id, companyId, stage, createdBy, hunterId, closerId, farmerId, 
+          leadSourceId, ecommercePlatformId, storageTypeId, estimatedYearlyParcels, 
+          estimatedMonthlyParcels, b2cShare, averageItemsPerOrder, averageParcelWeight, 
+          averageParcelVolume, contractSignedDate, pricingUploadedDate, itIntegrationId, 
+          firstStockingDate, itIntegrationCompletedDate, firstStockingDateActual, 
+          integrationTestingCompletedDate, createdAt, updatedAt, postponedUntil, 
+          postponedReason, postponedBy, postponedAt, lostPermanently, lostReason, 
+          lostReasonId, lostBy, lostAt, lostFromStage, deliveryCountries, pricingOffers 
+          FROM deals`),
+        pool.query('SELECT * FROM lead_sources'),
+        pool.query('SELECT * FROM segments'),
+        pool.query('SELECT * FROM ecommerce_platforms'),
+        pool.query('SELECT * FROM storage_types'),
+        pool.query('SELECT * FROM it_integrations'),
+        pool.query('SELECT * FROM lost_reasons'),
+        pool.query('SELECT * FROM contact_positions'),
+        pool.query('SELECT * FROM stage_reminders'),
+        pool.query("SELECT id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp FROM audit_logs WHERE field = 'stage' OR timestamp >= NOW() - INTERVAL 60 DAY ORDER BY timestamp DESC LIMIT 2000"),
+        pool.query("SELECT id, dealId, companyId, type, date, completed, completedAt, completedBy, createdBy, createdAt, updatedAt, isVisible FROM activities WHERE date >= NOW() - INTERVAL 90 DAY OR createdAt >= NOW() - INTERVAL 90 DAY ORDER BY date DESC LIMIT 1000")
+      ]);
+
       const parsedUsers = parseJsonFields(users as any[], ['googleIntegration', 'msIntegration']);
       const currentUserId = (req as any).user?.id;
       const me = parsedUsers.find((u: any) => u.id === currentUserId) || null;
 
-      const parsedActivities = parseJsonFields(allActivities as any[], ['participants']).map((act: any) => {
+      const parsedActivities = parseJsonFields(activityRows as any[], ['participants']).map((act: any) => {
         if ('isVisible' in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
         return act;
+      });
+
+      const parsedDeals = parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers']).map((deal: any) => {
+        // Ensure documents and notes exist as empty arrays on board view so deal card helpers don't crash
+        if (!deal.documents) deal.documents = [];
+        if (!deal.notes) deal.notes = [];
+        return deal;
       });
 
       res.json({
         users: parsedUsers,
         me: me,
         companies: parseJsonFields(companies as any[], ['urls', 'contacts']),
-        deals: parseJsonFields(deals as any[], ['deliveryCountries', 'pricingOffers', 'documents', 'notes', 'seasonMonths', 'codUsage']),
+        deals: parsedDeals,
         leadSources: parseJsonFields(leadSources as any[], []),
         segments: parseJsonFields(segments as any[], []),
         ecommercePlatforms: parseJsonFields(ecommercePlatforms as any[], []),
@@ -2034,7 +2077,7 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         lostReasons: parseJsonFields(lostReasons as any[], []),
         contactPositions: parseJsonFields(contactPositions as any[], []),
         stageReminders: parseJsonFields(stageReminders as any[], []),
-        auditLogs: allAuditLogs,
+        auditLogs: auditRows,
         activities: parsedActivities
       });
     } catch (err: any) {

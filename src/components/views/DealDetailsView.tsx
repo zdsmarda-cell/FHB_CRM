@@ -19,11 +19,13 @@ export function DealDetailsView() {
   const { deals, companies, auditLogs, users, currentUser, updateCompany, updateDeal, segments, contactPositions } = store;
 
   React.useEffect(() => {
-    store.refreshState();
+    if (!store.isInitialized) {
+      store.refreshState();
+    }
     if (id) {
       store.fetchDealDetails(id);
     }
-  }, [id]);
+  }, [id, store.isInitialized]);
 
   const deal = deals.find(d => d.id === id);
   const company = companies.find(c => c.id === deal?.companyId);
@@ -35,6 +37,17 @@ export function DealDetailsView() {
   const historyPerPage = 5;
 
   const [dealFormData, setDealFormData] = useState<Partial<Deal>>({});
+
+  if (!store.isInitialized) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center gap-3 text-gray-500 font-medium">
+          <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+          <span>{t('common.loading', 'Načítání...')}</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!deal || !company || !currentUser) {
     return <div className="p-6">Not found or unauthorized.</div>;

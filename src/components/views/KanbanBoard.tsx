@@ -350,7 +350,9 @@ export function KanbanBoard() {
   }, [viewMode]);
 
   useEffect(() => {
-    state.refreshState();
+    if (!state.isInitialized) {
+      state.refreshState();
+    }
   }, []);
 
   const countryOptions = useMemo(() => {

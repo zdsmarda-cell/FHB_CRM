@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   BarChart3, 
@@ -18,7 +18,11 @@ type KpiSubTab = 'opportunities' | 'users' | 'stages' | 'lost';
 export function StatisticsView() {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<KpiSubTab>('opportunities');
-  const { deals } = useStore();
+  const { deals, fetchFullAuditLogs } = useStore();
+
+  useEffect(() => {
+    fetchFullAuditLogs();
+  }, [fetchFullAuditLogs]);
 
   const subTabs: { id: KpiSubTab; label: string; icon: React.ElementType }[] = [
     {

@@ -69,21 +69,33 @@ function MainLayout() {
       } catch (err) {}
     }, 5000);
 
-    // Periodic complete refresh (every minute)
+    // Periodic complete refresh (every 2 minutes)
     const periodicRefresh = setInterval(() => {
       const store = useStore.getState();
       store.refreshState().then(() => store.checkPostponedDeals());
-      store.syncGlobalCalendar();
-    }, 60000);
+    }, 120000);
 
-    // Initial sync
-    setTimeout(() => {
+    // Background calendar sync - non-blocking, delayed to avoid interfering with initial page interaction
+    const calendarSyncTimeout = setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(() => {
+          useStore.getState().syncGlobalCalendar();
+        }, { timeout: 30000 });
+      } else {
+        useStore.getState().syncGlobalCalendar();
+      }
+    }, 45000);
+
+    // Periodic background calendar sync (every 5 minutes)
+    const calendarPeriodic = setInterval(() => {
       useStore.getState().syncGlobalCalendar();
-    }, 3000);
+    }, 300000);
 
     return () => {
       clearInterval(pollInterval);
       clearInterval(periodicRefresh);
+      clearTimeout(calendarSyncTimeout);
+      clearInterval(calendarPeriodic);
       socket.off('data-changed', handleDataChanged);
     };
   }, []);
