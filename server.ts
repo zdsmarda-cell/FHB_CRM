@@ -2036,7 +2036,7 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         [lastActivityActionRows]
       ] = await Promise.all([
         pool.query('SELECT id, name, email, role, managerId, isActive, googleIntegration, msIntegration FROM users'),
-        pool.query('SELECT id, name, companyId, country, segment, urls, isActive FROM companies'),
+        pool.query('SELECT id, name, companyId, address, country, region, segment, email, phone, phonePrefix, urls, isVisible FROM companies'),
         pool.query(`SELECT 
           id, companyId, stage, createdBy, hunterId, closerId, farmerId, 
           leadSourceId, ecommercePlatformId, storageTypeId, estimatedYearlyParcels, 
@@ -2140,7 +2140,10 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       res.json({
         users: parsedUsers,
         me: me,
-        companies: parseJsonFields(companies as any[], ['urls']),
+        companies: parseJsonFields(companies as any[], ['urls']).map((c: any) => {
+          if ('isVisible' in c) c.isVisible = c.isVisible === 1 || c.isVisible === true;
+          return c;
+        }),
         deals: parsedDeals,
         leadSources: parseJsonFields(leadSources as any[], []),
         segments: parseJsonFields(segments as any[], []),
@@ -2497,8 +2500,12 @@ async function runHourlyJob() {
     } finally {
       connection.release();
     }
-  } catch (err) {
-    console.error("[JOBS] Hourly job error:", err);
+  } catch (err: any) {
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('ETIMEDOUT')) {
+      console.warn(`[JOBS] Hourly job skipped: Database connection unreachable (${err.message}).`);
+    } else {
+      console.error("[JOBS] Hourly job error:", err);
+    }
   }
 }
 
@@ -2566,8 +2573,12 @@ async function runDailyJob() {
     } finally {
       connection.release();
     }
-  } catch (err) {
-    console.error("[JOBS] Daily job error:", err);
+  } catch (err: any) {
+    if (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('ETIMEDOUT')) {
+      console.warn(`[JOBS] Daily job skipped: Database connection unreachable (${err.message}).`);
+    } else {
+      console.error("[JOBS] Daily job error:", err);
+    }
   }
 }
 
@@ -3080,7 +3091,11 @@ setTimeout(() => {
       try {
         await processStageReminders();
       } catch (err: any) {
-        console.error('[CRON] Scheduled stage reminders check failed:', err);
+        if (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('ETIMEDOUT')) {
+          console.warn(`[CRON] Scheduled stage reminders check skipped: Database connection unreachable (${err.message}).`);
+        } else {
+          console.error('[CRON] Scheduled stage reminders check failed:', err);
+        }
       }
     }
   }, 60000);
