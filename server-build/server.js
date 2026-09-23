@@ -1780,12 +1780,19 @@ Tento odkaz plat\xED 10 minut.`,
       });
       const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers", "documents", "notes", "seasonMonths", "codUsage"]);
       const parsedDeal = parsedDeals[0] || null;
+      let company = null;
+      if (parsedDeal && parsedDeal.companyId) {
+        const [compRows] = await pool.query("SELECT * FROM companies WHERE id = ?", [parsedDeal.companyId]);
+        const parsedCompanies = parseJsonFields(compRows, ["urls", "contacts"]);
+        company = parsedCompanies[0] || null;
+      }
       const parsedActivities = parseJsonFields(activities, ["participants"]);
       parsedActivities.forEach((act) => {
         if ("isVisible" in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
       });
       res.json({
         deal: parsedDeal,
+        company,
         auditLogs,
         activities: parsedActivities
       });
@@ -1822,11 +1829,12 @@ Tento odkaz plat\xED 10 minut.`,
         [lostReasons],
         [contactPositions],
         [stageReminders],
-        [auditRows],
-        [activityRows]
+        [stageTimestampsRows],
+        [lastAuditActionRows],
+        [lastActivityActionRows]
       ] = await Promise.all([
-        pool.query("SELECT * FROM users"),
-        pool.query("SELECT * FROM companies"),
+        pool.query("SELECT id, name, email, role, managerId, isActive, googleIntegration, msIntegration FROM users"),
+        pool.query("SELECT id, name, companyId, country, segment, urls, isActive FROM companies"),
         pool.query(`SELECT 
           id, companyId, stage, createdBy, hunterId, closerId, farmerId, 
           leadSourceId, ecommercePlatformId, storageTypeId, estimatedYearlyParcels, 
@@ -1845,25 +1853,77 @@ Tento odkaz plat\xED 10 minut.`,
         pool.query("SELECT * FROM lost_reasons"),
         pool.query("SELECT * FROM contact_positions"),
         pool.query("SELECT * FROM stage_reminders"),
-        pool.query("SELECT id, dealId, companyId, field, oldValue, newValue, changedBy, timestamp FROM audit_logs WHERE field = 'stage' OR timestamp >= NOW() - INTERVAL 60 DAY ORDER BY timestamp DESC LIMIT 2000"),
-        pool.query("SELECT id, dealId, companyId, type, date, completed, completedAt, completedBy, createdBy, createdAt, updatedAt, isVisible FROM activities WHERE date >= NOW() - INTERVAL 90 DAY OR createdAt >= NOW() - INTERVAL 90 DAY ORDER BY date DESC LIMIT 1000")
+        pool.query("SELECT dealId, newValue AS stage, MAX(timestamp) AS lastEnteredAt FROM audit_logs WHERE field = 'stage' GROUP BY dealId, newValue"),
+        pool.query("SELECT dealId, MAX(timestamp) AS lastAuditAt FROM audit_logs GROUP BY dealId"),
+        pool.query("SELECT dealId, MAX(GREATEST(COALESCE(date, createdAt), createdAt)) AS lastActivityAt FROM activities GROUP BY dealId")
       ]);
       const parsedUsers = parseJsonFields(users, ["googleIntegration", "msIntegration"]);
       const currentUserId = req.user?.id;
       const me = parsedUsers.find((u) => u.id === currentUserId) || null;
-      const parsedActivities = parseJsonFields(activityRows, ["participants"]).map((act) => {
-        if ("isVisible" in act) act.isVisible = act.isVisible === 1 || act.isVisible === true;
-        return act;
+      const stageEnteredMap = /* @__PURE__ */ new Map();
+      stageTimestampsRows.forEach((r) => {
+        if (r.dealId && r.stage && r.lastEnteredAt) {
+          stageEnteredMap.set(`${r.dealId}_${r.stage}`, new Date(r.lastEnteredAt).getTime());
+        }
       });
+      const lastAuditMap = /* @__PURE__ */ new Map();
+      lastAuditActionRows.forEach((r) => {
+        if (r.dealId && r.lastAuditAt) {
+          lastAuditMap.set(r.dealId, new Date(r.lastAuditAt).getTime());
+        }
+      });
+      const lastActivityMap = /* @__PURE__ */ new Map();
+      lastActivityActionRows.forEach((r) => {
+        if (r.dealId && r.lastActivityAt) {
+          lastActivityMap.set(r.dealId, new Date(r.lastActivityAt).getTime());
+        }
+      });
+      const nowMs = Date.now();
       const parsedDeals = parseJsonFields(deals, ["deliveryCountries", "pricingOffers"]).map((deal) => {
-        if (!deal.documents) deal.documents = [];
-        if (!deal.notes) deal.notes = [];
+        if (Array.isArray(deal.pricingOffers)) {
+          deal.pricingOffers = deal.pricingOffers.map((p) => ({
+            id: p.id,
+            dateSent: p.dateSent,
+            filename: p.filename
+          }));
+        } else {
+          deal.pricingOffers = [];
+        }
+        deal.documents = [];
+        deal.notes = [];
+        const stageTime = stageEnteredMap.get(`${deal.id}_${deal.stage}`) || (deal.createdAt ? new Date(deal.createdAt).getTime() : nowMs);
+        const daysInStage = Math.max(0, Math.floor((nowMs - stageTime) / 864e5));
+        deal.daysInStage = daysInStage;
+        const rules = stageReminders.filter((r) => r.stage === deal.stage);
+        let reminderColor = "none";
+        if (rules.length > 0 && deal.stage !== "lost") {
+          const matchingRules = rules.filter((r) => {
+            if (daysInStage < r.days) return false;
+            const actionTimes = [deal.createdAt ? new Date(deal.createdAt).getTime() : nowMs];
+            if (deal.updatedAt) {
+              const t = new Date(deal.updatedAt).getTime();
+              if (!isNaN(t)) actionTimes.push(t);
+            }
+            const lastAudit = lastAuditMap.get(deal.id);
+            if (lastAudit) actionTimes.push(lastAudit);
+            const lastAction = Math.max(...actionTimes);
+            if (Math.floor((nowMs - lastAction) / 864e5) < r.days) return false;
+            const lastAct = lastActivityMap.get(deal.id);
+            if (lastAct && Math.floor((nowMs - lastAct) / 864e5) < r.days) return false;
+            return true;
+          });
+          if (matchingRules.length > 0) {
+            matchingRules.sort((a, b) => b.days - a.days);
+            reminderColor = matchingRules[0].color || "none";
+          }
+        }
+        deal.reminderColor = reminderColor;
         return deal;
       });
       res.json({
         users: parsedUsers,
         me,
-        companies: parseJsonFields(companies, ["urls", "contacts"]),
+        companies: parseJsonFields(companies, ["urls"]),
         deals: parsedDeals,
         leadSources: parseJsonFields(leadSources, []),
         segments: parseJsonFields(segments, []),
@@ -1873,8 +1933,8 @@ Tento odkaz plat\xED 10 minut.`,
         lostReasons: parseJsonFields(lostReasons, []),
         contactPositions: parseJsonFields(contactPositions, []),
         stageReminders: parseJsonFields(stageReminders, []),
-        auditLogs: auditRows,
-        activities: parsedActivities
+        auditLogs: [],
+        activities: []
       });
     } catch (err) {
       console.error("DB State Error:", err);

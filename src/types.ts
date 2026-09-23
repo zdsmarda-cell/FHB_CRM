@@ -192,6 +192,8 @@ export interface Deal {
   lostBy?: string;
   lostAt?: string;
   lostFromStage?: Stage;
+  daysInStage?: number;
+  reminderColor?: string;
 }
 
 export interface AuditLog {

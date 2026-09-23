@@ -66,6 +66,9 @@ export const formatDisplayUrl = (url: string): string => {
 };
 
 export const getDealDaysInStage = (deal: Deal, auditLogs: AuditLog[]): number => {
+  if (deal && deal.daysInStage !== undefined) {
+    return deal.daysInStage;
+  }
   const relevantLogs = (auditLogs || [])
     .filter(a => a.dealId === deal.id && a.field === 'stage' && a.newValue === deal.stage)
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -192,6 +195,9 @@ export const getDealReminderColor = (
   auditLogs: AuditLog[],
   activities: Activity[] = []
 ): string => {
+  if (deal && deal.reminderColor !== undefined) {
+    return deal.reminderColor;
+  }
   if (!stageReminders || stageReminders.length === 0 || deal.stage === 'lost') return 'none';
   const rules = stageReminders.filter(r => r.stage === deal.stage);
   if (rules.length === 0) return 'none';

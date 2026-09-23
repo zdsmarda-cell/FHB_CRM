@@ -159,6 +159,9 @@ export const useStore = create<StoreState>((set, get) => {
             deals: data.deal
               ? state.deals.map(d => d.id === dealId ? { ...d, ...data.deal } : d)
               : state.deals,
+            companies: data.company
+              ? state.companies.map(c => c.id === data.company.id ? { ...c, ...data.company } : c)
+              : state.companies,
             auditLogs: [
               ...state.auditLogs.filter(log => log.dealId !== dealId),
               ...(data.auditLogs || [])
