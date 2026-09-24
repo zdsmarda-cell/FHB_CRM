@@ -328,12 +328,15 @@ export function AdminCompanyModal({ company, onClose, onSaveSuccess }: AdminComp
                               href={c.linkedin.startsWith('http://') || c.linkedin.startsWith('https://') ? c.linkedin : `https://${c.linkedin}`} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="text-[#0A66C2] hover:underline inline-flex items-center gap-1"
+                              className="text-[#0A66C2] hover:underline inline-flex items-center gap-1 max-w-[220px] min-w-0"
+                              title={c.linkedin}
                               onClick={e => e.stopPropagation()}
                             >
-                              <Linkedin className="w-3.5 h-3.5" />
-                              <span className="truncate max-w-[200px]">{c.linkedin}</span>
-                              <ExternalLink className="w-3 h-3 opacity-70" />
+                              <Linkedin className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">
+                                {c.linkedin.length > 35 ? `${c.linkedin.slice(0, 35)}...` : c.linkedin}
+                              </span>
+                              <ExternalLink className="w-3 h-3 opacity-70 shrink-0" />
                             </a>
                           )}
                         </div>

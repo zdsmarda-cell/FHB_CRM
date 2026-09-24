@@ -1711,12 +1711,12 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
                   </div>
                 )}
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-medium text-gray-900">{contact.name}</h4>
-                    {contact.isActive === false && <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded">Inactive</span>}
-                    {contact.doNotContact && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded" title={`Reason: ${contact.doNotContactReason || 'No reason provided'}\nBy: ${users.find(u => u.id === contact.doNotContactBy)?.name || 'Unknown'}\nOn: ${contact.doNotContactTimestamp ? format(parseISO(contact.doNotContactTimestamp), 'MMM d, yyyy') : 'Unknown'}`}>Do Not Contact</span>}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h4 className="font-medium text-gray-900 truncate">{contact.name}</h4>
+                    {contact.isActive === false && <span className="text-xs font-semibold text-gray-500 bg-gray-200 px-2 py-0.5 rounded shrink-0">Inactive</span>}
+                    {contact.doNotContact && <span className="text-xs font-semibold text-red-600 bg-red-100 px-2 py-0.5 rounded shrink-0" title={`Reason: ${contact.doNotContactReason || 'No reason provided'}\nBy: ${users.find(u => u.id === contact.doNotContactBy)?.name || 'Unknown'}\nOn: ${contact.doNotContactTimestamp ? format(parseISO(contact.doNotContactTimestamp), 'MMM d, yyyy') : 'Unknown'}`}>Do Not Contact</span>}
                   </div>
                   {canEdit && (
                     <div className="flex items-center gap-2">
@@ -1746,38 +1746,40 @@ function ContactsManager({ company, canEdit }: { company: Company, canEdit: bool
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 truncate">
                   {contactPositions.find(p => p.id === contact.position || p.name === contact.position)?.name || contact.position}
                 </p>
-                <div className="mt-2 text-sm text-gray-600 flex flex-col gap-1">
+                <div className="mt-2 text-sm text-gray-600 flex flex-col gap-1 min-w-0">
                   {contact.email && (
-                    <div className="flex items-center gap-2 relative w-fit">
+                    <div className="flex items-center gap-2 relative w-fit max-w-full min-w-0">
                       {contact.doNotContact && <Ban className="absolute -left-1 text-red-500/80 w-5 h-5 z-10" />}
-                      <Mail className={`w-4 h-4 ${contact.doNotContact ? 'text-gray-300' : 'text-gray-400'}`} />
-                      <span className={contact.doNotContact ? 'text-gray-400 line-through' : ''}>{contact.email}</span>
+                      <Mail className={`w-4 h-4 shrink-0 ${contact.doNotContact ? 'text-gray-300' : 'text-gray-400'}`} />
+                      <span className={`truncate ${contact.doNotContact ? 'text-gray-400 line-through' : ''}`}>{contact.email}</span>
                     </div>
                   )}
                   {contact.phone && (
-                    <div className="flex items-center gap-2 relative w-fit">
+                    <div className="flex items-center gap-2 relative w-fit max-w-full min-w-0">
                       {contact.doNotContact && <Ban className="absolute -left-1 text-red-500/80 w-5 h-5 z-10" />}
-                      <Phone className={`w-4 h-4 ${contact.doNotContact ? 'text-gray-300' : 'text-gray-400'}`} />
-                      <span className={contact.doNotContact ? 'text-gray-400 line-through' : ''}>
+                      <Phone className={`w-4 h-4 shrink-0 ${contact.doNotContact ? 'text-gray-300' : 'text-gray-400'}`} />
+                      <span className={`truncate ${contact.doNotContact ? 'text-gray-400 line-through' : ''}`}>
                         {contact.phonePrefix ? `${contact.phonePrefix} ` : ''}{contact.phone}
                       </span>
                     </div>
                   )}
                   {contact.linkedin && (
-                    <div className="flex items-center gap-2 relative w-fit max-w-full">
+                    <div className="flex items-center gap-2 relative max-w-full min-w-0">
                       <Linkedin className="w-4 h-4 shrink-0 text-[#0A66C2]" />
                       <a 
                         href={contact.linkedin.startsWith('http://') || contact.linkedin.startsWith('https://') ? contact.linkedin : `https://${contact.linkedin}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="text-[#0A66C2] hover:text-[#004182] hover:underline inline-flex items-center gap-1 font-medium text-xs sm:text-sm truncate"
+                        className="text-[#0A66C2] hover:text-[#004182] hover:underline inline-flex items-center gap-1 font-medium text-xs sm:text-sm max-w-full min-w-0"
                         title={contact.linkedin}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <span className="truncate">{contact.linkedin}</span>
+                        <span className="truncate block min-w-0">
+                          {contact.linkedin.length > 35 ? `${contact.linkedin.slice(0, 35)}...` : contact.linkedin}
+                        </span>
                         <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
                       </a>
                     </div>
