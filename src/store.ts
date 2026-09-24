@@ -102,10 +102,22 @@ export const useStore = create<StoreState>((set, get) => {
 
   // Helper function to sync with DB
   const syncToDb = async (entities: Record<string, any[]>) => {
+    const cleanedEntities: Record<string, any[]> = {};
+    for (const [table, rows] of Object.entries(entities)) {
+      if (table === 'deals' && Array.isArray(rows)) {
+        cleanedEntities[table] = rows.map(r => {
+          if (!r || typeof r !== 'object') return r;
+          const { daysInStage, reminderColor, ...rest } = r;
+          return rest;
+        });
+      } else {
+        cleanedEntities[table] = rows;
+      }
+    }
     const res = await apiFetch('/api/sync-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entities })
+      body: JSON.stringify({ entities: cleanedEntities })
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));

@@ -2207,20 +2207,72 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     res.json(latestClientEvent || {});
   });
 
+  const allowedSyncTables = new Set([
+    'users',
+    'companies',
+    'deals',
+    'activities',
+    'audit_logs',
+    'lead_sources',
+    'segments',
+    'ecommerce_platforms',
+    'it_integrations',
+    'lost_reasons',
+    'storage_types',
+    'contact_positions',
+    'stage_reminders',
+    'email_logs'
+  ]);
+
+  const tableColumnsCache = new Map<string, { columns: Set<string>; cachedAt: number }>();
+
+  async function getTableColumns(conn: any, tableName: string): Promise<Set<string>> {
+    const cached = tableColumnsCache.get(tableName);
+    const now = Date.now();
+    if (cached && (now - cached.cachedAt < 5 * 60 * 1000)) {
+      return cached.columns;
+    }
+    try {
+      const [cols] = await conn.query(`SHOW COLUMNS FROM \`${tableName}\``);
+      const set = new Set<string>((cols as any[]).map(c => c.Field));
+      tableColumnsCache.set(tableName, { columns: set, cachedAt: now });
+      return set;
+    } catch (e) {
+      if (cached) return cached.columns;
+      return new Set<string>();
+    }
+  }
+
   app.post('/api/sync-action', authMiddleware, async (req, res) => {
     try {
       const { entities } = req.body;
+      if (!entities || typeof entities !== 'object') {
+        return res.status(400).json({ error: 'Invalid entities' });
+      }
+
       const connection = await pool.getConnection();
       await connection.beginTransaction();
       
       try {
         for (const [table, rows] of Object.entries(entities as Record<string, any[]>)) {
-          if (!rows || rows.length === 0) continue;
+          if (!rows || !Array.isArray(rows) || rows.length === 0) continue;
+          if (!allowedSyncTables.has(table)) {
+            console.warn(`[SYNC] Skipped unrecognized table: ${table}`);
+            continue;
+          }
+
+          const validColumns = await getTableColumns(connection, table);
           
           // Construct REPLACE INTO
           for (const row of rows) {
-             const keys = Object.keys(row);
-             const values = Object.values(row).map(v => {
+             if (!row || typeof row !== 'object') continue;
+
+             // Filter out any virtual, UI-only, or non-existent columns (e.g. daysInStage, reminderColor)
+             const keys = Object.keys(row).filter(k => validColumns.size === 0 || validColumns.has(k));
+             if (keys.length === 0) continue;
+
+             const values = keys.map(k => {
+               const v = row[k];
                if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(v)) {
                  return new Date(v);
                }
@@ -2228,8 +2280,8 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
              });
              
              const placeholders = keys.map(() => '?').join(', ');
-             const updateStmts = keys.map(k => `${k} = VALUES(${k})`).join(', ');
-             const sql = `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateStmts}`;
+             const updateStmts = keys.map(k => `\`${k}\` = VALUES(\`${k}\`)`).join(', ');
+             const sql = `INSERT INTO \`${table}\` (${keys.map(k => `\`${k}\``).join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateStmts}`;
              
              await connection.query(sql, values);
           }
