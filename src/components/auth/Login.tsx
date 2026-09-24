@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, hashPassword } from '../../store';
 import { Briefcase, ArrowLeft, Mail } from 'lucide-react';
@@ -7,7 +7,13 @@ import { useNavigate } from 'react-router-dom';
 export function Login() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { login, requestPasswordReset } = useStore();
+  const { login, requestPasswordReset, currentUser } = useStore();
+
+  useEffect(() => {
+    if (currentUser) {
+      navigate('/', { replace: true });
+    }
+  }, [currentUser, navigate]);
   
   const [isForgot, setIsForgot] = useState(false);
   const [email, setEmail] = useState('');

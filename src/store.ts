@@ -130,6 +130,16 @@ export const useStore = create<StoreState>((set, get) => {
       if (inflightRefreshPromise) {
         return inflightRefreshPromise;
       }
+
+      // If user has no tokens at all, they cannot be authenticated.
+      // Immediately finalize initialization and avoid calling protected /api/state.
+      const token = localStorage.getItem('jwt_token');
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!token && !refreshToken) {
+        set({ currentUser: null, isInitialized: true });
+        return;
+      }
+
       inflightRefreshPromise = (async () => {
         try {
           const res = await apiFetch('/api/state');
@@ -152,10 +162,13 @@ export const useStore = create<StoreState>((set, get) => {
               currentUser: data.me || null,
               isInitialized: true
             }));
+          } else {
+            // Server returned 401 or other error - user is not authenticated
+            set({ currentUser: null, isInitialized: true });
           }
         } catch (err) {
           console.warn('DB state not available', err);
-          set({ isInitialized: true });
+          set({ currentUser: null, isInitialized: true });
         } finally {
           inflightRefreshPromise = null;
         }
@@ -500,7 +513,8 @@ export const useStore = create<StoreState>((set, get) => {
           localStorage.setItem('jwt_token', data.token);
           if (data.refreshToken) localStorage.setItem('refresh_token', data.refreshToken);
         }
-        set({ currentUser: data.user });
+        set({ currentUser: data.user, isInitialized: true });
+        await get().refreshState();
       } catch (err: any) {
         throw new Error(err.message || 'invalidCredentials');
       }
@@ -509,7 +523,13 @@ export const useStore = create<StoreState>((set, get) => {
   logout: () => {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('refresh_token');
-    set({ currentUser: null });
+    set({
+      currentUser: null,
+      deals: [],
+      companies: [],
+      users: [],
+      isInitialized: true
+    });
   },
 
   requestPasswordReset: async (email) => {
