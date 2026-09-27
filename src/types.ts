@@ -270,6 +270,7 @@ export interface StoreState {
   runRemindersCronNow: () => Promise<{ checked: number; sent: number }>;
   fetchDealDetails: (dealId: string) => Promise<void>;
   fetchFullAuditLogs: () => Promise<void>;
+  fetchFullActivities: () => Promise<void>;
   login: (email: string, passwordHash: string) => Promise<void>;
   logout: () => void;
   requestPasswordReset: (email: string) => Promise<string | undefined>; // returns token for dev purposes

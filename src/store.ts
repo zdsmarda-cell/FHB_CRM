@@ -175,8 +175,8 @@ export const useStore = create<StoreState>((set, get) => {
               lostReasons: data.lostReasons || [],
               contactPositions: data.contactPositions || [],
               stageReminders: data.stageReminders || [],
-              auditLogs: data.auditLogs !== undefined ? data.auditLogs : state.auditLogs,
-              activities: data.activities !== undefined ? data.activities : state.activities,
+              auditLogs: (data.auditLogs && data.auditLogs.length > 0) ? data.auditLogs : state.auditLogs,
+              activities: (data.activities && data.activities.length > 0) ? data.activities : state.activities,
               currentUser: data.me || null,
               isInitialized: true
             }));
@@ -233,6 +233,17 @@ export const useStore = create<StoreState>((set, get) => {
         }
       } catch (err) {
         console.warn('Failed to fetch full audit logs', err);
+      }
+    },
+    fetchFullActivities: async () => {
+      try {
+        const res = await apiFetch('/api/activities');
+        if (res.ok) {
+          const data = await res.json();
+          set({ activities: data || [] });
+        }
+      } catch (err) {
+        console.warn('Failed to fetch full activities', err);
       }
     },
     isInitialized: !hasStoredAuth(),

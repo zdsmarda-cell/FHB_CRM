@@ -77,6 +77,9 @@ export function UsersKpiView() {
   useEffect(() => {
     let isMounted = true;
     setIsLoadingLogins(true);
+    // Ensure full activities and audit logs are fetched for statistics calculations
+    store.fetchFullActivities();
+    store.fetchFullAuditLogs();
     apiFetch('/api/user_login_counts')
       .then(res => (res.ok ? res.json() : {}))
       .then(data => {
@@ -183,8 +186,8 @@ export function UsersKpiView() {
     return scope.accessibleUsers;
   }, [scope]);
 
-  // Filter deals based on date/country/region/segment, EXCLUDING test opportunities
-  const filteredDeals = useMemo(() => {
+  // Deals matching RBAC scope and company filters (country/region/segment), EXCLUDING test opportunities
+  const scopedDeals = useMemo(() => {
     return deals.filter(deal => {
       // Rule: Do statistik se nepocitaji testovaci prilezitosti!
       if (isTestDeal(deal, store)) return false;
@@ -198,15 +201,6 @@ export function UsersKpiView() {
           (deal.farmerId && scope.allowedUserIds.includes(deal.farmerId)) ||
           (deal.lostBy && scope.allowedUserIds.includes(deal.lostBy));
         if (!matchesScope) return false;
-      }
-
-      // Deal creation date filter OD - DO
-      if (deal.createdAt) {
-        const dealDateStr = deal.createdAt.substring(0, 10);
-        if (dealDateFrom && dealDateStr < dealDateFrom) return false;
-        if (dealDateTo && dealDateStr > dealDateTo) return false;
-      } else {
-        if (dealDateFrom) return false;
       }
 
       const company = companies.find(c => c.id === deal.companyId);
@@ -229,7 +223,26 @@ export function UsersKpiView() {
 
       return true;
     });
-  }, [deals, store, companies, dealDateFrom, dealDateTo, selectedCountry, selectedRegion, selectedSegment]);
+  }, [deals, store, companies, selectedCountry, selectedRegion, selectedSegment, scope]);
+
+  const scopedDealIdsSet = useMemo(() => {
+    return new Set(scopedDeals.map(d => d.id));
+  }, [scopedDeals]);
+
+  // Filter deals based on date (for deals created within selected period)
+  const filteredDeals = useMemo(() => {
+    return scopedDeals.filter(deal => {
+      // Deal creation date filter OD - DO
+      if (deal.createdAt) {
+        const dealDateStr = deal.createdAt.substring(0, 10);
+        if (dealDateFrom && dealDateStr < dealDateFrom) return false;
+        if (dealDateTo && dealDateStr > dealDateTo) return false;
+      } else {
+        if (dealDateFrom) return false;
+      }
+      return true;
+    });
+  }, [scopedDeals, dealDateFrom, dealDateTo]);
 
   const filteredDealIdsSet = useMemo(() => {
     return new Set(filteredDeals.map(d => d.id));
@@ -240,7 +253,7 @@ export function UsersKpiView() {
     // Pre-group deal audit logs by dealId for performance
     const stageLogsByDeal = new Map<string, typeof auditLogs>();
     auditLogs.forEach(log => {
-      if (log.dealId && filteredDealIdsSet.has(log.dealId) && log.field === 'stage') {
+      if (log.dealId && scopedDealIdsSet.has(log.dealId) && log.field === 'stage') {
         const arr = stageLogsByDeal.get(log.dealId) || [];
         arr.push(log);
         stageLogsByDeal.set(log.dealId, arr);
@@ -253,10 +266,16 @@ export function UsersKpiView() {
     });
 
     return accessibleUsers.map(user => {
-      // Helper for matching user by id, name, or email
+      // Robust helper for matching user by id, name, or email (case-insensitive & trimmed)
       const isUserMatch = (val: string | undefined | null) => {
         if (!val) return false;
-        return val === user.id || val === user.name || val === user.email;
+        const v = String(val).trim().toLowerCase();
+        if (!v) return false;
+        return (
+          (Boolean(user.id) && v === user.id.trim().toLowerCase()) ||
+          (Boolean(user.name) && v === user.name.trim().toLowerCase()) ||
+          (Boolean(user.email) && v === user.email.trim().toLowerCase())
+        );
       };
 
       // 1. Kolikrát se do systému přihlásil
@@ -266,11 +285,16 @@ export function UsersKpiView() {
       const dealsCreatedCount = filteredDeals.filter(d => isUserMatch(d.createdBy)).length;
 
       // 3. Kolik zadal aktivit (které nebyly smazány)
-      // Must not be deleted (isVisible !== false) and if linked to deal, deal must be in filtered set
+      // Must not be deleted (isVisible !== false unless admin/cso/own) and if linked to deal, deal must be in scoped set
+      const canSeeSensitive = !currentUser || currentUser.role === 'administrator' || currentUser.role === 'cso' || currentUser.id === user.id;
       const activitiesCount = store.activities.filter(a => {
         if (!isUserMatch(a.createdBy)) return false;
-        if (a.isVisible === false) return false;
-        if (a.dealId && !filteredDealIdsSet.has(a.dealId)) return false;
+        if (a.isVisible === false && !canSeeSensitive) return false;
+        if (a.dealId && !scopedDealIdsSet.has(a.dealId)) return false;
+        // Date range filter for activities (evaluates when activity took place or was created)
+        const actDateStr = (a.date || a.createdAt || '').substring(0, 10);
+        if (dealDateFrom && actDateStr && actDateStr < dealDateFrom) return false;
+        if (dealDateTo && actDateStr && actDateStr > dealDateTo) return false;
         return true;
       }).length;
 
@@ -278,14 +302,17 @@ export function UsersKpiView() {
       // Audit logs where changedBy matches user and field !== 'stage'
       const attributeUpdatesCount = auditLogs.filter(log => {
         if (!isUserMatch(log.changedBy)) return false;
-        if (log.dealId && !filteredDealIdsSet.has(log.dealId)) return false;
+        if (log.dealId && !scopedDealIdsSet.has(log.dealId)) return false;
         if (log.field === 'stage') return false;
+        const logDateStr = (log.timestamp || '').substring(0, 10);
+        if (dealDateFrom && logDateStr && logDateStr < dealDateFrom) return false;
+        if (dealDateTo && logDateStr && logDateStr > dealDateTo) return false;
         return true;
       }).length;
 
       // 5. Kolik má na sobě aktuálně příležitostí přiřazených
       // Open deals currently assigned to user based on role/stage
-      const assignedDealsCount = filteredDeals.filter(deal => {
+      const assignedDealsCount = scopedDeals.filter(deal => {
         if (deal.stage === 'lost') return false;
         if (deal.stage === 'opportunity' || deal.stage === 'lead') {
           return deal.hunterId === user.id;
@@ -305,10 +332,15 @@ export function UsersKpiView() {
 
       // 6. Kolik zadal poznámek k příležitostem
       let notesCount = 0;
-      filteredDeals.forEach(deal => {
+      scopedDeals.forEach(deal => {
         if (deal.notes && Array.isArray(deal.notes)) {
           deal.notes.forEach(n => {
-            if (isUserMatch(n.createdBy)) notesCount++;
+            if (isUserMatch(n.createdBy)) {
+              const noteDateStr = (n.createdAt || '').substring(0, 10);
+              if (dealDateFrom && noteDateStr && noteDateStr < dealDateFrom) return;
+              if (dealDateTo && noteDateStr && noteDateStr > dealDateTo) return;
+              notesCount++;
+            }
           });
         }
       });
@@ -328,14 +360,16 @@ export function UsersKpiView() {
 
       // Zkontroluj aktivity
       store.activities.forEach(a => {
-        if (isUserMatch(a.createdBy) && a.isVisible !== false) {
-          recordTime(a.createdAt);
-          recordTime(a.date);
+        if (isUserMatch(a.createdBy) && (a.isVisible !== false || canSeeSensitive)) {
+          if (!a.dealId || scopedDealIdsSet.has(a.dealId)) {
+            recordTime(a.createdAt);
+            recordTime(a.date);
+          }
         }
       });
 
       // Zkontroluj poznámky a vytvořené příležitosti
-      deals.forEach(deal => {
+      scopedDeals.forEach(deal => {
         if (deal.notes && Array.isArray(deal.notes)) {
           deal.notes.forEach(n => {
             if (isUserMatch(n.createdBy)) {
@@ -452,7 +486,7 @@ export function UsersKpiView() {
         conversionRatePercent
       };
     });
-  }, [accessibleUsers, filteredDeals, filteredDealIdsSet, auditLogs, loginCounts, store.activities, t, i18n.language]);
+  }, [accessibleUsers, filteredDeals, filteredDealIdsSet, scopedDeals, scopedDealIdsSet, auditLogs, loginCounts, store.activities, dealDateFrom, dealDateTo, currentUser, t, i18n.language]);
 
   // Filter rows by Selected Role and Selected Users, Last Activity, and General Search
   const filteredUserRows = useMemo(() => {

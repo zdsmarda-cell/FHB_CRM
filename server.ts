@@ -1962,6 +1962,27 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     }
   });
 
+  app.get('/api/activities', authMiddleware, async (req, res) => {
+    try {
+      const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC LIMIT 25000");
+      const parseJsonFields = (arr: any[], fields: string[]) => arr.map(item => {
+        fields.forEach(f => {
+          if (typeof item[f] === 'string') {
+            try { item[f] = JSON.parse(item[f]); } catch (e) { /* ignore */ }
+          }
+        });
+        if ('isActive' in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ('isVisible' in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
+        return item;
+      });
+      const parsedActivities = parseJsonFields(activityRows as any[], ['participants']);
+      res.json(parsedActivities);
+    } catch (err: any) {
+      console.error('Activities fetch error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/deals/:id/details', authMiddleware, async (req, res) => {
     try {
       const dealId = req.params.id;
