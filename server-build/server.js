@@ -73,12 +73,20 @@ async function startServer() {
     password: process.env.DB_PASSWORD || "",
     database: process.env.DB_NAME || "",
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 25,
+    maxIdle: 10,
+    idleTimeout: 6e4,
     queueLimit: 0,
-    connectTimeout: 2e4,
+    connectTimeout: 1e4,
     enableKeepAlive: true,
     keepAliveInitialDelay: 1e4
   });
+  setInterval(async () => {
+    try {
+      await pool.query("SELECT 1");
+    } catch (err) {
+    }
+  }, 3e4);
   try {
     const connection = await pool.getConnection();
     try {
@@ -149,7 +157,10 @@ async function startServer() {
         "ALTER TABLE storage_types CHANGE isVisible isActive BOOLEAN DEFAULT TRUE;",
         "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
-        "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;"
+        "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;",
+        "CREATE INDEX idx_audit_logs_deal_field ON audit_logs(dealId, field);",
+        "CREATE INDEX idx_audit_logs_field ON audit_logs(field);",
+        "CREATE INDEX idx_activities_dealId ON activities(dealId);"
       ];
       for (const m of migrations) {
         try {

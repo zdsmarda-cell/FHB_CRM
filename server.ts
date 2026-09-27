@@ -88,12 +88,23 @@ async function startServer() {
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || '',
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 25,
+    maxIdle: 10,
+    idleTimeout: 60000,
     queueLimit: 0,
-    connectTimeout: 20000,
+    connectTimeout: 10000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000
   });
+
+  // Keep-alive heartbeat ping every 30s to keep remote connection warm and avoid NAT/firewall drops
+  setInterval(async () => {
+    try {
+      await pool.query('SELECT 1');
+    } catch (err: any) {
+      // Non-fatal keepalive query error
+    }
+  }, 30000);
 
   // Run auto-migrations
   try {
@@ -170,6 +181,9 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
         "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;",
+        "CREATE INDEX idx_audit_logs_deal_field ON audit_logs(dealId, field);",
+        "CREATE INDEX idx_audit_logs_field ON audit_logs(field);",
+        "CREATE INDEX idx_activities_dealId ON activities(dealId);",
       ];
       for (const m of migrations) {
         try {

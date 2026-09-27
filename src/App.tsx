@@ -7,7 +7,7 @@ import { Header } from './components/layout/Header';
 import { LayoutDashboard, Users, Info, BarChart3 } from 'lucide-react';
 import { cn } from './lib/utils';
 import { getSubordinateIds } from './lib/permissions';
-import { useStore, CLIENT_ID } from './store';
+import { useStore, CLIENT_ID, apiFetch } from './store';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { Login } from './components/auth/Login';
 import { ResetPassword } from './components/auth/ResetPassword';
@@ -23,9 +23,9 @@ function MainLayout() {
   const [notification, setNotification] = useState<{ message: string, id: number } | null>(null);
 
   useEffect(() => {
-    // Check initially when the app loads
+    // Check postponed deals initially
     const store = useStore.getState();
-    store.refreshState().then(() => store.checkPostponedDeals());
+    store.checkPostponedDeals();
 
     // Websocket handler
     const handleDataChanged = (data: any) => {
@@ -47,15 +47,14 @@ function MainLayout() {
     let lastHandledTimestamp = Date.now();
     const pollInterval = setInterval(async () => {
       try {
-        const res = await fetch('/api/latest-activity', {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('jwt_token')}` }
-        });
+        const currentStore = useStore.getState();
+        if (!currentStore.currentUser) return;
+        const res = await apiFetch('/api/latest-activity');
         if (res.ok) {
           const data = await res.json();
           if (data && data.timestamp && data.timestamp > lastHandledTimestamp) {
             lastHandledTimestamp = data.timestamp;
             if (data.clientId !== CLIENT_ID) {
-              const currentStore = useStore.getState();
               currentStore.refreshState();
               const changedUser = currentStore.users.find(u => u.id === data.userId);
               const userName = changedUser?.name || data.userName || 'Nějaký uživatel';
@@ -72,7 +71,9 @@ function MainLayout() {
     // Periodic complete refresh (every 2 minutes)
     const periodicRefresh = setInterval(() => {
       const store = useStore.getState();
-      store.refreshState().then(() => store.checkPostponedDeals());
+      if (store.currentUser) {
+        store.refreshState().then(() => store.checkPostponedDeals());
+      }
     }, 120000);
 
     // Background calendar sync - non-blocking, delayed to avoid interfering with initial page interaction
@@ -182,9 +183,23 @@ function MainLayout() {
   );
 }
 
-export default function App() {
-  const { isInitialized } = useStore();
+function ProtectedLayout() {
+  const { currentUser, isInitialized, refreshState } = useStore();
+  const token = localStorage.getItem('jwt_token');
+  const refreshToken = localStorage.getItem('refresh_token');
 
+  useEffect(() => {
+    if ((token || refreshToken) && !isInitialized) {
+      refreshState();
+    }
+  }, [token, refreshToken, isInitialized, refreshState]);
+
+  // If there are no tokens at all, redirect to login immediately without showing loader
+  if (!token && !refreshToken) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // If store is still initializing (loading data for authenticated user)
   if (!isInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 font-medium text-gray-500">
@@ -193,12 +208,21 @@ export default function App() {
     );
   }
 
+  // If finished initializing but no user (token was invalid or expired)
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <MainLayout />;
+}
+
+export default function App() {
   return (
     <HashRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password/:token" element={<ResetPassword />} />
-        <Route path="/*" element={<MainLayout />} />
+        <Route path="/*" element={<ProtectedLayout />} />
       </Routes>
     </HashRouter>
   );

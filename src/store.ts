@@ -9,10 +9,32 @@ const DEFAULT_PASS = hashPassword('password123');
 
 export const CLIENT_ID = uuidv4();
 
+const hasStoredAuth = () => {
+  try {
+    return Boolean(localStorage.getItem('jwt_token') || localStorage.getItem('refresh_token'));
+  } catch {
+    return false;
+  }
+};
+
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
-export const apiFetch = async (url: string, options: RequestInit = {}) => {
+export const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 15000): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...options,
+      signal: options.signal || controller.signal
+    });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export const apiFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
   let token = localStorage.getItem('jwt_token');
   const headers = new Headers(options.headers || {});
   
@@ -22,18 +44,18 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
     options.headers = headers;
   }
   
-  let res = await fetch(url, options);
+  let res = await fetchWithTimeout(url, options);
 
   if (res.status === 401 && url !== '/api/auth/login' && url !== '/api/auth/refresh-session') {
     const refreshToken = localStorage.getItem('refresh_token');
     if (refreshToken) {
       if (!isRefreshing) {
         isRefreshing = true;
-        refreshPromise = fetch('/api/auth/refresh-session', {
+        refreshPromise = fetchWithTimeout('/api/auth/refresh-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken })
-        }).then(async refreshRes => {
+        }, 10000).then(async refreshRes => {
           if (refreshRes.ok) {
             const data = await refreshRes.json();
             localStorage.setItem('jwt_token', data.token);
@@ -42,7 +64,7 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
             return true;
           }
           return false;
-        }).finally(() => {
+        }).catch(() => false).finally(() => {
           isRefreshing = false;
           refreshPromise = null;
         });
@@ -56,15 +78,16 @@ export const apiFetch = async (url: string, options: RequestInit = {}) => {
         if (newToken) retryHeaders.set('Authorization', `Bearer ${newToken}`);
         retryHeaders.set('X-Client-Id', CLIENT_ID);
         options.headers = retryHeaders;
-        res = await fetch(url, options);
+        res = await fetchWithTimeout(url, options);
       } else {
         localStorage.removeItem('jwt_token');
         localStorage.removeItem('refresh_token');
-        useStore.setState({ currentUser: null });
+        useStore.setState({ currentUser: null, isInitialized: true });
       }
     } else {
       localStorage.removeItem('jwt_token');
-      useStore.setState({ currentUser: null });
+      localStorage.removeItem('refresh_token');
+      useStore.setState({ currentUser: null, isInitialized: true });
     }
   }
 
@@ -95,11 +118,6 @@ export const formatAuditValue = (state: StoreState, field: string, val: any): st
 let inflightRefreshPromise: Promise<void> | null = null;
 
 export const useStore = create<StoreState>((set, get) => {
-  // Try loading initial state from DB after a small delay
-  setTimeout(() => {
-    get().refreshState();
-  }, 0);
-
   // Helper function to sync with DB
   const syncToDb = async (entities: Record<string, any[]>) => {
     const cleanedEntities: Record<string, any[]> = {};
@@ -163,11 +181,16 @@ export const useStore = create<StoreState>((set, get) => {
               isInitialized: true
             }));
           } else {
-            // Server returned 401 or other error - user is not authenticated
+            // Server returned 401 or other error - user session expired or invalid
+            localStorage.removeItem('jwt_token');
+            localStorage.removeItem('refresh_token');
             set({ currentUser: null, isInitialized: true });
           }
         } catch (err) {
-          console.warn('DB state not available', err);
+          console.warn('DB state not available or request failed:', err);
+          // If request fails or times out, clear credentials so user isn't stuck on white screen
+          localStorage.removeItem('jwt_token');
+          localStorage.removeItem('refresh_token');
           set({ currentUser: null, isInitialized: true });
         } finally {
           inflightRefreshPromise = null;
@@ -212,7 +235,7 @@ export const useStore = create<StoreState>((set, get) => {
         console.warn('Failed to fetch full audit logs', err);
       }
     },
-    isInitialized: false,
+    isInitialized: !hasStoredAuth(),
     users: [],
     companies: [],
     deals: [],
