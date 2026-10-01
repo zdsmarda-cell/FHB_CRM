@@ -44,7 +44,7 @@ const generatePDF = (lang, outputPath) => {
     
     const stagesDetailed = isCS ? [
       {
-        name: '1. Opportunity (Oportunita / Zájemce) [Garant: Hunter]',
+        name: '1. Lead (Zajemce) [Garant: Hunter]',
         reqs: [
           'Prirazeni garanta z roli Hunter (Hunter ID).',
           'Vyplnene ICO v profilu spolecnosti.',
@@ -52,12 +52,12 @@ const generatePDF = (lang, outputPath) => {
         ]
       },
       {
-        name: '2. Lead (Kvalifikovany lead) [Garant: Hunter]',
+        name: '2. Oportunita (Kvalifikovana obchodni prilezitost / SQL) [Garant: Hunter]',
         reqs: [
           'Prirazeni garanta z roli Hunter (Hunter ID).',
           'Vyplneny Zdroj leadu (Lead Source z ciselniku).',
           'Vyplnena E-commerce platforma (Shoptet, WooCommerce, Custom API apod.).',
-          'Kladny odhadovany mesicni pocet zasilok (> 0).',
+          'Kladny odhadovany mesicni pocet zasilek (> 0).',
           'Kvalifikace SQL: Po splneni podminek se nad ikonou huntera v Kanbanu (vpravo uprostred) zobrazi tlacitko [SQL ->] pro primy posun do Discovery s potvrzujici hlaskou.'
         ]
       },
@@ -105,7 +105,7 @@ const generatePDF = (lang, outputPath) => {
       }
     ] : [
       {
-        name: '1. Opportunity [Owner: Hunter]',
+        name: '1. Lead [Owner: Hunter]',
         reqs: [
           'Assigned Hunter (Hunter ID).',
           'Company ID / Registration Number.',
@@ -113,7 +113,7 @@ const generatePDF = (lang, outputPath) => {
         ]
       },
       {
-        name: '2. Qualified Lead [Owner: Hunter]',
+        name: '2. Opportunity (Qualified Opportunity / SQL) [Owner: Hunter]',
         reqs: [
           'Assigned Hunter (Hunter ID).',
           'Selected Lead Source from enumeration.',
@@ -183,7 +183,7 @@ const generatePDF = (lang, outputPath) => {
     const rolesCS = [
       {
         name: 'Hunter',
-        privileges: 'Operuje primarne v zacatcich (New -> Proposal).',
+        privileges: 'Operuje primarne v zacatcich (1. Lead -> 2. Oportunita -> Discovery).',
         actions: [
           'Vytvareni novych Dealu (Company Name, ICO, Zdroj).',
           'Vyplnovani zakladnich e-commerce platforem a Lead Sources.',
@@ -241,7 +241,7 @@ const generatePDF = (lang, outputPath) => {
     const rolesEN = [
       {
         name: 'Hunter',
-        privileges: 'Operates primarily in the early stages (New -> Proposal).',
+        privileges: 'Operates primarily in the early stages (1. Lead -> 2. Opportunity -> Discovery).',
         actions: [
           'Creates new Deals (Company Name, ID, Source).',
           'Fills basic e-commerce platforms and Lead Sources.',
@@ -309,15 +309,22 @@ const generatePDF = (lang, outputPath) => {
       doc.moveDown();
     });
 
-    // 4. GUI & Ovladani
+    // 4. Synchronizace emailu a kalendare
     doc.addPage();
-    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Pravidla hlídání neaktivity a barevné připomínky' : '4. Stage Inactivity Rules & Color Reminders'), { underline: true });
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '4. Synchronizace e-mailů a kalendářů (M365 & Google)' : '4. Email & Calendar Synchronization (M365 & Google)'), { underline: true });
+    doc.moveDown(0.5);
+    doc.font('Helvetica').fontSize(10).text(removeDiacritics(isCS 
+      ? 'Aplikace integruje e-mailovou komunikaci a kalendare ze vsech pripojenych uctu Microsoft 365 a Google Workspace:\n\n• Striktni pravidlo synchronizace e-mailu: E-maily se k prilezitosti paruji a ukladaji VYHRADNE tehdy, pokud je jejich odesilatelem nebo prijemcem e-mailova adresa navazana na danou firmu ci jeji kontaktni osoby, a SOUCASNE v komunikaci figuruje e-mailova adresa prislusneho uzivatele CRM. Jakkoliv cizi, soukrome ci nesouvisejici e-maily system striktne filtruje a neuklada (pripadne jiz existujici nesouvisejici e-maily automaticky promaze).\n\n• Trvala historie: Jednou synchronizovane e-maily zustavaji trvale v CRM historii prilezitosti zachovany i v pripade, ze je uzivatel nasledne smaze ze sve postovni schranky v Outlooku ci Gmailu.\n\n• Kalendarove schuzky: Schuzky naplanovane v CRM se automaticky vytvareji v externim kalendari uzivatele vcetne odkazu na MS Teams ci Google Meet.' 
+      : 'The application integrates email communication and calendars across all connected Microsoft 365 and Google Workspace accounts:\n\n• Strict Email Sync Matching Rule: Emails are associated with an opportunity EXCLUSIVELY if the sender or recipient list contains an email address linked to the deal company or its contacts, AND the message simultaneously involves the CRM user\'s email address. Unrelated or private messages are strictly filtered out and deleted.\n\n• Permanent CRM History: Synced emails remain permanently preserved in CRM deal history even if deleted from the user\'s Outlook or Gmail mailbox later.\n\n• Calendar Meetings: Meetings scheduled in the CRM automatically synchronize to external user calendars with MS Teams or Google Meet links.')).moveDown(1);
+
+    // 5. Pravidla hlídání neaktivity a barevné připomínky
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '5. Pravidla hlídání neaktivity a barevné připomínky' : '5. Stage Inactivity Rules & Color Reminders'), { underline: true });
     doc.moveDown(0.5);
     doc.font('Helvetica').fontSize(10).text(removeDiacritics(isCS 
       ? 'Zvýraznění karty v Kanbanu/Seznamu a odeslání notifikačního emailu nastává POUZE při současném splnění 3 podmínek:\n1. Doba v daném stavu: Uplynulo alespoň X dnů od přesunu do aktuální fáze.\n2. Doba od aktivity: Uplynulo alespoň X dnů od jakékoliv úpravy firmy/dealu, vytvoření/úpravy aktivity či smazání aktivity (smazání okamžitě restartuje lhůtu).\n3. Doba od data konání aktivity: Pokud je naplánována budoucí aktivita (např. schůzka za 10 dní), lhůta neaktivity se počítá až od data jejího uskutečnění.' 
       : 'Card highlighting in Kanban/List and email dispatch triggers ONLY upon meeting all 3 conditions:\n1. Time in Stage: At least X days have passed since moving into the stage.\n2. Time Since Activity: At least X days have passed since any update, activity edit or deletion (deletion restarts the clock).\n3. Time Since Event Date: If a future event is scheduled, inactivity countdown begins only after the event date has passed.')).moveDown(1);
 
-    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '5. Grafické ukázky a interakce (Simulace)' : '5. UI Screenshots and Interfaces'), { underline: true });
+    doc.font('Helvetica-Bold').fontSize(16).text(removeDiacritics(isCS ? '6. Grafické ukázky a interakce (Simulace)' : '6. UI Screenshots and Interfaces'), { underline: true });
     doc.moveDown();
     
     doc.font('Helvetica-Bold').fontSize(14).text(removeDiacritics(isCS ? 'D1: Horní panel (Header)' : 'D1: Header Panel'));

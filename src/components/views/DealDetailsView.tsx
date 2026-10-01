@@ -317,8 +317,8 @@ export function DealDetailsView() {
                   const formatStageLabel = (stageVal: string) => {
                     if (!stageVal) return '';
                     const stageKey = stageVal.toLowerCase();
-                    if (stageKey === 'opportunity' || stageKey === 'lead_opportunity') return t('stages.opportunity', '1. Opportunity');
-                    if (stageKey === 'lead') return t('stages.lead', '2. Qualified Lead');
+                    if (stageKey === 'opportunity' || stageKey === 'lead_opportunity') return t('stages.opportunity', '1. Lead');
+                    if (stageKey === 'lead') return t('stages.lead', '2. Oportunita');
                     if (stageKey === 'proposal' || stageKey === 'discovery_proposal') return t('stages.discovery_proposal', '3. Discovery & Proposal');
                     if (stageKey === 'contracting') return t('stages.contracting', '4. Contracting');
                     if (stageKey === 'onboarding') return t('stages.onboarding', '5. Onboarding');

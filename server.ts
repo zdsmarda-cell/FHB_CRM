@@ -1770,10 +1770,10 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       const stagesDetailed = isCS ? [
         {
           id: 'opportunity',
-          name: '1. Opportunity (Oportunita / Zájemce)',
+          name: '1. Lead (Zájemce)',
           role: 'Hunter',
           color: '#3b82f6',
-          desc: 'Úvodní zachycení potenciálního klienta do obchodního potrubí.',
+          desc: 'Úvodní zachycení potenciálního kontaktu či leadu do obchodního potrubí.',
           reqs: [
             'Přiřazení garanta z rolí Hunter (Hunter ID).',
             'Vyplněné IČO v profilu společnosti (Identifikační číslo firmy).',
@@ -1782,15 +1782,16 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         },
         {
           id: 'lead',
-          name: '2. Lead (Kvalifikovaný lead)',
+          name: '2. Oportunita (Kvalifikovaná obchodní příležitost / SQL)',
           role: 'Hunter',
           color: '#6366f1',
-          desc: 'Prověřený zájemce s potvrzeným obchodním potenciálem a kvalifikovaným profilem.',
+          desc: 'Prověřená obchodní příležitost s potvrzeným komerčním potenciálem a kvalifikovaným profilem.',
           reqs: [
             'Přiřazení garanta z rolí Hunter (Hunter ID).',
             'Vyplněný Zdroj leadu (Lead Source) - výběr ze systémového číselníku.',
             'Vyplněná E-commerce platforma (Shoptet, WooCommerce, Shopify, Custom API apod.).',
-            'Kladný odhadovaný měsíční počet zásilek (Estimated Monthly Parcels > 0).'
+            'Kladný odhadovaný měsíční počet zásilek (Estimated Monthly Parcels > 0).',
+            'SQL kvalifikace: Po splnění všech 4 podmínek se přímo na kartě v Kanbanu aktivuje zelené tlačítko [SQL →] pro okamžitý posun do fáze Discovery & Ponuka.'
           ]
         },
         {
@@ -1858,10 +1859,10 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       ] : [
         {
           id: 'opportunity',
-          name: '1. Opportunity',
+          name: '1. Lead',
           role: 'Hunter',
           color: '#3b82f6',
-          desc: 'Initial entry of a potential client into the sales pipeline.',
+          desc: 'Initial entry of a potential contact or lead into the sales pipeline.',
           reqs: [
             'Assigned Hunter (Hunter ID).',
             'Company ID / Registration Number filled in Company profile.',
@@ -1870,12 +1871,12 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         },
         {
           id: 'lead',
-          name: '2. Qualified Lead',
+          name: '2. Opportunity (Qualified Opportunity / SQL)',
           role: 'Hunter',
           color: '#6366f1',
           desc: isCS 
-            ? 'Prověřený lead s potvrzeným obchodním potenciálem (SQL). Po splnění podmínek se na kartě v Kanbanu aktivuje tlačítko [SQL →].' 
-            : 'Vetted lead with confirmed commercial potential (SQL). When conditions are met, the [SQL →] button activates on the Kanban card.',
+            ? 'Prověřená příležitost s potvrzeným obchodním potenciálem (SQL). Po splnění podmínek se na kartě v Kanbanu aktivuje tlačítko [SQL →].' 
+            : 'Vetted commercial opportunity with confirmed potential (SQL). When conditions are met, the [SQL →] button activates on the Kanban card.',
           reqs: [
             isCS ? 'Přiřazený garant z role Hunter (Hunter ID).' : 'Assigned Hunter (Hunter ID).',
             isCS ? 'Vybraný Zdroj leadu ze systémového číselníku.' : 'Selected Lead Source from system enumeration.',
@@ -1951,12 +1952,12 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       const rolesCS = [
         {
           name: 'Hunter',
-          privileges: 'Fokus na začátek obchodního cyklu (Opportunity & Lead).',
+          privileges: 'Fokus na začátek obchodního cyklu (1. Lead & 2. Oportunita).',
           actions: [
             'Zadává nové zájemce a společnosti (Název, IČO, Adresa, Kontakty).',
             'Doplňuje Zdroje leadů a E-commerce platformy.',
             'Plánuje a realizuje úvodní schůzky a telefonáty pro kvalifikaci.',
-            'Garantuje přechod z Opportunity do Lead a následně do Discovery & Proposal.'
+            'Garantuje přechod z 1. fáze (Lead) do 2. fáze (Oportunita) a následně do Discovery & Proposal.'
           ]
         },
         {
@@ -2010,12 +2011,12 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
       const rolesEN = [
         {
           name: 'Hunter',
-          privileges: 'Focus on early pipeline (Opportunity & Lead).',
+          privileges: 'Focus on early pipeline (1. Lead & 2. Opportunity).',
           actions: [
             'Enters new deals and companies (Name, Company ID, Address, Contacts).',
             'Fills Lead Sources and E-commerce Platforms.',
             'Schedules and conducts initial qualification meetings/calls.',
-            'Guarantees transition from Opportunity to Lead and Discovery.'
+            'Guarantees transition from Lead to Opportunity and Discovery.'
           ]
         },
         {
@@ -2264,22 +2265,22 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
                 <tr>
                   <td><b>${isCS ? 'Identifikace firmy (IČO)' : 'Company ID (IČO)'}</b></td>
                   <td><code>companyId</code></td>
-                  <td>${isCS ? 'Identifikační číslo firmy. Povinné pro posun z Opportunity.' : 'Company registration ID. Required to advance from Opportunity.'}</td>
+                  <td>${isCS ? 'Identifikační číslo firmy. Povinné pro posun z 1. fáze (Lead).' : 'Company registration ID. Required to advance from 1. stage (Lead).'}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? 'Zdroj leadu' : 'Lead Source'}</b></td>
                   <td><code>leadSourceId</code></td>
-                  <td>${isCS ? 'Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinné pro Lead.' : 'Acquisition source. Required for Lead stage.'}</td>
+                  <td>${isCS ? 'Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinné pro 2. fázi (Oportunita).' : 'Acquisition source. Required for 2. stage (Opportunity).'}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? 'E-commerce platforma' : 'E-commerce Platform'}</b></td>
                   <td><code>ecommercePlatformId</code></td>
-                  <td>${isCS ? 'E-shopové řešení (Shoptet, WooCommerce, Custom API). Povinné pro Lead.' : 'E-commerce platform. Required for Lead stage.'}</td>
+                  <td>${isCS ? 'E-shopové řešení (Shoptet, WooCommerce, Custom API). Povinné pro 2. fázi (Oportunita).' : 'E-commerce platform. Required for 2. stage (Opportunity).'}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? 'Měsíční počet balíků' : 'Estimated Monthly Parcels'}</b></td>
                   <td><code>estimatedMonthlyParcels</code></td>
-                  <td>${isCS ? 'Odhadovaný měsíční objem zásilek (>0). Povinné pro Lead.' : 'Estimated monthly parcel volume (>0). Required for Lead stage.'}</td>
+                  <td>${isCS ? 'Odhadovaný měsíční objem zásilek (>0). Povinné pro 2. fázi (Oportunita).' : 'Estimated monthly parcel volume (>0). Required for 2. stage (Opportunity).'}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? 'Doručovací země' : 'Delivery Countries'}</b></td>
@@ -2344,9 +2345,12 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
 
             <div class="page-break"></div>
 
-            <h2>${isCS ? '5. Kalendář, Schůzky, E-mail Audit a Logy' : '5. Calendar Integrations, Meetings, Email Audit & Logs'}</h2>
-            <p>${isCS ? 'Aplikace disponuje pokročilým propojením na externí systémy a bezpečnostním auditem:' : 'The application features advanced external integrations and security auditing:'}</p>
+            <h2>${isCS ? '5. Kalendář, Schůzky, E-mailová Synchronizace a Logy' : '5. Calendar Integrations, Meetings, Email Sync & Logs'}</h2>
+            <p>${isCS ? 'Aplikace disponuje pokročilým propojením na externí systémy, bezpečnou synchronizací a auditem:' : 'The application features advanced external integrations, secure synchronization, and security auditing:'}</p>
             <ul>
+              <li><b>${isCS ? 'Striktní synchronizace e-mailů u příležitosti (Email Sync)' : 'Strict Opportunity Email Sync'}:</b> ${isCS 
+                ? 'Při otevření detailu příležitosti (a periodicky na pozadí) probíhá automatická synchronizace e-mailové komunikace ze všech připojených účtů (Microsoft 365 i Google Workspace). <b>Zásadní pravidlo párování:</b> E-maily se k příležitosti přiřadí a uloží <u>výhradně tehdy</u>, pokud jejich odesílatel nebo příjemce obsahuje e-mailovou adresu navázanou na danou firmu či její kontaktní osoby, a SOUČASNĚ v komunikaci figuruje e-mailová adresa příslušného uživatele CRM. Jakékoliv cizí, soukromé či nesouvisející e-maily systém striktně odfiltruje a ze zobrazení i databáze promaže. Jednou synchronizované e-maily zůstávají trvale v historii CRM uloženy i v případě, že je uživatel následně smaže ze své poštovní schránky.' 
+                : 'When viewing an opportunity (and periodically in background), email communication is synced across all connected Microsoft 365 and Google Workspace user accounts. <b>Strict matching rule:</b> Emails are associated and stored with the deal <u>exclusively</u> if the sender or recipient list contains an email address linked to the company or its contacts, AND the message simultaneously involves the CRM user\'s email address. Unrelated or private messages are strictly filtered out and deleted. Synced emails remain permanently archived in CRM history even if deleted from the user\'s mailbox later.'}</li>
               <li><b>${isCS ? 'Synchronizace Kalendáře (Google & Microsoft 365)' : 'Calendar Sync (Google & Microsoft 365)'}:</b> ${isCS ? 'Uživatel si může v Nastavení profilu připojit svůj Google nebo Microsoft účet. Schůzky naplánované v CRM se automaticky vytvářejí v externím kalendáři včetně odkazů na Google Meet nebo MS Teams.' : 'Users can connect Google or Microsoft accounts in Settings. Meetings created in CRM automatically populate external calendars with Meet/Teams links.'}</li>
               <li><b>${isCS ? 'E-mailový Audit (Workspace & M365)' : 'Email Audit Search'}:</b> ${isCS ? 'Administrátor má k dispozici modul pro dohled nad e-mailovou komunikací. Umožňuje vyhledávat v doručené i odchozí poště propojených účtů dle IČO nebo názvu firmy pro zpětné ověření dohod.' : 'Admins can search incoming and outgoing email communications across connected workspace accounts by Company ID or name.'}</li>
               <li><b>${isCS ? 'Auditní stopa změn (Audit Trail)' : 'Audit Trail'}:</b> ${isCS ? 'U každého dealu je uchovávána kompletní historie úprav polí, včetně autora změn, původní a nové hodnoty a časového razítka.' : 'Every deal maintains a complete field change history, recording the author, old/new values, and timestamp.'}</li>
@@ -2403,9 +2407,9 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
 
             <h2>${isCS ? '7. Uživatelské Rozhraní a Ovládací Prvky' : '7. User Interface & Controls'}</h2>
             <ul>
-              <li><b>${isCS ? 'Tlačítko posunu kvalifikovaného leadu (SQL →)' : 'Qualified Lead Advance Button (SQL →)'}:</b> ${isCS 
-                ? 'Pokud příležitost ve fázi Lead splňuje všechny podmínky pro přesun do fáze Discovery & Ponuka (přiřazený hunter, zdroj leadu, e-commerce platforma a odhadovaný počet zásilek > 0), zobrazí se přímo na kartě v Kanban desce nad ikonou garanta (vpravo uprostřed) zelené tlačítko „SQL →“. Kliknutím může kdokoliv (včetně huntera) okamžitě odeslat příležitost do následující fáze Discovery & Ponuka, přičemž systém zobrazí lokalizovanou potvrzující zprávu s názvem přesunuté firmy.' 
-                : 'When a deal in the Lead stage fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL →" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
+              <li><b>${isCS ? 'Tlačítko posunu kvalifikované oportunity (SQL →)' : 'Qualified Opportunity Advance Button (SQL →)'}:</b> ${isCS 
+                ? 'Pokud příležitost ve 2. fázi (Oportunita) splňuje všechny podmínky pro přesun do fáze Discovery & Ponuka (přiřazený hunter, zdroj leadu, e-commerce platforma a odhadovaný počet zásilek > 0), zobrazí se přímo na kartě v Kanban desce nad ikonou garanta (vpravo uprostřed) zelené tlačítko „SQL →“. Kliknutím může kdokoliv (včetně huntera) okamžitě odeslat příležitost do následující fáze Discovery & Ponuka, přičemž systém zobrazí lokalizovanou potvrzující zprávu s názvem přesunuté firmy.' 
+                : 'When a deal in the 2nd stage (Opportunity) fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL →" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
               <li><b>${isCS ? 'Dvojitá lišta posuvníku (Kanban Scrollbar)' : 'Dual Kanban Scrollbar'}:</b> ${isCS ? 'Kanban deska obsahuje posuvník nahoře i dole pod sloupci, což zajišťuje pohodlný horizontální posun napříč všemi 7 fázemi i na menších obrazovkách.' : 'The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display.'}</li>
               <li><b>${isCS ? 'Filtr nepřiřazených dealů' : 'Unassigned Deals Filter'}:</b> ${isCS ? 'Tlačítko "Pouze nepřiřazené" zobrazí příležitosti, které zatím nemají v dané fázi stanoveného garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
               <li><b>${isCS ? 'Filtr dle barvy upozornění (Připomínky)' : 'Filter by Reminder Color'}:</b> ${isCS ? 'Rychlá filtrace obchodních případů podle barvy stavové připomínky pro okamžité řešení stagnujících obchodů.' : 'Quickly filter deals by stage reminder alert color to focus immediately on stalled opportunities.'}</li>

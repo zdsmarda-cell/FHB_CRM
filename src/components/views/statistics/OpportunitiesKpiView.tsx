@@ -1187,8 +1187,8 @@ export function OpportunitiesKpiView() {
                     className="w-full text-xs px-2 py-1 bg-white border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-normal"
                   >
                     <option value="all">{t('statistics.table.allStages', 'Všechny fáze')}</option>
-                    <option value="opportunity">{t('stages.opportunity', 'Příležitost')}</option>
-                    <option value="lead">{t('stages.lead', 'Lead')}</option>
+                    <option value="opportunity">{t('stages.opportunity', 'Lead')}</option>
+                    <option value="lead">{t('stages.lead', 'Oportunita')}</option>
                     <option value="discovery_proposal">{t('stages.discovery_proposal', 'Discovery')}</option>
                     <option value="contracting">{t('stages.contracting', 'Contracting')}</option>
                     <option value="onboarding">{t('stages.onboarding', 'Onboarding')}</option>

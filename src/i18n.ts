@@ -13,8 +13,8 @@ const resources = {
         administrator: 'Administrator'
       },
       stages: {
-        opportunity: 'Opportunity',
-        lead: 'Lead',
+        opportunity: 'Lead',
+        lead: 'Opportunity',
         discovery_proposal: 'Discovery & Proposal',
         contracting: 'Contracting',
         onboarding: 'Onboarding',
@@ -354,15 +354,15 @@ const resources = {
         },
         opportunities: {
           heading: 'Opportunities – Overview & KPIs',
-          subheading: 'Analysis of newly inserted opportunities and conversion dynamics into leads',
+          subheading: 'Analysis of newly inserted opportunities and conversion dynamics into stage 2 (Opportunity)',
           totalOpportunitiesDesc: 'In selected period and filters (excluding test records)',
           avgTimeBetweenCreationsDesc: 'Average interval between two consecutively created opportunities',
-          avgTimeToLeadDesc: 'Time from opportunity creation to first stage shift'
+          avgTimeToLeadDesc: 'Time from deal creation to first stage shift'
         },
         summary: {
           totalOpportunities: 'Total Inserted Opportunities',
           avgTimeBetweenCreations: 'Avg. Time Between New Opportunities',
-          avgTimeToLead: 'Avg. Time from Opportunity to Lead'
+          avgTimeToLead: 'Avg. Time from Lead to Opportunity'
         },
         filters: {
           title: 'Filters',
@@ -534,7 +534,7 @@ const resources = {
           searchPlaceholder: 'Search company, ID, representative...',
           summary: {
             activeDeals: 'Active in Pipeline',
-            activeDealsDesc: 'Opportunities in Opportunity to Farming stages',
+            activeDealsDesc: 'Opportunities in Lead to Farming stages',
             pipelineVolume: 'Pipeline Parcel Volume',
             pipelineVolumeDesc: 'Estimated yearly potential of active deals',
             avgCycleTime: 'Avg. Sales Cycle Time',
@@ -557,7 +557,7 @@ const resources = {
         },
         conversionsPlaceholder: {
           title: 'Conversions',
-          desc: 'This section will contain an advanced funnel of conversions between individual stages (Opportunity → Lead → Discovery → Contracting → Farming).',
+          desc: 'This section will contain an advanced funnel of conversions between individual stages (Lead → Opportunity → Discovery → Contracting → Farming).',
           button: 'Go to Opportunities'
         },
         performancePlaceholder: {
@@ -579,8 +579,8 @@ const resources = {
         administrator: 'Administrátor'
       },
       stages: {
-        opportunity: 'Oportunita',
-        lead: 'Lead',
+        opportunity: 'Lead',
+        lead: 'Oportunita',
         discovery_proposal: 'Discovery & Ponuka',
         contracting: 'Contracting',
         onboarding: 'Onboarding',
@@ -919,7 +919,7 @@ const resources = {
         },
         opportunities: {
           heading: 'Příležitosti – Přehled a KPI',
-          subheading: 'Analýza nově vložených příležitostí a dynamika konverze do leadu',
+          subheading: 'Analýza nově vložených příležitostí a dynamika konverze do oportunity',
           totalOpportunitiesDesc: 'Ve vybraném období a filtru (bez testovacích záznamů)',
           avgTimeBetweenCreationsDesc: 'Průměrný interval mezi dvěma po sobě vloženými příležitostmi',
           avgTimeToLeadDesc: 'Doba od založení příležitosti do prvního posunu stavu'
@@ -927,7 +927,7 @@ const resources = {
         summary: {
           totalOpportunities: 'Celkem vložených příležitostí',
           avgTimeBetweenCreations: 'Průměrná doba pro vložení nové příležitosti',
-          avgTimeToLead: 'Průměrný čas přechodu do leadu'
+          avgTimeToLead: 'Průměrný čas přechodu do oportunity'
         },
         filters: {
           title: 'Filtry',
@@ -1099,7 +1099,7 @@ const resources = {
           searchPlaceholder: 'Hledat společnost, IČ, obchodníka...',
           summary: {
             activeDeals: 'Aktivní v pipeline',
-            activeDealsDesc: 'Příležitosti ve fázích Opportunity až Farming',
+            activeDealsDesc: 'Příležitosti ve fázích Lead až Farming',
             pipelineVolume: 'Objem balíků v pipeline',
             pipelineVolumeDesc: 'Odhadovaný roční potenciál aktivních obchodů',
             avgCycleTime: 'Prům. doba obchodního cyklu',
@@ -1122,7 +1122,7 @@ const resources = {
         },
         conversionsPlaceholder: {
           title: 'Konverze',
-          desc: 'Tato sekce bude obsahovat pokročilý trychtýř konverzí mezi jednotlivými fázemi (Příležitost → Lead → Discovery → Contracting → Farming).',
+          desc: 'Tato sekce bude obsahovat pokročilý trychtýř konverzí mezi jednotlivými fázemi (Lead → Oportunita → Discovery → Contracting → Farming).',
           button: 'Přejít na Příležitosti'
         },
         performancePlaceholder: {

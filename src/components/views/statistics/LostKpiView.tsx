@@ -442,8 +442,8 @@ export function LostKpiView() {
     if (!stage) return <span className="text-gray-400 text-xs">–</span>;
 
     const stageMap: Record<string, { label: string; color: string }> = {
-      opportunity: { label: t('stages.opportunity', 'Příležitost'), color: 'bg-blue-50 text-blue-700 border-blue-200' },
-      lead: { label: t('stages.lead', 'Lead'), color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+      opportunity: { label: t('stages.opportunity', 'Lead'), color: 'bg-blue-50 text-blue-700 border-blue-200' },
+      lead: { label: t('stages.lead', 'Oportunita'), color: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
       discovery_proposal: { label: t('stages.discovery_proposal', 'Discovery / Nabídka'), color: 'bg-purple-50 text-purple-700 border-purple-200' },
       contracting: { label: t('stages.contracting', 'Zasmluvnění'), color: 'bg-amber-50 text-amber-700 border-amber-200' },
       onboarding: { label: t('stages.onboarding', 'Onboarding'), color: 'bg-cyan-50 text-cyan-700 border-cyan-200' },
@@ -759,8 +759,8 @@ export function LostKpiView() {
               className="w-full text-xs rounded-lg border border-gray-300 py-1.5 px-2 bg-white text-gray-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-hidden"
             >
               <option value="all">{t('statistics.lost.filters.allStages', 'Všechny fáze')}</option>
-              <option value="opportunity">{t('stages.opportunity', 'Příležitost')}</option>
-              <option value="lead">{t('stages.lead', 'Lead')}</option>
+              <option value="opportunity">{t('stages.opportunity', 'Lead')}</option>
+              <option value="lead">{t('stages.lead', 'Oportunita')}</option>
               <option value="discovery_proposal">{t('stages.discovery_proposal', 'Discovery / Nabídka')}</option>
               <option value="contracting">{t('stages.contracting', 'Zasmluvnění')}</option>
               <option value="onboarding">{t('stages.onboarding', 'Onboarding')}</option>
