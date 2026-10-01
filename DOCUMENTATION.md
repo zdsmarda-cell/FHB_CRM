@@ -223,3 +223,39 @@ Aplikace poskytuje několik kanálů pro přístup k aktuální dokumentaci:
    - Generovány skriptem `node scripts/generate-manual.cjs`.
 3. **Projektová dokumentace:**
    - Soubor `DOCUMENTATION.md` v kořenu projektu jako centrální technický referenční zdroj.
+
+---
+
+## 9. Datový model, DB deskripce a API specifikace pro výměnu dat
+
+V administraci systému (záložka **Datový model & API**) je k dispozici interaktivní nástroj pro kompletní technickou inspekci databázové struktury. Slouží jako závazný podklad pro vývojáře, systémové integrátory a pro výměnu dat mezi FHB CRM a jinými externími systémy (ERP, jiné CRM, logistické platformy):
+
+### Klíčové vlastnosti modulu Datový model:
+1. **Podrobná tabulka atributů každé entity:**
+   - Název atributu (včetně označení primárních `[PK]` a cizích klíčů `[FK]`).
+   - Přesný SQL datový typ (`VARCHAR`, `INT`, `DATETIME`, `DECIMAL(10,2)`, `JSON`, `BOOLEAN`).
+   - Odpovídající formát v JSON API (`string (UUID)`, `string (ISO 8601 UTC)`, `number`, `boolean`, `array`).
+   - Příznak povinnosti (`Povinné` / `Volitelné`).
+   - Podrobný popis, formátovací pravidla, výčet povolených enum hodnot a vazby na mateřské tabulky.
+   - Vzorová reálná hodnota pro testování.
+2. **Vzorový JSON payload pro každou entitu:**
+   - Kompletní validní ukázkový JSON objekt připravený pro REST API request / response.
+   - Tlačítko pro okamžité zkopírování do schránky jedním kliknutím.
+3. **SQL DDL schéma (CREATE TABLE):**
+   - Přesný DDL kód tabulky pro MySQL / MariaDB včetně indexů a integritních omezení.
+4. **Export kompletní API specifikace do souboru JSON:**
+   - Tlačítko „Stáhnout API specifikaci (JSON)“ vygeneruje ucelený JSON soubor obsahující všechny entity, atributy, typy i ukázkové payloady.
+5. **Programatický REST endpoint:**
+   - `GET /api/database-schema?lang=cs` (nebo `?lang=en`) pro strojové čtení struktury externími integračními službami.
+
+### Přehled evidovaných entit a tabulek:
+- **`companies`** (Firma / Společnost): IČO, název, adresa, region, segment, kontakty, e-maily, URL.
+- **`deals`** (Obchodní případ): Fáze pipeline (1. Lead až 6. Farming), garanti (Hunter, Closer, Farmer), logistické parametry, smluvní a onboarding data.
+- **`contacts`** (Kontaktní osoba): Jméno, pozice, e-mail, telefon, DNC status.
+- **`activities`** (Aktivita): Hovory, schůzky, MS Teams, synchronizované e-maily, doba trvání, zápisy.
+- **`users`** (Uživatel): Účty, role, hierarchie manažerů, integrace.
+- **`stage_reminders`** (Stavové připomínky): Pravidla neaktivity a orámování.
+- **`audit_logs`** (Auditní stopa): Historie změn jednotlivých polí.
+- **`login_logs`** (Přihlášení): Bezpečnostní záznamy přístupů.
+- **Systémové číselníky:** `lead_sources`, `lost_reasons`, `segments`, `ecommerce_platforms`, `it_integrations`, `storage_types`, `contact_positions`.
+

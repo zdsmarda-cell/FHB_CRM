@@ -2436,6 +2436,42 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     }
   });
 
+  app.get('/api/database-schema', (req, res) => {
+    try {
+      const lang = req.query.lang === 'cs' ? 'cs' : 'en';
+      const isCS = lang === 'cs';
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.json({
+        title: 'FHB CRM - Database & Entity Schema API',
+        version: '1.0.0',
+        language: lang,
+        description: isCS
+          ? 'Kompletní deskripce databázových entit, formátů a datových struktur pro výměnu dat mezi CRM systémy.'
+          : 'Complete description of database entities, storage formats, and data structures for CRM data exchange.',
+        tables: [
+          'companies',
+          'deals',
+          'contacts',
+          'activities',
+          'users',
+          'stage_reminders',
+          'audit_logs',
+          'login_logs',
+          'email_logs',
+          'lead_sources',
+          'lost_reasons',
+          'segments',
+          'ecommerce_platforms',
+          'it_integrations',
+          'storage_types',
+          'contact_positions'
+        ]
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get('/api/audit-logs', authMiddleware, async (req, res) => {
     try {
       const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
