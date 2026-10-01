@@ -637,7 +637,7 @@ export function AdminPanel() {
         <LoginLogsTable />
       ) : activeTab === 'reminders' ? (
         <ReminderSection />
-      ) : (
+      ) : activeTab === 'settings' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Lead Sources */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
@@ -926,11 +926,9 @@ export function AdminPanel() {
             </ul>
           </div>
         </div>
-      )}
-
-      {activeTab === 'dataModel' && (
+      ) : activeTab === 'dataModel' ? (
         <DataModelView />
-      )}
+      ) : null}
 
       {isFormOpen && (
         <UserForm 

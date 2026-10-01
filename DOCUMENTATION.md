@@ -243,10 +243,20 @@ V administraci systému (záložka **Datový model & API**) je k dispozici inter
    - Tlačítko pro okamžité zkopírování do schránky jedním kliknutím.
 3. **SQL DDL schéma (CREATE TABLE):**
    - Přesný DDL kód tabulky pro MySQL / MariaDB včetně indexů a integritních omezení.
-4. **Export kompletní API specifikace do souboru JSON:**
+4. **Export kompletní interaktivní HTML dokumentace (fhbcrm_doc.zip):**
+   - Tlačítko „Stáhnout dokumentaci (HTML ZIP - fhbcrm_doc.zip)“ vygeneruje a stáhne ZIP balíček obsahující plnohodnotnou klikací HTML dokumentaci systému.
+   - Soubor `index.html` slouží jako hlavní rozcestník a vstupní bod.
+   - Archiv obsahuje samostatné HTML stránky pro každou entitu (`entities/*.html`), API integrační příručku (`api_guide.html`), zobrazení SQL schématu (`database_schema.html`), strojově čitelnou specifikaci (`fhb-crm-spec.json`) a čistý SQL inicializační skript (`schema.sql`).
+   - Celý webový balíček funguje offline bez nutnosti připojení k internetu či spuštěného serveru.
+5. **Export kompletní API specifikace do souboru JSON:**
    - Tlačítko „Stáhnout API specifikaci (JSON)“ vygeneruje ucelený JSON soubor obsahující všechny entity, atributy, typy i ukázkové payloady.
-5. **Programatický REST endpoint:**
+6. **Programatický REST endpoint:**
    - `GET /api/database-schema?lang=cs` (nebo `?lang=en`) pro strojové čtení struktury externími integračními službami.
+   - `GET /api/doc/fhbcrm_doc.zip` pro přímé stažení archivu dokumentace přes HTTP.
+
+### Přísné oddělení administrátorských záložek:
+- **Záložka Nastavení (Číselníky):** Slouží výhradně pro živou správu, editaci, aktivaci a mazání položek 7 systémových číselníků (Zdroje leadů, Segmenty, E-commerce platformy, Typy skladování, IT integrace, Důvody ztráty, Pozice kontaktů).
+- **Záložka Datový model & API:** Zobrazuje čistě technický datový model, schémata entit, formáty sloupců, vztahy, integrační doporučení a exportní nástroje (`fhbcrm_doc.zip`, JSON specifikace). Číselníky se zde zobrazují pouze jako referenční datová specifikace pro API integraci.
 
 ### Přehled evidovaných entit a tabulek:
 - **`companies`** (Firma / Společnost): IČO, název, adresa, region, segment, kontakty, e-maily, URL.

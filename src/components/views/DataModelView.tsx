@@ -19,9 +19,11 @@ import {
   Users,
   Calendar,
   Clock,
-  BookOpen
+  BookOpen,
+  Archive
 } from 'lucide-react';
 import { DATA_MODEL_ENTITIES, SchemaEntity, SchemaField } from '../../data/dataModelSchema';
+import { generateDocZip } from '../../utils/generateDocZip';
 
 export const DataModelView: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -31,6 +33,7 @@ export const DataModelView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'table' | 'json' | 'sql'>('table');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [isGeneratingZip, setIsGeneratingZip] = useState<boolean>(false);
 
   const selectedEntity = useMemo(() => {
     return DATA_MODEL_ENTITIES.find(e => e.id === selectedEntityId) || DATA_MODEL_ENTITIES[0];
@@ -97,6 +100,25 @@ export const DataModelView: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadDocZip = async () => {
+    try {
+      setIsGeneratingZip(true);
+      const zipBlob = await generateDocZip(isCS);
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'fhbcrm_doc.zip';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error generating doc zip:', err);
+    } finally {
+      setIsGeneratingZip(false);
+    }
+  };
+
   const getEntityIcon = (id: string) => {
     switch (id) {
       case 'companies': return <Building2 className="w-4 h-4" />;
@@ -114,7 +136,7 @@ export const DataModelView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Banner / Header */}
-      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-xl p-6 text-white shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 rounded-xl p-6 text-white shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Database className="w-6 h-6 text-indigo-300" />
@@ -127,10 +149,29 @@ export const DataModelView: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <button
+            onClick={handleDownloadDocZip}
+            disabled={isGeneratingZip}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2.5 rounded-lg text-sm transition-all shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+            title="fhbcrm_doc.zip"
+          >
+            {isGeneratingZip ? (
+              <Clock className="w-4 h-4 animate-spin" />
+            ) : (
+              <Archive className="w-4 h-4" />
+            )}
+            <span>
+              {isGeneratingZip 
+                ? t('admin.dataModelGeneratingZip', 'Generuji ZIP...') 
+                : t('admin.dataModelDownloadZip', 'Stáhnout dokumentaci (HTML ZIP - fhbcrm_doc.zip)')}
+            </span>
+          </button>
+
           <button
             onClick={handleExportAllJson}
-            className="flex items-center justify-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white font-medium px-4 py-2.5 rounded-lg text-sm transition-all shadow-sm w-full md:w-auto"
+            className="flex items-center justify-center gap-2 bg-indigo-700/80 hover:bg-indigo-600 text-white font-medium px-3.5 py-2.5 rounded-lg text-sm transition-all shadow-sm cursor-pointer border border-indigo-500/40"
+            title="JSON export"
           >
             <Download className="w-4 h-4" />
             {t('admin.dataModelExportJson', 'Stáhnout API specifikaci (JSON)')}
