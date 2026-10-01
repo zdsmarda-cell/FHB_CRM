@@ -69,15 +69,15 @@ async function startServer() {
   const pool = mysql.createPool({
     host: process.env.DB_HOST || "db.mobilgroup.cz",
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
-    user: process.env.DB_USER || "fhb_maintain",
+    user: process.env.DB_USER || "fhb_crm",
     password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "",
+    database: process.env.DB_NAME || "fhb_crm",
     waitForConnections: true,
-    connectionLimit: 25,
-    maxIdle: 10,
-    idleTimeout: 6e4,
+    connectionLimit: 15,
+    maxIdle: 5,
+    idleTimeout: 3e4,
     queueLimit: 0,
-    connectTimeout: 1e4,
+    connectTimeout: 5e3,
     enableKeepAlive: true,
     keepAliveInitialDelay: 1e4
   });
@@ -88,7 +88,10 @@ async function startServer() {
     }
   }, 3e4);
   try {
-    const connection = await pool.getConnection();
+    const connection = await Promise.race([
+      pool.getConnection(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("connect ETIMEDOUT")), 3e3))
+    ]);
     try {
       if (fs.existsSync(path.join(__dirname, "schema.sql"))) {
         const schema = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf-8");
@@ -292,6 +295,9 @@ async function startServer() {
     } finally {
       connection.release();
     }
+    cleanupAllUnrelatedEmails(pool).catch((err) => {
+      console.error("[CLEANUP] Background initial cleanup error:", err.message);
+    });
   } catch (err) {
     console.error("[DB INIT] WARNING: Could not run migrations. DB might be offline.", err.message);
   }
@@ -961,6 +967,389 @@ Tento odkaz plat\xED 10 minut.`,
       res.status(500).json({ error: err.message });
     }
   });
+  function isEmailStrictlyMatchingDeal(fromEmailOrLine, toAndCcEmailsOrLines, leadEmailsSet, systemUserEmailsSet) {
+    if (leadEmailsSet.size === 0) return false;
+    const fromEmails = extractCleanEmails([fromEmailOrLine]);
+    const recipientEmails = extractCleanEmails(toAndCcEmailsOrLines);
+    const senderIsLead = fromEmails.some((e) => leadEmailsSet.has(e));
+    const senderIsUser = fromEmails.some((e) => systemUserEmailsSet.has(e));
+    const recipHasLead = recipientEmails.some((e) => leadEmailsSet.has(e));
+    const recipHasUser = recipientEmails.some((e) => systemUserEmailsSet.has(e));
+    if (senderIsLead && (recipHasUser || systemUserEmailsSet.size === 0)) {
+      return true;
+    }
+    if (senderIsUser && recipHasLead) {
+      return true;
+    }
+    if (recipHasLead && recipHasUser) {
+      return true;
+    }
+    return false;
+  }
+  function isActivityStrictlyRelatedToDeal(act, leadEmailsSet, systemUserEmailsSet) {
+    if (act.createdBy === "System Cron" || act.note && act.note.startsWith("Automatick\xE9 upozorn\u011Bn\xED")) {
+      return true;
+    }
+    if (leadEmailsSet.size === 0) return false;
+    const note = act.note || "";
+    const fromMatch = note.match(/^From:\s*(.+)$/im);
+    const toMatch = note.match(/^To:\s*(.+)$/im);
+    const ccMatch = note.match(/^Cc:\s*(.+)$/im);
+    if (!fromMatch && !toMatch && !ccMatch) {
+      return false;
+    }
+    const fromLine = fromMatch ? fromMatch[1] : "";
+    const toLine = toMatch ? toMatch[1] : "";
+    const ccLine = ccMatch ? ccMatch[1] : "";
+    return isEmailStrictlyMatchingDeal(fromLine, [toLine, ccLine], leadEmailsSet, systemUserEmailsSet);
+  }
+  async function cleanupUnrelatedEmailsForDeal(connOrPool, dealId, leadEmailsSet, systemUserEmailsSet) {
+    try {
+      const [actRows] = await connOrPool.query(
+        `SELECT id, note, createdBy FROM activities WHERE dealId = ? AND type = 'email'`,
+        [dealId]
+      );
+      const deletedIds = [];
+      for (const act of actRows) {
+        if (!isActivityStrictlyRelatedToDeal(act, leadEmailsSet, systemUserEmailsSet)) {
+          deletedIds.push(act.id);
+        }
+      }
+      if (deletedIds.length > 0) {
+        for (let i = 0; i < deletedIds.length; i += 100) {
+          const chunk = deletedIds.slice(i, i + 100);
+          const placeholders = chunk.map(() => "?").join(",");
+          await connOrPool.query(`DELETE FROM activities WHERE id IN (${placeholders})`, chunk);
+        }
+        console.log(`[DEAL CLEANUP] Purged ${deletedIds.length} unrelated emails for deal ${dealId}`);
+      }
+      return deletedIds;
+    } catch (err) {
+      console.warn(`[DEAL CLEANUP] Notice for deal ${dealId}:`, err.message);
+      return [];
+    }
+  }
+  async function cleanupAllUnrelatedEmails(poolRef) {
+    let deletedCount = 0;
+    try {
+      const connection = await Promise.race([
+        poolRef.getConnection(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("connect ETIMEDOUT")), 3e3))
+      ]);
+      try {
+        const [compRows] = await connection.query("SELECT id, email, contacts FROM companies");
+        const companyMap = /* @__PURE__ */ new Map();
+        for (const comp of compRows) {
+          const rawEmails = [comp.email];
+          if (comp.contacts) {
+            try {
+              const contacts = typeof comp.contacts === "string" ? JSON.parse(comp.contacts) : comp.contacts;
+              if (Array.isArray(contacts)) {
+                contacts.forEach((c) => {
+                  if (c?.email) rawEmails.push(c.email);
+                });
+              }
+            } catch (e) {
+            }
+          }
+          const clean = extractCleanEmails(rawEmails);
+          companyMap.set(comp.id, new Set(clean));
+        }
+        const [dealRows] = await connection.query("SELECT id, companyId FROM deals");
+        const dealCompanyMap = /* @__PURE__ */ new Map();
+        for (const d of dealRows) {
+          if (d.companyId) dealCompanyMap.set(d.id, d.companyId);
+        }
+        const [userRows] = await connection.query("SELECT email FROM users");
+        const systemUserEmails = /* @__PURE__ */ new Set();
+        for (const u of userRows) {
+          const em = (u.email || "").trim().toLowerCase();
+          if (em) systemUserEmails.add(em);
+        }
+        const [actRows] = await connection.query(`
+          SELECT id, dealId, note, createdBy 
+          FROM activities 
+          WHERE type = 'email' 
+            AND (createdBy != 'System Cron' OR createdBy IS NULL)
+            AND (note NOT LIKE 'Automatick\xE9 upozorn\u011Bn\xED%' OR note IS NULL)
+        `);
+        const toDeleteIds = [];
+        for (const act of actRows) {
+          const dealId = act.dealId;
+          const companyId = dealId ? dealCompanyMap.get(dealId) : null;
+          const leadEmails = companyId ? companyMap.get(companyId) || /* @__PURE__ */ new Set() : /* @__PURE__ */ new Set();
+          if (!isActivityStrictlyRelatedToDeal(act, leadEmails, systemUserEmails)) {
+            toDeleteIds.push(act.id);
+          }
+        }
+        if (toDeleteIds.length > 0) {
+          console.log(`[CLEANUP] Found ${toDeleteIds.length} unrelated email activities. Deleting...`);
+          for (let i = 0; i < toDeleteIds.length; i += 100) {
+            const chunk = toDeleteIds.slice(i, i + 100);
+            const placeholders = chunk.map(() => "?").join(",");
+            await connection.query(`DELETE FROM activities WHERE id IN (${placeholders})`, chunk);
+          }
+          deletedCount = toDeleteIds.length;
+          console.log(`[CLEANUP] Successfully purged ${deletedCount} unrelated email activities.`);
+        } else {
+          console.log("[CLEANUP] No unrelated email activities found.");
+        }
+      } finally {
+        connection.release();
+      }
+    } catch (err) {
+      console.warn("[CLEANUP] Notice during cleanupAllUnrelatedEmails:", err.message);
+    }
+    return deletedCount;
+  }
+  app.post("/api/cleanup-unrelated-emails", authMiddleware, async (req, res) => {
+    try {
+      const deletedCount = await cleanupAllUnrelatedEmails(pool);
+      res.json({ success: true, deletedCount });
+    } catch (err) {
+      console.error("Cleanup endpoint error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  app.post("/api/deals/:id/sync-emails", authMiddleware, async (req, res) => {
+    const dealId = req.params.id;
+    try {
+      const [dealRows] = await pool.query("SELECT * FROM deals WHERE id = ?", [dealId]);
+      if (dealRows.length === 0) {
+        return res.status(404).json({ error: "Deal not found" });
+      }
+      const deal = dealRows[0];
+      let company = null;
+      if (deal.companyId) {
+        const [compRows] = await pool.query("SELECT * FROM companies WHERE id = ?", [deal.companyId]);
+        company = compRows[0] || null;
+      }
+      const [userRows] = await pool.query("SELECT id, name, email, googleIntegration, msIntegration FROM users WHERE isActive = 1");
+      const allUsers = userRows;
+      const systemUserEmails = /* @__PURE__ */ new Set();
+      allUsers.forEach((u) => {
+        const em = (u.email || "").trim().toLowerCase();
+        if (em) systemUserEmails.add(em);
+      });
+      const rawLeadEmails = [
+        company?.email
+      ];
+      if (company?.contacts) {
+        try {
+          const contacts = typeof company.contacts === "string" ? JSON.parse(company.contacts) : company.contacts;
+          if (Array.isArray(contacts)) {
+            contacts.forEach((c) => {
+              if (c?.email) rawLeadEmails.push(c.email);
+            });
+          }
+        } catch (e) {
+        }
+      }
+      const leadEmails = extractCleanEmails(rawLeadEmails);
+      const leadEmailsSet = new Set(leadEmails);
+      const deletedActivityIds = await cleanupUnrelatedEmailsForDeal(pool, dealId, leadEmailsSet, systemUserEmails);
+      if (leadEmails.length === 0) {
+        return res.json({
+          success: true,
+          message: "No lead or contact emails found for this deal.",
+          addedCount: 0,
+          addedActivities: [],
+          deletedCount: deletedActivityIds.length,
+          deletedActivityIds
+        });
+      }
+      const connectedUsers = [];
+      for (const u of allUsers) {
+        let msInt = null;
+        let googleInt = null;
+        if (u.msIntegration) {
+          try {
+            msInt = typeof u.msIntegration === "string" ? JSON.parse(u.msIntegration) : u.msIntegration;
+          } catch (e) {
+          }
+        }
+        if (u.googleIntegration) {
+          try {
+            googleInt = typeof u.googleIntegration === "string" ? JSON.parse(u.googleIntegration) : u.googleIntegration;
+          } catch (e) {
+          }
+        }
+        if (msInt?.connected && msInt?.tokens || googleInt?.connected && googleInt?.tokens) {
+          connectedUsers.push({
+            user: u,
+            msIntegration: msInt,
+            googleIntegration: googleInt
+          });
+        }
+      }
+      const addedActivities = [];
+      for (const item of connectedUsers) {
+        const u = item.user;
+        const userEmailsSet = /* @__PURE__ */ new Set([
+          (u.email || "").trim().toLowerCase(),
+          ...Array.from(systemUserEmails)
+        ]);
+        if (item.msIntegration?.connected && item.msIntegration?.tokens) {
+          try {
+            const searchTerms = leadEmails.map((e) => `"${e}"`).join(" OR ");
+            const messages = await callMsGraphWithRetry(item.msIntegration.tokens, u.id, pool, async (client) => {
+              return await client.api("/me/messages").header("ConsistencyLevel", "eventual").search(searchTerms).select("id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview").expand("attachments($select=name,contentType)").top(50).get();
+            });
+            if (messages?.value && Array.isArray(messages.value)) {
+              for (const msg of messages.value) {
+                const fromAddr = msg.from?.emailAddress?.address || "";
+                const toAddrs = (msg.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean);
+                const ccAddrs = (msg.ccRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean);
+                if (!isEmailStrictlyMatchingDeal(fromAddr, [...toAddrs, ...ccAddrs], leadEmailsSet, userEmailsSet)) {
+                  continue;
+                }
+                const msgDate = msg.receivedDateTime ? new Date(msg.receivedDateTime) : /* @__PURE__ */ new Date();
+                const subjPrefix = `Subject: ${msg.subject || "(Bez p\u0159edm\u011Btu)"}%`;
+                const [exists] = await pool.query(
+                  `SELECT id FROM activities 
+                   WHERE dealId = ? AND type = 'email' AND note LIKE ? AND ABS(TIMESTAMPDIFF(MINUTE, date, ?)) <= 2 
+                   LIMIT 1`,
+                  [dealId, subjPrefix, msgDate]
+                );
+                if (exists.length > 0) {
+                  continue;
+                }
+                let noteContent = `Subject: ${msg.subject || "(Bez p\u0159edm\u011Btu)"}
+From: ${fromAddr}
+`;
+                if (toAddrs.length > 0) noteContent += `To: ${toAddrs.join(", ")}
+`;
+                if (ccAddrs.length > 0) noteContent += `Cc: ${ccAddrs.join(", ")}
+`;
+                const attachments = msg.hasAttachments && msg.attachments ? msg.attachments.map((a) => a.name) : [];
+                if (attachments.length > 0) noteContent += `Attachments: ${attachments.join(", ")}
+`;
+                noteContent += `
+${msg.bodyPreview || ""}`;
+                const actId = uuidv4();
+                const now = /* @__PURE__ */ new Date();
+                await pool.query(
+                  `INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt, updatedAt, isVisible)
+                   VALUES (?, ?, 'email', ?, ?, ?, ?, ?, 1)`,
+                  [actId, dealId, msgDate, noteContent, u.id, now, now]
+                );
+                addedActivities.push({
+                  id: actId,
+                  dealId,
+                  type: "email",
+                  date: msgDate.toISOString(),
+                  note: noteContent,
+                  createdBy: u.id,
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  isVisible: true
+                });
+              }
+            }
+          } catch (msErr) {
+            console.warn(`[SYNC] MS Graph error for user ${u.email}:`, msErr?.message || msErr);
+          }
+        }
+        if (item.googleIntegration?.connected && item.googleIntegration?.tokens) {
+          try {
+            const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+            oAuth2Client.setCredentials(item.googleIntegration.tokens);
+            const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+            const query = leadEmails.map((e) => `(from:${e} OR to:${e} OR cc:${e})`).join(" OR ");
+            const listRes = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 50 });
+            if (listRes.data.messages) {
+              for (const m of listRes.data.messages) {
+                if (!m.id) continue;
+                const msgRes = await gmail.users.messages.get({ userId: "me", id: m.id, format: "full" });
+                const headers = msgRes.data.payload?.headers || [];
+                const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "(Bez p\u0159edm\u011Btu)";
+                const from = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
+                const to = headers.find((h) => h.name?.toLowerCase() === "to")?.value || "";
+                const cc = headers.find((h) => h.name?.toLowerCase() === "cc")?.value || "";
+                const dateVal = headers.find((h) => h.name?.toLowerCase() === "date")?.value || (/* @__PURE__ */ new Date()).toISOString();
+                const fromEmails = extractCleanEmails([from]);
+                const recipientEmails = extractCleanEmails([to, cc]);
+                const fromAddr = fromEmails[0] || from;
+                if (!isEmailStrictlyMatchingDeal(fromAddr, recipientEmails, leadEmailsSet, userEmailsSet)) {
+                  continue;
+                }
+                const msgDate = new Date(dateVal);
+                const subjPrefix = `Subject: ${subject}%`;
+                const [exists] = await pool.query(
+                  `SELECT id FROM activities 
+                   WHERE dealId = ? AND type = 'email' AND note LIKE ? AND ABS(TIMESTAMPDIFF(MINUTE, date, ?)) <= 2 
+                   LIMIT 1`,
+                  [dealId, subjPrefix, msgDate]
+                );
+                if (exists.length > 0) {
+                  continue;
+                }
+                const attachments = [];
+                const extractAttachments = (parts) => {
+                  for (const part of parts) {
+                    if (part.filename && part.filename.length > 0) attachments.push(part.filename);
+                    if (part.parts) extractAttachments(part.parts);
+                  }
+                };
+                if (msgRes.data.payload?.parts) extractAttachments(msgRes.data.payload.parts);
+                let noteContent = `Subject: ${subject}
+From: ${from}
+`;
+                if (to) noteContent += `To: ${to}
+`;
+                if (cc) noteContent += `Cc: ${cc}
+`;
+                if (attachments.length > 0) noteContent += `Attachments: ${attachments.join(", ")}
+`;
+                noteContent += `
+${msgRes.data.snippet || ""}`;
+                const actId = uuidv4();
+                const now = /* @__PURE__ */ new Date();
+                await pool.query(
+                  `INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt, updatedAt, isVisible)
+                   VALUES (?, ?, 'email', ?, ?, ?, ?, ?, 1)`,
+                  [actId, dealId, msgDate, noteContent, u.id, now, now]
+                );
+                addedActivities.push({
+                  id: actId,
+                  dealId,
+                  type: "email",
+                  date: msgDate.toISOString(),
+                  note: noteContent,
+                  createdBy: u.id,
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  isVisible: true
+                });
+              }
+            }
+          } catch (gErr) {
+            console.warn(`[SYNC] Gmail error for user ${u.email}:`, gErr?.message || gErr);
+          }
+        }
+      }
+      if (addedActivities.length > 0 || deletedActivityIds.length > 0) {
+        const io2 = req.app.get("io");
+        if (io2) {
+          io2.emit("data-changed", {
+            type: "activities",
+            dealId,
+            timestamp: Date.now()
+          });
+        }
+      }
+      res.json({
+        success: true,
+        addedCount: addedActivities.length,
+        addedActivities,
+        deletedCount: deletedActivityIds.length,
+        deletedActivityIds
+      });
+    } catch (err) {
+      console.error("Sync deal emails error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.post("/api/sync/emails", authMiddleware, async (req, res) => {
     const { provider, credentials, relevantEmails } = req.body;
     let emailResults = [];
@@ -969,22 +1358,31 @@ Tento odkaz plat\xED 10 minut.`,
       if (uniqueEmails.length === 0) {
         return res.json({ emails: [] });
       }
+      const leadEmailsSet = new Set(uniqueEmails);
+      const currentUserEmail = (req.user?.email || "").trim().toLowerCase();
+      const userEmailsSet = new Set([currentUserEmail].filter(Boolean));
       if (provider === "google" && credentials?.tokens) {
         const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
         oAuth2Client.setCredentials(credentials.tokens);
         const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
         const query = uniqueEmails.map((e) => `(from:${e} OR to:${e} OR cc:${e})`).join(" OR ");
-        const listRes = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 10 });
+        const listRes = await gmail.users.messages.list({ userId: "me", q: query, maxResults: 50 });
         if (listRes.data.messages) {
           for (const msg of listRes.data.messages) {
             if (!msg.id) continue;
             const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
             const headers = msgRes.data.payload?.headers || [];
-            const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
+            const subject = headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "(Bez p\u0159edm\u011Btu)";
             const from = headers.find((h) => h.name?.toLowerCase() === "from")?.value || "";
             const to = headers.find((h) => h.name?.toLowerCase() === "to")?.value || "";
             const cc = headers.find((h) => h.name?.toLowerCase() === "cc")?.value || "";
             const date = headers.find((h) => h.name?.toLowerCase() === "date")?.value || (/* @__PURE__ */ new Date()).toISOString();
+            const fromEmails = extractCleanEmails([from]);
+            const recipientEmails = extractCleanEmails([to, cc]);
+            const fromAddr = fromEmails[0] || from;
+            if (!isEmailStrictlyMatchingDeal(fromAddr, recipientEmails, leadEmailsSet, userEmailsSet)) {
+              continue;
+            }
             const attachments = [];
             const extractAttachments = (parts) => {
               for (const part of parts) {
@@ -1010,22 +1408,30 @@ Tento odkaz plat\xED 10 minut.`,
           }
         }
       } else if (provider === "microsoft" && credentials?.tokens) {
-        const searchQuery = uniqueEmails.map((e) => `"participants:${e}"`).join(" OR ");
+        const searchQuery = uniqueEmails.map((e) => `"${e}"`).join(" OR ");
         try {
           const messages = await callMsGraphWithRetry(credentials.tokens, req.user.id, pool, async (client) => {
-            return await client.api("/me/messages").header("ConsistencyLevel", "eventual").search(searchQuery).select("id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview").expand("attachments($select=name,contentType)").top(10).get();
+            return await client.api("/me/messages").header("ConsistencyLevel", "eventual").search(searchQuery).select("id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview").expand("attachments($select=name,contentType)").top(50).get();
           });
           if (messages && messages.value) {
-            emailResults = messages.value.map((msg) => ({
-              id: msg.id,
-              subject: msg.subject,
-              from: msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || "",
-              to: (msg.toRecipients || []).map((r) => r.emailAddress?.address).join(", "),
-              cc: (msg.ccRecipients || []).map((r) => r.emailAddress?.address).join(", "),
-              attachments: msg.hasAttachments && msg.attachments ? msg.attachments.map((a) => a.name) : [],
-              date: msg.receivedDateTime,
-              body: msg.bodyPreview
-            }));
+            for (const msg of messages.value) {
+              const fromAddr = msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || "";
+              const toAddrs = (msg.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean);
+              const ccAddrs = (msg.ccRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean);
+              if (!isEmailStrictlyMatchingDeal(fromAddr, [...toAddrs, ...ccAddrs], leadEmailsSet, userEmailsSet)) {
+                continue;
+              }
+              emailResults.push({
+                id: msg.id,
+                subject: msg.subject || "(Bez p\u0159edm\u011Btu)",
+                from: fromAddr,
+                to: toAddrs.join(", "),
+                cc: ccAddrs.join(", "),
+                attachments: msg.hasAttachments && msg.attachments ? msg.attachments.map((a) => a.name) : [],
+                date: msg.receivedDateTime,
+                body: msg.bodyPreview
+              });
+            }
           }
         } catch (graphErr) {
           console.warn("MS Graph search warning:", graphErr?.message || graphErr);
@@ -1119,10 +1525,10 @@ Tento odkaz plat\xED 10 minut.`,
       const stagesDetailed = isCS ? [
         {
           id: "opportunity",
-          name: "1. Opportunity (Oportunita / Z\xE1jemce)",
+          name: "1. Lead (Z\xE1jemce)",
           role: "Hunter",
           color: "#3b82f6",
-          desc: "\xDAvodn\xED zachycen\xED potenci\xE1ln\xEDho klienta do obchodn\xEDho potrub\xED.",
+          desc: "\xDAvodn\xED zachycen\xED potenci\xE1ln\xEDho kontaktu \u010Di leadu do obchodn\xEDho potrub\xED.",
           reqs: [
             "P\u0159i\u0159azen\xED garanta z rol\xED Hunter (Hunter ID).",
             "Vypln\u011Bn\xE9 I\u010CO v profilu spole\u010Dnosti (Identifika\u010Dn\xED \u010D\xEDslo firmy).",
@@ -1131,15 +1537,16 @@ Tento odkaz plat\xED 10 minut.`,
         },
         {
           id: "lead",
-          name: "2. Lead (Kvalifikovan\xFD lead)",
+          name: "2. Oportunita (Kvalifikovan\xE1 obchodn\xED p\u0159\xEDle\u017Eitost / SQL)",
           role: "Hunter",
           color: "#6366f1",
-          desc: "Prov\u011B\u0159en\xFD z\xE1jemce s potvrzen\xFDm obchodn\xEDm potenci\xE1lem a kvalifikovan\xFDm profilem.",
+          desc: "Prov\u011B\u0159en\xE1 obchodn\xED p\u0159\xEDle\u017Eitost s potvrzen\xFDm komer\u010Dn\xEDm potenci\xE1lem a kvalifikovan\xFDm profilem.",
           reqs: [
             "P\u0159i\u0159azen\xED garanta z rol\xED Hunter (Hunter ID).",
             "Vypln\u011Bn\xFD Zdroj leadu (Lead Source) - v\xFDb\u011Br ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku.",
             "Vypln\u011Bn\xE1 E-commerce platforma (Shoptet, WooCommerce, Shopify, Custom API apod.).",
-            "Kladn\xFD odhadovan\xFD m\u011Bs\xED\u010Dn\xED po\u010Det z\xE1silek (Estimated Monthly Parcels > 0)."
+            "Kladn\xFD odhadovan\xFD m\u011Bs\xED\u010Dn\xED po\u010Det z\xE1silek (Estimated Monthly Parcels > 0).",
+            "SQL kvalifikace: Po spln\u011Bn\xED v\u0161ech 4 podm\xEDnek se p\u0159\xEDmo na kart\u011B v Kanbanu aktivuje zelen\xE9 tla\u010D\xEDtko [SQL \u2192] pro okam\u017Eit\xFD posun do f\xE1ze Discovery & Ponuka."
           ]
         },
         {
@@ -1207,10 +1614,10 @@ Tento odkaz plat\xED 10 minut.`,
       ] : [
         {
           id: "opportunity",
-          name: "1. Opportunity",
+          name: "1. Lead",
           role: "Hunter",
           color: "#3b82f6",
-          desc: "Initial entry of a potential client into the sales pipeline.",
+          desc: "Initial entry of a potential contact or lead into the sales pipeline.",
           reqs: [
             "Assigned Hunter (Hunter ID).",
             "Company ID / Registration Number filled in Company profile.",
@@ -1219,10 +1626,10 @@ Tento odkaz plat\xED 10 minut.`,
         },
         {
           id: "lead",
-          name: "2. Qualified Lead",
+          name: "2. Opportunity (Qualified Opportunity / SQL)",
           role: "Hunter",
           color: "#6366f1",
-          desc: isCS ? "Prov\u011B\u0159en\xFD lead s potvrzen\xFDm obchodn\xEDm potenci\xE1lem (SQL). Po spln\u011Bn\xED podm\xEDnek se na kart\u011B v Kanbanu aktivuje tla\u010D\xEDtko [SQL \u2192]." : "Vetted lead with confirmed commercial potential (SQL). When conditions are met, the [SQL \u2192] button activates on the Kanban card.",
+          desc: isCS ? "Prov\u011B\u0159en\xE1 p\u0159\xEDle\u017Eitost s potvrzen\xFDm obchodn\xEDm potenci\xE1lem (SQL). Po spln\u011Bn\xED podm\xEDnek se na kart\u011B v Kanbanu aktivuje tla\u010D\xEDtko [SQL \u2192]." : "Vetted commercial opportunity with confirmed potential (SQL). When conditions are met, the [SQL \u2192] button activates on the Kanban card.",
           reqs: [
             isCS ? "P\u0159i\u0159azen\xFD garant z role Hunter (Hunter ID)." : "Assigned Hunter (Hunter ID).",
             isCS ? "Vybran\xFD Zdroj leadu ze syst\xE9mov\xE9ho \u010D\xEDseln\xEDku." : "Selected Lead Source from system enumeration.",
@@ -1297,12 +1704,12 @@ Tento odkaz plat\xED 10 minut.`,
       const rolesCS = [
         {
           name: "Hunter",
-          privileges: "Fokus na za\u010D\xE1tek obchodn\xEDho cyklu (Opportunity & Lead).",
+          privileges: "Fokus na za\u010D\xE1tek obchodn\xEDho cyklu (1. Lead & 2. Oportunita).",
           actions: [
             "Zad\xE1v\xE1 nov\xE9 z\xE1jemce a spole\u010Dnosti (N\xE1zev, I\u010CO, Adresa, Kontakty).",
             "Dopl\u0148uje Zdroje lead\u016F a E-commerce platformy.",
             "Pl\xE1nuje a realizuje \xFAvodn\xED sch\u016Fzky a telefon\xE1ty pro kvalifikaci.",
-            "Garantuje p\u0159echod z Opportunity do Lead a n\xE1sledn\u011B do Discovery & Proposal."
+            "Garantuje p\u0159echod z 1. f\xE1ze (Lead) do 2. f\xE1ze (Oportunita) a n\xE1sledn\u011B do Discovery & Proposal."
           ]
         },
         {
@@ -1355,12 +1762,12 @@ Tento odkaz plat\xED 10 minut.`,
       const rolesEN = [
         {
           name: "Hunter",
-          privileges: "Focus on early pipeline (Opportunity & Lead).",
+          privileges: "Focus on early pipeline (1. Lead & 2. Opportunity).",
           actions: [
             "Enters new deals and companies (Name, Company ID, Address, Contacts).",
             "Fills Lead Sources and E-commerce Platforms.",
             "Schedules and conducts initial qualification meetings/calls.",
-            "Guarantees transition from Opportunity to Lead and Discovery."
+            "Guarantees transition from Lead to Opportunity and Discovery."
           ]
         },
         {
@@ -1607,22 +2014,22 @@ Tento odkaz plat\xED 10 minut.`,
                 <tr>
                   <td><b>${isCS ? "Identifikace firmy (I\u010CO)" : "Company ID (I\u010CO)"}</b></td>
                   <td><code>companyId</code></td>
-                  <td>${isCS ? "Identifika\u010Dn\xED \u010D\xEDslo firmy. Povinn\xE9 pro posun z Opportunity." : "Company registration ID. Required to advance from Opportunity."}</td>
+                  <td>${isCS ? "Identifika\u010Dn\xED \u010D\xEDslo firmy. Povinn\xE9 pro posun z 1. f\xE1ze (Lead)." : "Company registration ID. Required to advance from 1. stage (Lead)."}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? "Zdroj leadu" : "Lead Source"}</b></td>
                   <td><code>leadSourceId</code></td>
-                  <td>${isCS ? "Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinn\xE9 pro Lead." : "Acquisition source. Required for Lead stage."}</td>
+                  <td>${isCS ? "Zdroj akvizice (Web, Cold Call, Inbound apod.). Povinn\xE9 pro 2. f\xE1zi (Oportunita)." : "Acquisition source. Required for 2. stage (Opportunity)."}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? "E-commerce platforma" : "E-commerce Platform"}</b></td>
                   <td><code>ecommercePlatformId</code></td>
-                  <td>${isCS ? "E-shopov\xE9 \u0159e\u0161en\xED (Shoptet, WooCommerce, Custom API). Povinn\xE9 pro Lead." : "E-commerce platform. Required for Lead stage."}</td>
+                  <td>${isCS ? "E-shopov\xE9 \u0159e\u0161en\xED (Shoptet, WooCommerce, Custom API). Povinn\xE9 pro 2. f\xE1zi (Oportunita)." : "E-commerce platform. Required for 2. stage (Opportunity)."}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? "M\u011Bs\xED\u010Dn\xED po\u010Det bal\xEDk\u016F" : "Estimated Monthly Parcels"}</b></td>
                   <td><code>estimatedMonthlyParcels</code></td>
-                  <td>${isCS ? "Odhadovan\xFD m\u011Bs\xED\u010Dn\xED objem z\xE1silek (>0). Povinn\xE9 pro Lead." : "Estimated monthly parcel volume (>0). Required for Lead stage."}</td>
+                  <td>${isCS ? "Odhadovan\xFD m\u011Bs\xED\u010Dn\xED objem z\xE1silek (>0). Povinn\xE9 pro 2. f\xE1zi (Oportunita)." : "Estimated monthly parcel volume (>0). Required for 2. stage (Opportunity)."}</td>
                 </tr>
                 <tr>
                   <td><b>${isCS ? "Doru\u010Dovac\xED zem\u011B" : "Delivery Countries"}</b></td>
@@ -1687,9 +2094,10 @@ Tento odkaz plat\xED 10 minut.`,
 
             <div class="page-break"></div>
 
-            <h2>${isCS ? "5. Kalend\xE1\u0159, Sch\u016Fzky, E-mail Audit a Logy" : "5. Calendar Integrations, Meetings, Email Audit & Logs"}</h2>
-            <p>${isCS ? "Aplikace disponuje pokro\u010Dil\xFDm propojen\xEDm na extern\xED syst\xE9my a bezpe\u010Dnostn\xEDm auditem:" : "The application features advanced external integrations and security auditing:"}</p>
+            <h2>${isCS ? "5. Kalend\xE1\u0159, Sch\u016Fzky, E-mailov\xE1 Synchronizace a Logy" : "5. Calendar Integrations, Meetings, Email Sync & Logs"}</h2>
+            <p>${isCS ? "Aplikace disponuje pokro\u010Dil\xFDm propojen\xEDm na extern\xED syst\xE9my, bezpe\u010Dnou synchronizac\xED a auditem:" : "The application features advanced external integrations, secure synchronization, and security auditing:"}</p>
             <ul>
+              <li><b>${isCS ? "Striktn\xED synchronizace e-mail\u016F u p\u0159\xEDle\u017Eitosti (Email Sync)" : "Strict Opportunity Email Sync"}:</b> ${isCS ? "P\u0159i otev\u0159en\xED detailu p\u0159\xEDle\u017Eitosti (a periodicky na pozad\xED) prob\xEDh\xE1 automatick\xE1 synchronizace e-mailov\xE9 komunikace ze v\u0161ech p\u0159ipojen\xFDch \xFA\u010Dt\u016F (Microsoft 365 i Google Workspace). <b>Z\xE1sadn\xED pravidlo p\xE1rov\xE1n\xED:</b> E-maily se k p\u0159\xEDle\u017Eitosti p\u0159i\u0159ad\xED a ulo\u017E\xED <u>v\xFDhradn\u011B tehdy</u>, pokud jejich odes\xEDlatel nebo p\u0159\xEDjemce obsahuje e-mailovou adresu nav\xE1zanou na danou firmu \u010Di jej\xED kontaktn\xED osoby, a SOU\u010CASN\u011A v komunikaci figuruje e-mailov\xE1 adresa p\u0159\xEDslu\u0161n\xE9ho u\u017Eivatele CRM. Jak\xE9koliv ciz\xED, soukrom\xE9 \u010Di nesouvisej\xEDc\xED e-maily syst\xE9m striktn\u011B odfiltruje a ze zobrazen\xED i datab\xE1ze proma\u017Ee. Jednou synchronizovan\xE9 e-maily z\u016Fst\xE1vaj\xED trvale v historii CRM ulo\u017Eeny i v p\u0159\xEDpad\u011B, \u017Ee je u\u017Eivatel n\xE1sledn\u011B sma\u017Ee ze sv\xE9 po\u0161tovn\xED schr\xE1nky." : "When viewing an opportunity (and periodically in background), email communication is synced across all connected Microsoft 365 and Google Workspace user accounts. <b>Strict matching rule:</b> Emails are associated and stored with the deal <u>exclusively</u> if the sender or recipient list contains an email address linked to the company or its contacts, AND the message simultaneously involves the CRM user's email address. Unrelated or private messages are strictly filtered out and deleted. Synced emails remain permanently archived in CRM history even if deleted from the user's mailbox later."}</li>
               <li><b>${isCS ? "Synchronizace Kalend\xE1\u0159e (Google & Microsoft 365)" : "Calendar Sync (Google & Microsoft 365)"}:</b> ${isCS ? "U\u017Eivatel si m\u016F\u017Ee v Nastaven\xED profilu p\u0159ipojit sv\u016Fj Google nebo Microsoft \xFA\u010Det. Sch\u016Fzky napl\xE1novan\xE9 v CRM se automaticky vytv\xE1\u0159ej\xED v extern\xEDm kalend\xE1\u0159i v\u010Detn\u011B odkaz\u016F na Google Meet nebo MS Teams." : "Users can connect Google or Microsoft accounts in Settings. Meetings created in CRM automatically populate external calendars with Meet/Teams links."}</li>
               <li><b>${isCS ? "E-mailov\xFD Audit (Workspace & M365)" : "Email Audit Search"}:</b> ${isCS ? "Administr\xE1tor m\xE1 k dispozici modul pro dohled nad e-mailovou komunikac\xED. Umo\u017E\u0148uje vyhled\xE1vat v doru\u010Den\xE9 i odchoz\xED po\u0161t\u011B propojen\xFDch \xFA\u010Dt\u016F dle I\u010CO nebo n\xE1zvu firmy pro zp\u011Btn\xE9 ov\u011B\u0159en\xED dohod." : "Admins can search incoming and outgoing email communications across connected workspace accounts by Company ID or name."}</li>
               <li><b>${isCS ? "Auditn\xED stopa zm\u011Bn (Audit Trail)" : "Audit Trail"}:</b> ${isCS ? "U ka\u017Ed\xE9ho dealu je uchov\xE1v\xE1na kompletn\xED historie \xFAprav pol\xED, v\u010Detn\u011B autora zm\u011Bn, p\u016Fvodn\xED a nov\xE9 hodnoty a \u010Dasov\xE9ho raz\xEDtka." : "Every deal maintains a complete field change history, recording the author, old/new values, and timestamp."}</li>
@@ -1730,7 +2138,7 @@ Tento odkaz plat\xED 10 minut.`,
 
             <h2>${isCS ? "7. U\u017Eivatelsk\xE9 Rozhran\xED a Ovl\xE1dac\xED Prvky" : "7. User Interface & Controls"}</h2>
             <ul>
-              <li><b>${isCS ? "Tla\u010D\xEDtko posunu kvalifikovan\xE9ho leadu (SQL \u2192)" : "Qualified Lead Advance Button (SQL \u2192)"}:</b> ${isCS ? "Pokud p\u0159\xEDle\u017Eitost ve f\xE1zi Lead spl\u0148uje v\u0161echny podm\xEDnky pro p\u0159esun do f\xE1ze Discovery & Ponuka (p\u0159i\u0159azen\xFD hunter, zdroj leadu, e-commerce platforma a odhadovan\xFD po\u010Det z\xE1silek > 0), zobraz\xED se p\u0159\xEDmo na kart\u011B v Kanban desce nad ikonou garanta (vpravo uprost\u0159ed) zelen\xE9 tla\u010D\xEDtko \u201ESQL \u2192\u201C. Kliknut\xEDm m\u016F\u017Ee kdokoliv (v\u010Detn\u011B huntera) okam\u017Eit\u011B odeslat p\u0159\xEDle\u017Eitost do n\xE1sleduj\xEDc\xED f\xE1ze Discovery & Ponuka, p\u0159i\u010Dem\u017E syst\xE9m zobraz\xED lokalizovanou potvrzuj\xEDc\xED zpr\xE1vu s n\xE1zvem p\u0159esunut\xE9 firmy." : 'When a deal in the Lead stage fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL \u2192" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
+              <li><b>${isCS ? "Tla\u010D\xEDtko posunu kvalifikovan\xE9 oportunity (SQL \u2192)" : "Qualified Opportunity Advance Button (SQL \u2192)"}:</b> ${isCS ? "Pokud p\u0159\xEDle\u017Eitost ve 2. f\xE1zi (Oportunita) spl\u0148uje v\u0161echny podm\xEDnky pro p\u0159esun do f\xE1ze Discovery & Ponuka (p\u0159i\u0159azen\xFD hunter, zdroj leadu, e-commerce platforma a odhadovan\xFD po\u010Det z\xE1silek > 0), zobraz\xED se p\u0159\xEDmo na kart\u011B v Kanban desce nad ikonou garanta (vpravo uprost\u0159ed) zelen\xE9 tla\u010D\xEDtko \u201ESQL \u2192\u201C. Kliknut\xEDm m\u016F\u017Ee kdokoliv (v\u010Detn\u011B huntera) okam\u017Eit\u011B odeslat p\u0159\xEDle\u017Eitost do n\xE1sleduj\xEDc\xED f\xE1ze Discovery & Ponuka, p\u0159i\u010Dem\u017E syst\xE9m zobraz\xED lokalizovanou potvrzuj\xEDc\xED zpr\xE1vu s n\xE1zvem p\u0159esunut\xE9 firmy." : 'When a deal in the 2nd stage (Opportunity) fulfills all conditions for moving to Discovery & Proposal (assigned hunter, lead source, ecommerce platform, and estimated parcels > 0), a green "SQL \u2192" button appears directly above the owner avatar on the Kanban card (middle-right). Clicking it allows anyone (including hunters) to immediately dispatch the opportunity to Discovery & Proposal, with a localized confirmation dialog featuring the company name.'}</li>
               <li><b>${isCS ? "Dvojit\xE1 li\u0161ta posuvn\xEDku (Kanban Scrollbar)" : "Dual Kanban Scrollbar"}:</b> ${isCS ? "Kanban deska obsahuje posuvn\xEDk naho\u0159e i dole pod sloupci, co\u017E zaji\u0161\u0165uje pohodln\xFD horizont\xE1ln\xED posun nap\u0159\xED\u010D v\u0161emi 7 f\xE1zemi i na men\u0161\xEDch obrazovk\xE1ch." : "The Kanban board contains top and bottom scrollbars, enabling easy navigation across all 7 stages on any display."}</li>
               <li><b>${isCS ? "Filtr nep\u0159i\u0159azen\xFDch deal\u016F" : "Unassigned Deals Filter"}:</b> ${isCS ? 'Tla\u010D\xEDtko "Pouze nep\u0159i\u0159azen\xE9" zobraz\xED p\u0159\xEDle\u017Eitosti, kter\xE9 zat\xEDm nemaj\xED v dan\xE9 f\xE1zi stanoven\xE9ho garanta.' : 'The "Only Unassigned" toggle filters opportunities that lack a stage owner.'}</li>
               <li><b>${isCS ? "Filtr dle barvy upozorn\u011Bn\xED (P\u0159ipom\xEDnky)" : "Filter by Reminder Color"}:</b> ${isCS ? "Rychl\xE1 filtrace obchodn\xEDch p\u0159\xEDpad\u016F podle barvy stavov\xE9 p\u0159ipom\xEDnky pro okam\u017Eit\xE9 \u0159e\u0161en\xED stagnuj\xEDc\xEDch obchod\u016F." : "Quickly filter deals by stage reminder alert color to focus immediately on stalled opportunities."}</li>
@@ -1755,12 +2163,74 @@ Tento odkaz plat\xED 10 minut.`,
       }
     }
   });
+  app.get("/api/database-schema", (req, res) => {
+    try {
+      const lang = req.query.lang === "cs" ? "cs" : "en";
+      const isCS = lang === "cs";
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.json({
+        title: "FHB CRM - Database & Entity Schema API",
+        version: "1.0.0",
+        language: lang,
+        description: isCS ? "Kompletn\xED deskripce datab\xE1zov\xFDch entit, form\xE1t\u016F a datov\xFDch struktur pro v\xFDm\u011Bnu dat mezi CRM syst\xE9my." : "Complete description of database entities, storage formats, and data structures for CRM data exchange.",
+        tables: [
+          "companies",
+          "deals",
+          "contacts",
+          "activities",
+          "users",
+          "stage_reminders",
+          "audit_logs",
+          "login_logs",
+          "email_logs",
+          "lead_sources",
+          "lost_reasons",
+          "segments",
+          "ecommerce_platforms",
+          "it_integrations",
+          "storage_types",
+          "contact_positions"
+        ]
+      });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   app.get("/api/audit-logs", authMiddleware, async (req, res) => {
     try {
       const [auditRows] = await pool.query("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 25000");
       res.json(auditRows);
     } catch (err) {
       console.error("Audit logs fetch error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+  let cachedActivities = [];
+  app.get("/api/activities", authMiddleware, async (req, res) => {
+    try {
+      const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC LIMIT 25000");
+      const parseJsonFields = (arr, fields) => arr.map((item) => {
+        fields.forEach((f) => {
+          if (typeof item[f] === "string") {
+            try {
+              item[f] = JSON.parse(item[f]);
+            } catch (e) {
+            }
+          }
+        });
+        if ("isActive" in item) item.isActive = item.isActive === 1 || item.isActive === true;
+        if ("isVisible" in item) item.isVisible = item.isVisible === 1 || item.isVisible === true;
+        return item;
+      });
+      const parsedActivities = parseJsonFields(activityRows, ["participants"]);
+      cachedActivities = parsedActivities;
+      res.json(parsedActivities);
+    } catch (err) {
+      if (err.message && (err.message.includes("ETIMEDOUT") || err.message.includes("ECONNREFUSED") || err.message.includes("ENOTFOUND"))) {
+        console.warn("[DB NOTICE] Activities fetch connection unavailable, returning cache:", err.message);
+        return res.json(cachedActivities);
+      }
+      console.error("Activities fetch error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -2148,13 +2618,23 @@ Tento odkaz plat\xED 10 minut.`,
   });
   app.get("/api/health", async (req, res) => {
     try {
+      let dbStatus = "unconfigured";
       if (process.env.DB_PASSWORD && process.env.DB_NAME) {
-        const [rows] = await pool.query("SELECT 1 + 1 AS result");
+        try {
+          await Promise.race([
+            pool.query("SELECT 1 + 1 AS result"),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("connect ETIMEDOUT")), 2e3))
+          ]);
+          dbStatus = "connected";
+        } catch (dbErr) {
+          console.warn("[HEALTH] Database connection check notice:", dbErr.message);
+          dbStatus = "offline";
+        }
       }
-      res.json({ status: "ok", mysql: "configured" });
+      res.json({ status: "ok", mysql: dbStatus });
     } catch (error) {
-      console.error("Database connection error:", error);
-      res.status(500).json({ status: "error", message: "Database connection failed" });
+      console.warn("Health check error:", error.message);
+      res.json({ status: "ok", mysql: "offline" });
     }
   });
   if (process.env.NODE_ENV !== "production") {

@@ -1,5 +1,175 @@
-import JSZip from 'jszip';
 import { DATA_MODEL_ENTITIES, SchemaEntity } from '../data/dataModelSchema';
+
+/**
+ * Pure TypeScript ZIP file generator (PKZIP 2.0 store mode).
+ * Zero external dependencies, zero rollup/npm resolution issues, 100% portable.
+ */
+
+// CRC-32 table calculation
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) {
+      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    }
+    table[n] = c;
+  }
+  return table;
+})();
+
+function computeCrc32(data: Uint8Array): number {
+  let crc = 0 ^ (-1);
+  for (let i = 0; i < data.length; i++) {
+    crc = (crc >>> 8) ^ CRC_TABLE[(crc ^ data[i]) & 0xFF];
+  }
+  return (crc ^ (-1)) >>> 0;
+}
+
+function getDosTimeAndDate(date: Date = new Date()): { dosTime: number; dosDate: number } {
+  const dosTime = ((date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2)) & 0xFFFF;
+  const dosDate = (((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate()) & 0xFFFF;
+  return { dosTime, dosDate };
+}
+
+interface ZipEntry {
+  name: string;
+  nameBytes: Uint8Array;
+  data: Uint8Array;
+  crc32: number;
+  dosTime: number;
+  dosDate: number;
+  localHeaderOffset: number;
+}
+
+export class SimpleZip {
+  private entries: ZipEntry[] = [];
+  private textEncoder = new TextEncoder();
+
+  public addFile(name: string, content: string | Uint8Array): this {
+    const data = typeof content === 'string' ? this.textEncoder.encode(content) : content;
+    const nameBytes = this.textEncoder.encode(name.replace(/\\/g, '/'));
+    const { dosTime, dosDate } = getDosTimeAndDate();
+    const crc32 = computeCrc32(data);
+
+    this.entries.push({
+      name,
+      nameBytes,
+      data,
+      crc32,
+      dosTime,
+      dosDate,
+      localHeaderOffset: 0
+    });
+    return this;
+  }
+
+  public buildUint8Array(): Uint8Array {
+    let currentOffset = 0;
+    const localChunks: Uint8Array[] = [];
+
+    // 1. Write Local File Headers + File Data
+    for (const entry of this.entries) {
+      entry.localHeaderOffset = currentOffset;
+
+      const headerLen = 30 + entry.nameBytes.length;
+      const headerBuf = new ArrayBuffer(headerLen);
+      const view = new DataView(headerBuf);
+
+      view.setUint32(0, 0x04034B50, true); // Local file header signature
+      view.setUint16(4, 20, true);         // Version needed to extract (2.0)
+      view.setUint16(6, 0x0800, true);     // General purpose bit flag (UTF-8)
+      view.setUint16(8, 0, true);          // Compression method (0 = store)
+      view.setUint16(10, entry.dosTime, true);
+      view.setUint16(12, entry.dosDate, true);
+      view.setUint32(14, entry.crc32, true);
+      view.setUint32(18, entry.data.length, true); // Compressed size
+      view.setUint32(22, entry.data.length, true); // Uncompressed size
+      view.setUint16(26, entry.nameBytes.length, true); // File name length
+      view.setUint16(28, 0, true);          // Extra field length
+
+      const headerBytes = new Uint8Array(headerBuf);
+      headerBytes.set(entry.nameBytes, 30);
+
+      localChunks.push(headerBytes);
+      localChunks.push(entry.data);
+
+      currentOffset += headerBytes.length + entry.data.length;
+    }
+
+    const centralDirOffset = currentOffset;
+    const centralChunks: Uint8Array[] = [];
+
+    // 2. Write Central Directory Headers
+    for (const entry of this.entries) {
+      const cdLen = 46 + entry.nameBytes.length;
+      const cdBuf = new ArrayBuffer(cdLen);
+      const view = new DataView(cdBuf);
+
+      view.setUint32(0, 0x02014B50, true); // Central directory header signature
+      view.setUint16(4, 20, true);         // Version made by
+      view.setUint16(6, 20, true);         // Version needed to extract
+      view.setUint16(8, 0x0800, true);     // General purpose bit flag (UTF-8)
+      view.setUint16(10, 0, true);         // Compression method (0 = store)
+      view.setUint16(12, entry.dosTime, true);
+      view.setUint16(14, entry.dosDate, true);
+      view.setUint32(16, entry.crc32, true);
+      view.setUint32(20, entry.data.length, true); // Compressed size
+      view.setUint32(24, entry.data.length, true); // Uncompressed size
+      view.setUint16(28, entry.nameBytes.length, true); // File name length
+      view.setUint16(30, 0, true);         // Extra field length
+      view.setUint16(32, 0, true);         // File comment length
+      view.setUint16(34, 0, true);         // Disk number start
+      view.setUint16(36, 0, true);         // Internal file attributes
+      view.setUint32(38, 0, true);         // External file attributes
+      view.setUint32(42, entry.localHeaderOffset, true); // Relative offset of local header
+
+      const cdBytes = new Uint8Array(cdBuf);
+      cdBytes.set(entry.nameBytes, 46);
+      centralChunks.push(cdBytes);
+
+      currentOffset += cdBytes.length;
+    }
+
+    const centralDirSize = currentOffset - centralDirOffset;
+
+    // 3. Write End of Central Directory Record (EOCD)
+    const eocdBuf = new ArrayBuffer(22);
+    const eocdView = new DataView(eocdBuf);
+    eocdView.setUint32(0, 0x06054B50, true); // EOCD signature
+    eocdView.setUint16(4, 0, true);          // Number of this disk
+    eocdView.setUint16(6, 0, true);          // Disk where central directory starts
+    eocdView.setUint16(8, this.entries.length, true);  // Number of central directory records on this disk
+    eocdView.setUint16(10, this.entries.length, true); // Total number of central directory records
+    eocdView.setUint32(12, centralDirSize, true);      // Size of central directory
+    eocdView.setUint32(16, centralDirOffset, true);    // Offset of central directory
+    eocdView.setUint16(20, 0, true);         // ZIP comment length
+
+    const eocdBytes = new Uint8Array(eocdBuf);
+
+    // Concatenate all chunks into a single Uint8Array
+    const totalLength = currentOffset + eocdBytes.length;
+    const finalBuffer = new Uint8Array(totalLength);
+
+    let offset = 0;
+    for (const chunk of localChunks) {
+      finalBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    for (const chunk of centralChunks) {
+      finalBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+    finalBuffer.set(eocdBytes, offset);
+
+    return finalBuffer;
+  }
+
+  public buildBlob(): Blob {
+    const array = this.buildUint8Array();
+    return new Blob([array.buffer as ArrayBuffer], { type: 'application/zip' });
+  }
+}
 
 function escapeHtml(str: string | number | boolean | null | undefined): string {
   if (str === null || str === undefined) return '';
@@ -992,26 +1162,23 @@ function buildDatabaseSchemaHtml(isCS: boolean): string {
 }
 
 export async function generateDocZip(isCS: boolean): Promise<Blob> {
-  const zip = new JSZip();
+  const zip = new SimpleZip();
 
   // 1. Root index.html
-  zip.file('index.html', buildIndexHtml(isCS));
+  zip.addFile('index.html', buildIndexHtml(isCS));
 
   // 2. Individual entity pages inside entities/
-  const entitiesFolder = zip.folder('entities');
-  if (entitiesFolder) {
-    for (const entity of DATA_MODEL_ENTITIES) {
-      entitiesFolder.file(`${entity.id}.html`, buildEntityHtml(entity, isCS));
-    }
+  for (const entity of DATA_MODEL_ENTITIES) {
+    zip.addFile(`entities/${entity.id}.html`, buildEntityHtml(entity, isCS));
   }
 
   // 3. API Guide & Database Schema HTML pages
-  zip.file('api_guide.html', buildApiGuideHtml(isCS));
-  zip.file('database_schema.html', buildDatabaseSchemaHtml(isCS));
+  zip.addFile('api_guide.html', buildApiGuideHtml(isCS));
+  zip.addFile('database_schema.html', buildDatabaseSchemaHtml(isCS));
 
   // 4. Standalone plain files (schema.sql & fhb-crm-spec.json)
   const fullSql = DATA_MODEL_ENTITIES.map(e => `-- Table: ${e.tableName}\n${e.sqlDdl}`).join('\n\n');
-  zip.file('schema.sql', fullSql);
+  zip.addFile('schema.sql', fullSql);
 
   const fullSpecification = {
     title: 'FHB CRM - Data Model & API Specification',
@@ -1042,7 +1209,7 @@ export async function generateDocZip(isCS: boolean): Promise<Blob> {
       sqlDdl: entity.sqlDdl
     }))
   };
-  zip.file('fhb-crm-spec.json', JSON.stringify(fullSpecification, null, 2));
+  zip.addFile('fhb-crm-spec.json', JSON.stringify(fullSpecification, null, 2));
 
   // 5. README.txt inside zip for quick orientation
   const readmeText = isCS 
@@ -1072,7 +1239,7 @@ Contents of fhbcrm_doc.zip:
 
 Generated by FHB CRM on: ${new Date().toISOString()}
 `;
-  zip.file('README.txt', readmeText);
+  zip.addFile('README.txt', readmeText);
 
-  return await zip.generateAsync({ type: 'blob' });
+  return zip.buildBlob();
 }
