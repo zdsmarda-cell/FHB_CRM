@@ -11,6 +11,22 @@ import { v4 as uuidv4 } from 'uuid';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { AlertModal } from '../modals/AlertModal';
 
+function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emails = new Set<string>();
+  for (const input of inputs) {
+    if (!input || typeof input !== 'string') continue;
+    const matches = input.match(emailRegex);
+    if (matches) {
+      for (const m of matches) {
+        const clean = m.trim().toLowerCase();
+        if (clean) emails.add(clean);
+      }
+    }
+  }
+  return Array.from(emails);
+}
+
 export function DealDetailsView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -2223,6 +2239,52 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     displayedActivities = displayedActivities.filter(a => a.type === 'teams' || a.type === 'meeting' || a.type === 'call');
   }
 
+  // Strict lead email filtering: only keep emails that match the lead's/company's email addresses and internal CRM users
+  const leadRawEmails = [
+    company?.email,
+    ...(company?.contacts || []).map((c: any) => c?.email)
+  ].filter(Boolean);
+  const cleanLeadEmails = extractCleanEmails(leadRawEmails);
+  const leadEmailsSet = new Set(cleanLeadEmails.map(e => e.toLowerCase()));
+
+  const systemUserEmailsSet = new Set(
+    users.map(u => (u.email || '').trim().toLowerCase()).filter(Boolean)
+  );
+
+  displayedActivities = displayedActivities.filter(a => {
+    if (a.type !== 'email') return true;
+    if (!a.note) return false;
+    // Always keep automated system cron reminders
+    if (a.createdBy === 'System Cron' || a.note.startsWith('Automatické upozornění')) return true;
+    // If company has no emails at all, do not show any synced mailbox emails
+    if (leadEmailsSet.size === 0) return false;
+
+    const fromMatch = a.note.match(/^From:\s*(.+)$/im);
+    const toMatch = a.note.match(/^To:\s*(.+)$/im);
+    const ccMatch = a.note.match(/^Cc:\s*(.+)$/im);
+
+    if (!fromMatch && !toMatch && !ccMatch) {
+      return false;
+    }
+
+    const fromAddrs = extractCleanEmails([fromMatch ? fromMatch[1] : '']);
+    const recipAddrs = extractCleanEmails([toMatch ? toMatch[1] : '', ccMatch ? ccMatch[1] : '']);
+
+    const senderIsLead = fromAddrs.some(e => leadEmailsSet.has(e));
+    const senderIsUser = fromAddrs.some(e => systemUserEmailsSet.has(e));
+    const recipHasLead = recipAddrs.some(e => leadEmailsSet.has(e));
+    const recipHasUser = recipAddrs.some(e => systemUserEmailsSet.has(e));
+
+    // Case 1: From lead/contact to user
+    if (senderIsLead && (recipHasUser || systemUserEmailsSet.size === 0)) return true;
+    // Case 2: From user to lead/contact
+    if (senderIsUser && recipHasLead) return true;
+    // Case 3: Thread with both in recipients
+    if (recipHasLead && recipHasUser) return true;
+
+    return false;
+  });
+
   // Deduplicate and filter emails
   const uniqueActivities: typeof displayedActivities = [];
   const seenEmailKeys = new Set();
@@ -2278,201 +2340,175 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [newContactEmail, setNewContactEmail] = useState('');
   
   React.useEffect(() => {
-    if (currentUser && (currentUser.googleIntegration?.connected || currentUser.msIntegration?.connected)) {
-      handleSyncBoth();
-    }
-  }, [currentUser?.id]); // auto sync on mount
+    handleSyncBoth();
+  }, [deal?.id]); // auto sync on mount and when deal changes
 
   const handleSyncBoth = async () => {
-    if (!currentUser) return;
+    if (!currentUser || !deal) return;
     setIsSyncingEmails(true);
     
     try {
-      const provider = currentUser.googleIntegration?.connected ? 'google' : 'microsoft';
-      const credentials = provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration;
-      
-      // Gather and clean relevant emails (deal owner, contact emails)
-      const rawEmailStrings = [
-        ...(company.contacts || []).map(c => c.email),
-        company.email
-      ].filter(Boolean);
-
-      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-      const relevantEmails: string[] = [];
-      const seen = new Set<string>();
-      for (const str of rawEmailStrings) {
-        if (!str) continue;
-        const matches = str.match(emailRegex);
-        if (matches) {
-          for (const m of matches) {
-            const clean = m.trim().toLowerCase();
-            if (clean && !seen.has(clean)) {
-              seen.add(clean);
-              relevantEmails.push(clean);
-            }
-          }
-        }
-      }
-
-      if (relevantEmails.length === 0) {
-        useStore.getState().addNotification(t('deal.activities.noEmailsToSync', 'Nelze synchronizovat aktivity, není zadán e-mail (ani u příležitosti, ani u kontaktu).'), 'info');
-        return;
-      }
-      
-      // Sync Emails
-      const resEmails = await apiFetch('/api/sync/emails', {
+      // 1. Sync Emails for this deal across all connected users & clean up unrelated ones on server
+      const resEmails = await apiFetch(`/api/deals/${deal.id}/sync-emails`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, credentials, relevantEmails })
+        headers: { 'Content-Type': 'application/json' }
       });
       if (resEmails.ok) {
         const data = await resEmails.json();
-        if (data.emails && data.emails.length > 0) {
-          data.emails.forEach((email: any) => {
-            // only add if subject/date doesn't already exist to avoid spamming
-            const exists = activities.some(a => a.type === 'email' && a.note.includes(email.subject));
-            if (!exists) {
-              let noteContent = `Subject: ${email.subject}\nFrom: ${email.from}\n`;
-              if (email.to) noteContent += `To: ${email.to}\n`;
-              if (email.cc) noteContent += `Cc: ${email.cc}\n`;
-              if (email.attachments && email.attachments.length > 0) noteContent += `Attachments: ${email.attachments.join(', ')}\n`;
-              noteContent += `\n${email.body}`;
-
-              addActivity({
-                dealId: deal.id,
-                type: 'email',
-                date: email.date || new Date().toISOString(),
-                note: noteContent,
-                createdBy: currentUser.id,
-                isVisible: true
-              });
-            }
-          });
+        // Purge deleted unrelated email activities from local store state
+        if (data.deletedActivityIds && data.deletedActivityIds.length > 0) {
+          const delSet = new Set(data.deletedActivityIds);
+          useStore.setState(state => ({
+            activities: state.activities.filter(a => !delSet.has(a.id))
+          }));
         }
-      }
-
-      // Sync Calendar Coming events
-      const resCal = await apiFetch('/api/sync/fetch-calendar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, credentials, relevantEmails })
-      });
-      if (resCal.ok) {
-        const dataCal = await resCal.json();
-        if (dataCal.events) {
-          const externalEvIds = new Set(dataCal.events.map((e: any) => e.id));
-
-          dataCal.events.forEach((ev: any) => {
-             // Try to update existing future meeting with existing externalEventId
-             const existing = activities.find(a => 
-               a.type !== 'email' && a.dealId === deal.id && 
-               a.externalEventId && a.externalEventId === ev.id
-             );
-             if (existing && ev.date) {
-               if (new Date(existing.date).getTime() !== new Date(ev.date).getTime() || existing.meetingLink !== ev.link || existing.note !== ev.subject) {
-                 updateActivity(existing.id, { date: ev.date, meetingLink: ev.link, note: ev.subject });
-                 // Notify the UI using our quick hack local alert
-                 useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
-               }
-             } else {
-               // Fallback: match by subject/date to avoid duplicates from multiple users
-               const existingFallback = activities.find(a => 
-                 a.type !== 'email' && a.dealId === deal.id &&
-                 a.note === ev.subject && a.date && new Date(a.date).getTime() === new Date(ev.date).getTime()
-               );
-               if (existingFallback && ev.date) {
-                 if (new Date(existingFallback.date).getTime() !== new Date(ev.date).getTime() || existingFallback.meetingLink !== ev.link) {
-                   if (!existingFallback.externalEventId) {
-                     updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link, externalEventId: ev.id });
-                   } else {
-                     updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link });
-                   }
-                   useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
-                 } else {
-                   // Just save the mapping if not mapped yet
-                   if (!existingFallback.externalEventId) {
-                     updateActivity(existingFallback.id, { externalEventId: ev.id });
-                   }
-                 }
-               } else if (ev.date) {
-                 // Create new activity from calendar!
-                 let determineType = 'meeting';
-                 if (ev.link && ev.link.includes('teams.microsoft.com')) determineType = 'teams';
-                 else if (ev.link && ev.link.includes('meet.google.com')) determineType = 'teams';
-                 
-                 addActivity({
-                   dealId: deal.id,
-                   type: determineType as any,
-                   date: ev.date,
-                   note: ev.subject || 'Schůzka',
-                   createdBy: currentUser.id,
-                   isVisible: true,
-                   externalEventId: ev.id,
-                   meetingLink: ev.link
-                 });
-                 useStore.getState().addNotification(t('settings.integrations.calendarCreated', `Přidána událost z kalendáře: ${ev.subject}`), 'success');
-               }
-             }
+        // Add new matching emails
+        if (data.addedActivities && data.addedActivities.length > 0) {
+          useStore.setState(state => {
+            const existingIds = new Set(state.activities.map(a => a.id));
+            const newActs = data.addedActivities.filter((na: any) => !existingIds.has(na.id));
+            return {
+              activities: [...newActs, ...state.activities]
+            };
           });
-
-          // check for deletes of future events
-          const localFutureExternal = activities.filter(a => 
-            a.dealId === deal.id && 
-            a.type !== 'email' && 
-            a.externalEventId && 
-            new Date(a.date || a.createdAt) > new Date()
+          useStore.getState().addNotification(
+            t('deal.activities.emailsSynced', `Synchronizováno ${data.addedActivities.length} nových e-mailů.`),
+            'info'
           );
-
-          for (const lAct of localFutureExternal) {
-            if (!externalEvIds.has(lAct.externalEventId)) {
-                // Was deleted externally!
-                useStore.getState().deleteActivity(lAct.id);
-                useStore.getState().addNotification(t('settings.integrations.calendarDeleted', `Událost z kalendáře byla smazána: ${lAct.note}`), 'info');
-            }
-          }
         }
       }
 
-      // Push unsynced local future activities to calendar
-      const unsyncedActivities = activities.filter(a => 
-        a.type !== 'email' && a.dealId === deal.id && !a.externalEventId && 
-        a.createdBy === currentUser.id && new Date(a.date) > new Date()
-      );
+      // 2. Sync Calendar Coming events if current user has calendar connected
+      if (currentUser.googleIntegration?.connected || currentUser.msIntegration?.connected) {
+        const provider = currentUser.googleIntegration?.connected ? 'google' : 'microsoft';
+        const credentials = provider === 'google' ? currentUser.googleIntegration : currentUser.msIntegration;
+        
+        const rawEmailStrings = [
+          ...(company?.contacts || []).map(c => c.email),
+          company?.email
+        ].filter(Boolean);
+        const relevantEmails = extractCleanEmails(rawEmailStrings);
 
-      for (const ua of unsyncedActivities) {
-        try {
-          const res = await apiFetch('/api/sync/calendar', {
+        if (relevantEmails.length > 0) {
+          const resCal = await apiFetch('/api/sync/fetch-calendar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              provider,
-              credentials,
-              action: 'create',
-              activityDetails: {
-                type: ua.type,
-                date: ua.date,
-                note: ua.note,
-                attendees: [
-                  currentUser.email,
-                  ...(ua.participants || []).map(id => users.find(u => u.id === id)?.email || id).filter(Boolean)
-                ]
-              }
-            })
+            body: JSON.stringify({ provider, credentials, relevantEmails })
           });
-          if (res.ok) {
-            const data = await res.json();
-            updateActivity(ua.id, { 
-              meetingLink: data.meetingLink || ua.meetingLink, 
-              externalEventId: data.externalEventId 
-            });
+          if (resCal.ok) {
+            const dataCal = await resCal.json();
+            if (dataCal.events) {
+              const externalEvIds = new Set(dataCal.events.map((e: any) => e.id));
+
+              dataCal.events.forEach((ev: any) => {
+                 // Try to update existing future meeting with existing externalEventId
+                 const existing = activities.find(a => 
+                   a.type !== 'email' && a.dealId === deal.id && 
+                   a.externalEventId && a.externalEventId === ev.id
+                 );
+                 if (existing && ev.date) {
+                   if (new Date(existing.date).getTime() !== new Date(ev.date).getTime() || existing.meetingLink !== ev.link || existing.note !== ev.subject) {
+                     updateActivity(existing.id, { date: ev.date, meetingLink: ev.link, note: ev.subject });
+                     useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
+                   }
+                 } else {
+                   // Fallback: match by subject/date to avoid duplicates from multiple users
+                   const existingFallback = activities.find(a => 
+                     a.type !== 'email' && a.dealId === deal.id &&
+                     a.note === ev.subject && a.date && new Date(a.date).getTime() === new Date(ev.date).getTime()
+                   );
+                   if (existingFallback && ev.date) {
+                     if (new Date(existingFallback.date).getTime() !== new Date(ev.date).getTime() || existingFallback.meetingLink !== ev.link) {
+                       if (!existingFallback.externalEventId) {
+                         updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link, externalEventId: ev.id });
+                       } else {
+                         updateActivity(existingFallback.id, { date: ev.date, meetingLink: ev.link });
+                       }
+                       useStore.getState().addNotification(t('settings.integrations.calendarUpdated', `Upravena událost v kalendáři: ${ev.subject}`), 'info');
+                     } else {
+                       if (!existingFallback.externalEventId) {
+                         updateActivity(existingFallback.id, { externalEventId: ev.id });
+                       }
+                     }
+                   } else if (ev.date) {
+                     let determineType = 'meeting';
+                     if (ev.link && ev.link.includes('teams.microsoft.com')) determineType = 'teams';
+                     else if (ev.link && ev.link.includes('meet.google.com')) determineType = 'teams';
+                     
+                     addActivity({
+                       dealId: deal.id,
+                       type: determineType as any,
+                       date: ev.date,
+                       note: ev.subject || 'Schůzka',
+                       createdBy: currentUser.id,
+                       isVisible: true,
+                       externalEventId: ev.id,
+                       meetingLink: ev.link
+                     });
+                     useStore.getState().addNotification(t('settings.integrations.calendarCreated', `Přidána událost z kalendáře: ${ev.subject}`), 'success');
+                   }
+                 }
+              });
+
+              // check for deletes of future events
+              const localFutureExternal = activities.filter(a => 
+                a.dealId === deal.id && 
+                a.type !== 'email' && 
+                a.externalEventId && 
+                new Date(a.date || a.createdAt) > new Date()
+              );
+
+              for (const lAct of localFutureExternal) {
+                if (!externalEvIds.has(lAct.externalEventId)) {
+                    // Was deleted externally!
+                    useStore.getState().deleteActivity(lAct.id);
+                    useStore.getState().addNotification(t('settings.integrations.calendarDeleted', `Událost z kalendáře byla smazána: ${lAct.note}`), 'info');
+                }
+              }
+            }
           }
-        } catch (e) {
-          console.error('Failed to push unsynced activity to calendar', e);
+        }
+
+        // Push unsynced local future activities to calendar
+        const unsyncedActivities = activities.filter(a => 
+          a.type !== 'email' && a.dealId === deal.id && !a.externalEventId && 
+          a.createdBy === currentUser.id && new Date(a.date) > new Date()
+        );
+
+        for (const ua of unsyncedActivities) {
+          try {
+            const res = await apiFetch('/api/sync/calendar', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                provider,
+                credentials,
+                action: 'create',
+                activityDetails: {
+                  type: ua.type,
+                  date: ua.date,
+                  note: ua.note,
+                  attendees: [
+                    currentUser.email,
+                    ...(ua.participants || []).map(id => users.find(u => u.id === id)?.email || id).filter(Boolean)
+                  ]
+                }
+              })
+            });
+            if (res.ok) {
+              const data = await res.json();
+              updateActivity(ua.id, { 
+                meetingLink: data.meetingLink || ua.meetingLink, 
+                externalEventId: data.externalEventId 
+              });
+            }
+          } catch (e) {
+            console.error('Failed to push unsynced activity to calendar', e);
+          }
         }
       }
-
-    } catch (err) {
-      console.error('Email/Cal sync failed', err);
+    } catch (err: any) {
+      console.warn('Email/Cal sync failed', err);
     } finally {
       setIsSyncingEmails(false);
     }
@@ -2772,7 +2808,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           </div>
         </div>
         <div className="flex gap-3">
-          {(currentUser?.googleIntegration?.connected || currentUser?.msIntegration?.connected) && canEdit && (
+          {canEdit && (
             <button 
               type="button"
               onClick={handleSyncBoth}

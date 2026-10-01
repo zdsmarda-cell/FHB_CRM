@@ -84,15 +84,15 @@ async function startServer() {
   const pool = mysql.createPool({
     host: process.env.DB_HOST || 'db.mobilgroup.cz',
     port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 3306,
-    user: process.env.DB_USER || 'fhb_maintain',
+    user: process.env.DB_USER || 'fhb_crm',
     password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || '',
+    database: process.env.DB_NAME || 'fhb_crm',
     waitForConnections: true,
-    connectionLimit: 25,
-    maxIdle: 10,
-    idleTimeout: 60000,
+    connectionLimit: 15,
+    maxIdle: 5,
+    idleTimeout: 30000,
     queueLimit: 0,
-    connectTimeout: 10000,
+    connectTimeout: 5000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000
   });
@@ -108,7 +108,10 @@ async function startServer() {
 
   // Run auto-migrations
   try {
-    const connection = await pool.getConnection();
+    const connection = await Promise.race([
+      pool.getConnection(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('connect ETIMEDOUT')), 3000))
+    ]);
     try {
       // Create initial tables if not exist
       if (fs.existsSync(path.join(__dirname, 'schema.sql'))) {
@@ -330,6 +333,10 @@ async function startServer() {
     } finally {
       connection.release();
     }
+    // Cleanup any historically stored unrelated email activities on DB startup
+    cleanupAllUnrelatedEmails(pool).catch((err: any) => {
+      console.error('[CLEANUP] Background initial cleanup error:', err.message);
+    });
   } catch (err: any) {
     console.error("[DB INIT] WARNING: Could not run migrations. DB might be offline.", err.message);
   }
@@ -1088,8 +1095,460 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     }
   });
 
+  function isEmailStrictlyMatchingDeal(
+    fromEmailOrLine: string,
+    toAndCcEmailsOrLines: string[],
+    leadEmailsSet: Set<string>,
+    systemUserEmailsSet: Set<string>
+  ): boolean {
+    if (leadEmailsSet.size === 0) return false;
+
+    const fromEmails = extractCleanEmails([fromEmailOrLine]);
+    const recipientEmails = extractCleanEmails(toAndCcEmailsOrLines);
+
+    const senderIsLead = fromEmails.some(e => leadEmailsSet.has(e));
+    const senderIsUser = fromEmails.some(e => systemUserEmailsSet.has(e));
+
+    const recipHasLead = recipientEmails.some(e => leadEmailsSet.has(e));
+    const recipHasUser = recipientEmails.some(e => systemUserEmailsSet.has(e));
+
+    // 1. Incoming: Sender is lead/contact, recipient is our user (or any internal user)
+    if (senderIsLead && (recipHasUser || systemUserEmailsSet.size === 0)) {
+      return true;
+    }
+
+    // 2. Outgoing: Sender is our user, recipient is lead/contact
+    if (senderIsUser && recipHasLead) {
+      return true;
+    }
+
+    // 3. Multi-party thread: Both lead/contact and internal user are in recipients
+    if (recipHasLead && recipHasUser) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function isActivityStrictlyRelatedToDeal(
+    act: { note?: string; createdBy?: string },
+    leadEmailsSet: Set<string>,
+    systemUserEmailsSet: Set<string>
+  ): boolean {
+    // Keep automated system cron reminder activities
+    if (act.createdBy === 'System Cron' || (act.note && act.note.startsWith('Automatické upozornění'))) {
+      return true;
+    }
+
+    if (leadEmailsSet.size === 0) return false;
+
+    const note = act.note || '';
+    const fromMatch = note.match(/^From:\s*(.+)$/im);
+    const toMatch = note.match(/^To:\s*(.+)$/im);
+    const ccMatch = note.match(/^Cc:\s*(.+)$/im);
+
+    if (!fromMatch && !toMatch && !ccMatch) {
+      // Missing email headers - cannot be validated as a legitimate lead email
+      return false;
+    }
+
+    const fromLine = fromMatch ? fromMatch[1] : '';
+    const toLine = toMatch ? toMatch[1] : '';
+    const ccLine = ccMatch ? ccMatch[1] : '';
+
+    return isEmailStrictlyMatchingDeal(fromLine, [toLine, ccLine], leadEmailsSet, systemUserEmailsSet);
+  }
+
+  async function cleanupUnrelatedEmailsForDeal(
+    connOrPool: any,
+    dealId: string,
+    leadEmailsSet: Set<string>,
+    systemUserEmailsSet: Set<string>
+  ): Promise<string[]> {
+    try {
+      const [actRows] = await connOrPool.query(
+        `SELECT id, note, createdBy FROM activities WHERE dealId = ? AND type = 'email'`,
+        [dealId]
+      );
+
+      const deletedIds: string[] = [];
+      for (const act of actRows as any[]) {
+        if (!isActivityStrictlyRelatedToDeal(act, leadEmailsSet, systemUserEmailsSet)) {
+          deletedIds.push(act.id);
+        }
+      }
+
+      if (deletedIds.length > 0) {
+        for (let i = 0; i < deletedIds.length; i += 100) {
+          const chunk = deletedIds.slice(i, i + 100);
+          const placeholders = chunk.map(() => '?').join(',');
+          await connOrPool.query(`DELETE FROM activities WHERE id IN (${placeholders})`, chunk);
+        }
+        console.log(`[DEAL CLEANUP] Purged ${deletedIds.length} unrelated emails for deal ${dealId}`);
+      }
+
+      return deletedIds;
+    } catch (err: any) {
+      console.warn(`[DEAL CLEANUP] Notice for deal ${dealId}:`, err.message);
+      return [];
+    }
+  }
+
+  async function cleanupAllUnrelatedEmails(poolRef: any): Promise<number> {
+    let deletedCount = 0;
+    try {
+      const connection = await Promise.race([
+        poolRef.getConnection(),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('connect ETIMEDOUT')), 3000))
+      ]);
+      try {
+        // 1. Fetch companies and their contacts
+        const [compRows] = await connection.query('SELECT id, email, contacts FROM companies');
+        const companyMap = new Map<string, Set<string>>();
+        for (const comp of compRows as any[]) {
+          const rawEmails: (string | null | undefined)[] = [comp.email];
+          if (comp.contacts) {
+            try {
+              const contacts = typeof comp.contacts === 'string' ? JSON.parse(comp.contacts) : comp.contacts;
+              if (Array.isArray(contacts)) {
+                contacts.forEach((c: any) => { if (c?.email) rawEmails.push(c.email); });
+              }
+            } catch(e) {}
+          }
+          const clean = extractCleanEmails(rawEmails);
+          companyMap.set(comp.id, new Set(clean));
+        }
+
+        // 2. Fetch deals and their companyId
+        const [dealRows] = await connection.query('SELECT id, companyId FROM deals');
+        const dealCompanyMap = new Map<string, string>();
+        for (const d of dealRows as any[]) {
+          if (d.companyId) dealCompanyMap.set(d.id, d.companyId);
+        }
+
+        // 3. Fetch system user emails
+        const [userRows] = await connection.query('SELECT email FROM users');
+        const systemUserEmails = new Set<string>();
+        for (const u of userRows as any[]) {
+          const em = (u.email || '').trim().toLowerCase();
+          if (em) systemUserEmails.add(em);
+        }
+
+        // 4. Fetch email activities
+        const [actRows] = await connection.query(`
+          SELECT id, dealId, note, createdBy 
+          FROM activities 
+          WHERE type = 'email' 
+            AND (createdBy != 'System Cron' OR createdBy IS NULL)
+            AND (note NOT LIKE 'Automatické upozornění%' OR note IS NULL)
+        `);
+
+        const toDeleteIds: string[] = [];
+        for (const act of actRows as any[]) {
+          const dealId = act.dealId;
+          const companyId = dealId ? dealCompanyMap.get(dealId) : null;
+          const leadEmails = companyId ? (companyMap.get(companyId) || new Set<string>()) : new Set<string>();
+
+          if (!isActivityStrictlyRelatedToDeal(act, leadEmails, systemUserEmails)) {
+            toDeleteIds.push(act.id);
+          }
+        }
+
+        if (toDeleteIds.length > 0) {
+          console.log(`[CLEANUP] Found ${toDeleteIds.length} unrelated email activities. Deleting...`);
+          for (let i = 0; i < toDeleteIds.length; i += 100) {
+            const chunk = toDeleteIds.slice(i, i + 100);
+            const placeholders = chunk.map(() => '?').join(',');
+            await connection.query(`DELETE FROM activities WHERE id IN (${placeholders})`, chunk);
+          }
+          deletedCount = toDeleteIds.length;
+          console.log(`[CLEANUP] Successfully purged ${deletedCount} unrelated email activities.`);
+        } else {
+          console.log('[CLEANUP] No unrelated email activities found.');
+        }
+      } finally {
+        connection.release();
+      }
+    } catch (err: any) {
+      console.warn('[CLEANUP] Notice during cleanupAllUnrelatedEmails:', err.message);
+    }
+    return deletedCount;
+  }
+
+  app.post('/api/cleanup-unrelated-emails', authMiddleware, async (req, res) => {
+    try {
+      const deletedCount = await cleanupAllUnrelatedEmails(pool);
+      res.json({ success: true, deletedCount });
+    } catch (err: any) {
+      console.error('Cleanup endpoint error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/deals/:id/sync-emails', authMiddleware, async (req, res) => {
+    const dealId = req.params.id;
+    try {
+      // 1. Get deal & company
+      const [dealRows] = await pool.query('SELECT * FROM deals WHERE id = ?', [dealId]);
+      if ((dealRows as any[]).length === 0) {
+        return res.status(404).json({ error: 'Deal not found' });
+      }
+      const deal = (dealRows as any[])[0];
+
+      let company: any = null;
+      if (deal.companyId) {
+        const [compRows] = await pool.query('SELECT * FROM companies WHERE id = ?', [deal.companyId]);
+        company = (compRows as any[])[0] || null;
+      }
+
+      // 2. Get system user emails
+      const [userRows] = await pool.query('SELECT id, name, email, googleIntegration, msIntegration FROM users WHERE isActive = 1');
+      const allUsers = userRows as any[];
+      const systemUserEmails = new Set<string>();
+      allUsers.forEach(u => {
+        const em = (u.email || '').trim().toLowerCase();
+        if (em) systemUserEmails.add(em);
+      });
+
+      // 3. Get lead emails
+      const rawLeadEmails = [
+        company?.email
+      ];
+      if (company?.contacts) {
+        try {
+          const contacts = typeof company.contacts === 'string' ? JSON.parse(company.contacts) : company.contacts;
+          if (Array.isArray(contacts)) {
+            contacts.forEach((c: any) => { if (c?.email) rawLeadEmails.push(c.email); });
+          }
+        } catch(e) {}
+      }
+      const leadEmails = extractCleanEmails(rawLeadEmails);
+      const leadEmailsSet = new Set(leadEmails);
+
+      // 4. Clean up any existing unrelated email activities for this deal
+      const deletedActivityIds = await cleanupUnrelatedEmailsForDeal(pool, dealId, leadEmailsSet, systemUserEmails);
+
+      if (leadEmails.length === 0) {
+        return res.json({
+          success: true,
+          message: 'No lead or contact emails found for this deal.',
+          addedCount: 0,
+          addedActivities: [],
+          deletedCount: deletedActivityIds.length,
+          deletedActivityIds
+        });
+      }
+
+      // 5. Find all connected users with valid MS or Google tokens
+      const connectedUsers: any[] = [];
+      for (const u of allUsers) {
+        let msInt = null;
+        let googleInt = null;
+        if (u.msIntegration) {
+          try { msInt = typeof u.msIntegration === 'string' ? JSON.parse(u.msIntegration) : u.msIntegration; } catch(e) {}
+        }
+        if (u.googleIntegration) {
+          try { googleInt = typeof u.googleIntegration === 'string' ? JSON.parse(u.googleIntegration) : u.googleIntegration; } catch(e) {}
+        }
+        if ((msInt?.connected && msInt?.tokens) || (googleInt?.connected && googleInt?.tokens)) {
+          connectedUsers.push({
+            user: u,
+            msIntegration: msInt,
+            googleIntegration: googleInt
+          });
+        }
+      }
+
+      const addedActivities: any[] = [];
+
+      // 6. Iterate through all connected users and sync their mailboxes
+      for (const item of connectedUsers) {
+        const u = item.user;
+        const userEmailsSet = new Set<string>([
+          (u.email || '').trim().toLowerCase(),
+          ...Array.from(systemUserEmails)
+        ]);
+
+        // A) Microsoft Graph
+        if (item.msIntegration?.connected && item.msIntegration?.tokens) {
+          try {
+            const searchTerms = leadEmails.map(e => `\"${e}\"`).join(' OR ');
+            const messages = await callMsGraphWithRetry(item.msIntegration.tokens, u.id, pool, async (client) => {
+              return await client.api('/me/messages')
+                .header('ConsistencyLevel', 'eventual')
+                .search(searchTerms)
+                .select('id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview')
+                .expand('attachments($select=name,contentType)')
+                .top(50)
+                .get();
+            });
+
+            if (messages?.value && Array.isArray(messages.value)) {
+              for (const msg of messages.value) {
+                const fromAddr = msg.from?.emailAddress?.address || '';
+                const toAddrs = (msg.toRecipients || []).map((r: any) => r.emailAddress?.address).filter(Boolean);
+                const ccAddrs = (msg.ccRecipients || []).map((r: any) => r.emailAddress?.address).filter(Boolean);
+
+                // STRICT VALIDATION: Must strictly be between lead and user
+                if (!isEmailStrictlyMatchingDeal(fromAddr, [...toAddrs, ...ccAddrs], leadEmailsSet, userEmailsSet)) {
+                  continue;
+                }
+
+                const msgDate = msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date();
+                const subjPrefix = `Subject: ${msg.subject || '(Bez předmětu)'}%`;
+                const [exists] = await pool.query(
+                  `SELECT id FROM activities 
+                   WHERE dealId = ? AND type = 'email' AND note LIKE ? AND ABS(TIMESTAMPDIFF(MINUTE, date, ?)) <= 2 
+                   LIMIT 1`,
+                  [dealId, subjPrefix, msgDate]
+                );
+                if ((exists as any[]).length > 0) {
+                  continue; // Already saved
+                }
+
+                let noteContent = `Subject: ${msg.subject || '(Bez předmětu)'}\nFrom: ${fromAddr}\n`;
+                if (toAddrs.length > 0) noteContent += `To: ${toAddrs.join(', ')}\n`;
+                if (ccAddrs.length > 0) noteContent += `Cc: ${ccAddrs.join(', ')}\n`;
+                const attachments = msg.hasAttachments && msg.attachments ? msg.attachments.map((a: any) => a.name) : [];
+                if (attachments.length > 0) noteContent += `Attachments: ${attachments.join(', ')}\n`;
+                noteContent += `\n${msg.bodyPreview || ''}`;
+
+                const actId = uuidv4();
+                const now = new Date();
+                await pool.query(
+                  `INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt, updatedAt, isVisible)
+                   VALUES (?, ?, 'email', ?, ?, ?, ?, ?, 1)`,
+                  [actId, dealId, msgDate, noteContent, u.id, now, now]
+                );
+
+                addedActivities.push({
+                  id: actId,
+                  dealId: dealId,
+                  type: 'email',
+                  date: msgDate.toISOString(),
+                  note: noteContent,
+                  createdBy: u.id,
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  isVisible: true
+                });
+              }
+            }
+          } catch (msErr: any) {
+            console.warn(`[SYNC] MS Graph error for user ${u.email}:`, msErr?.message || msErr);
+          }
+        }
+
+        // B) Google Gmail
+        if (item.googleIntegration?.connected && item.googleIntegration?.tokens) {
+          try {
+            const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+            oAuth2Client.setCredentials(item.googleIntegration.tokens);
+            const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
+            
+            const query = leadEmails.map((e: string) => `(from:${e} OR to:${e} OR cc:${e})`).join(' OR ');
+            const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 50 });
+            
+            if (listRes.data.messages) {
+              for (const m of listRes.data.messages) {
+                if (!m.id) continue;
+                const msgRes = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
+                const headers = msgRes.data.payload?.headers || [];
+                const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '(Bez předmětu)';
+                const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
+                const to = headers.find(h => h.name?.toLowerCase() === 'to')?.value || '';
+                const cc = headers.find(h => h.name?.toLowerCase() === 'cc')?.value || '';
+                const dateVal = headers.find(h => h.name?.toLowerCase() === 'date')?.value || new Date().toISOString();
+
+                const fromEmails = extractCleanEmails([from]);
+                const recipientEmails = extractCleanEmails([to, cc]);
+                const fromAddr = fromEmails[0] || from;
+
+                // STRICT VALIDATION
+                if (!isEmailStrictlyMatchingDeal(fromAddr, recipientEmails, leadEmailsSet, userEmailsSet)) {
+                  continue;
+                }
+
+                const msgDate = new Date(dateVal);
+                const subjPrefix = `Subject: ${subject}%`;
+                const [exists] = await pool.query(
+                  `SELECT id FROM activities 
+                   WHERE dealId = ? AND type = 'email' AND note LIKE ? AND ABS(TIMESTAMPDIFF(MINUTE, date, ?)) <= 2 
+                   LIMIT 1`,
+                  [dealId, subjPrefix, msgDate]
+                );
+                if ((exists as any[]).length > 0) {
+                  continue;
+                }
+
+                const attachments: string[] = [];
+                const extractAttachments = (parts: any[]) => {
+                  for (const part of parts) {
+                    if (part.filename && part.filename.length > 0) attachments.push(part.filename);
+                    if (part.parts) extractAttachments(part.parts);
+                  }
+                };
+                if (msgRes.data.payload?.parts) extractAttachments(msgRes.data.payload.parts);
+
+                let noteContent = `Subject: ${subject}\nFrom: ${from}\n`;
+                if (to) noteContent += `To: ${to}\n`;
+                if (cc) noteContent += `Cc: ${cc}\n`;
+                if (attachments.length > 0) noteContent += `Attachments: ${attachments.join(', ')}\n`;
+                noteContent += `\n${msgRes.data.snippet || ''}`;
+
+                const actId = uuidv4();
+                const now = new Date();
+                await pool.query(
+                  `INSERT INTO activities (id, dealId, type, date, note, createdBy, createdAt, updatedAt, isVisible)
+                   VALUES (?, ?, 'email', ?, ?, ?, ?, ?, 1)`,
+                  [actId, dealId, msgDate, noteContent, u.id, now, now]
+                );
+
+                addedActivities.push({
+                  id: actId,
+                  dealId: dealId,
+                  type: 'email',
+                  date: msgDate.toISOString(),
+                  note: noteContent,
+                  createdBy: u.id,
+                  createdAt: now.toISOString(),
+                  updatedAt: now.toISOString(),
+                  isVisible: true
+                });
+              }
+            }
+          } catch (gErr: any) {
+            console.warn(`[SYNC] Gmail error for user ${u.email}:`, gErr?.message || gErr);
+          }
+        }
+      }
+
+      // 7. Emit socket event if any activities were added or purged
+      if (addedActivities.length > 0 || deletedActivityIds.length > 0) {
+        const io = req.app.get('io');
+        if (io) {
+          io.emit('data-changed', {
+            type: 'activities',
+            dealId,
+            timestamp: Date.now()
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        addedCount: addedActivities.length,
+        addedActivities,
+        deletedCount: deletedActivityIds.length,
+        deletedActivityIds
+      });
+    } catch (err: any) {
+      console.error('Sync deal emails error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post('/api/sync/emails', authMiddleware, async (req, res) => {
-    // ... existujici email logika zustava ...
     const { provider, credentials, relevantEmails } = req.body;
     let emailResults: any[] = [];
 
@@ -1099,13 +1558,17 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         return res.json({ emails: [] });
       }
 
+      const leadEmailsSet = new Set(uniqueEmails);
+      const currentUserEmail = ((req as any).user?.email || '').trim().toLowerCase();
+      const userEmailsSet = new Set([currentUserEmail].filter(Boolean));
+
       if (provider === 'google' && credentials?.tokens) {
         const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
         oAuth2Client.setCredentials(credentials.tokens);
         const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
         
         const query = uniqueEmails.map((e: string) => `(from:${e} OR to:${e} OR cc:${e})`).join(' OR ');
-        const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 10 });
+        const listRes = await gmail.users.messages.list({ userId: 'me', q: query, maxResults: 50 });
         
         if (listRes.data.messages) {
           for (const msg of listRes.data.messages) {
@@ -1113,13 +1576,21 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
             const msgRes = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
             
             const headers = msgRes.data.payload?.headers || [];
-            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '';
+            const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || '(Bez předmětu)';
             const from = headers.find(h => h.name?.toLowerCase() === 'from')?.value || '';
             const to = headers.find(h => h.name?.toLowerCase() === 'to')?.value || '';
             const cc = headers.find(h => h.name?.toLowerCase() === 'cc')?.value || '';
             const date = headers.find(h => h.name?.toLowerCase() === 'date')?.value || new Date().toISOString();
             
-            // Extract attachments from parts
+            const fromEmails = extractCleanEmails([from]);
+            const recipientEmails = extractCleanEmails([to, cc]);
+            const fromAddr = fromEmails[0] || from;
+
+            // Strict validation
+            if (!isEmailStrictlyMatchingDeal(fromAddr, recipientEmails, leadEmailsSet, userEmailsSet)) {
+              continue;
+            }
+
             const attachments: string[] = [];
             const extractAttachments = (parts: any[]) => {
               for (const part of parts) {
@@ -1146,9 +1617,7 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
           }
         }
       } else if (provider === 'microsoft' && credentials?.tokens) {
-        // In Microsoft Graph KQL:
-        // Logical operators like OR must be outside double quotes: "participants:email1" OR "participants:email2"
-        const searchQuery = uniqueEmails.map((e: string) => `"participants:${e}"`).join(' OR ');
+        const searchQuery = uniqueEmails.map((e: string) => `\"${e}\"`).join(' OR ');
         try {
           const messages = await callMsGraphWithRetry(credentials.tokens, (req as any).user.id, pool, async (client) => {
             return await client.api('/me/messages')
@@ -1156,21 +1625,32 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
               .search(searchQuery)
               .select('id,subject,from,toRecipients,ccRecipients,hasAttachments,receivedDateTime,bodyPreview')
               .expand('attachments($select=name,contentType)')
-              .top(10)
+              .top(50)
               .get();
           });
           
           if (messages && messages.value) {
-            emailResults = messages.value.map((msg: any) => ({
-              id: msg.id,
-              subject: msg.subject,
-              from: msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || '',
-              to: (msg.toRecipients || []).map((r: any) => r.emailAddress?.address).join(', '),
-              cc: (msg.ccRecipients || []).map((r: any) => r.emailAddress?.address).join(', '),
-              attachments: msg.hasAttachments && msg.attachments ? msg.attachments.map((a: any) => a.name) : [],
-              date: msg.receivedDateTime,
-              body: msg.bodyPreview
-            }));
+            for (const msg of messages.value) {
+              const fromAddr = msg.from?.emailAddress?.address || msg.from?.emailAddress?.name || '';
+              const toAddrs = (msg.toRecipients || []).map((r: any) => r.emailAddress?.address).filter(Boolean);
+              const ccAddrs = (msg.ccRecipients || []).map((r: any) => r.emailAddress?.address).filter(Boolean);
+
+              // Strict validation
+              if (!isEmailStrictlyMatchingDeal(fromAddr, [...toAddrs, ...ccAddrs], leadEmailsSet, userEmailsSet)) {
+                continue;
+              }
+
+              emailResults.push({
+                id: msg.id,
+                subject: msg.subject || '(Bez předmětu)',
+                from: fromAddr,
+                to: toAddrs.join(', '),
+                cc: ccAddrs.join(', '),
+                attachments: msg.hasAttachments && msg.attachments ? msg.attachments.map((a: any) => a.name) : [],
+                date: msg.receivedDateTime,
+                body: msg.bodyPreview
+              });
+            }
           }
         } catch (graphErr: any) {
           console.warn('MS Graph search warning:', graphErr?.message || graphErr);
@@ -1962,6 +2442,7 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
     }
   });
 
+  let cachedActivities: any[] = [];
   app.get('/api/activities', authMiddleware, async (req, res) => {
     try {
       const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC LIMIT 25000");
@@ -1976,8 +2457,13 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
         return item;
       });
       const parsedActivities = parseJsonFields(activityRows as any[], ['participants']);
+      cachedActivities = parsedActivities;
       res.json(parsedActivities);
     } catch (err: any) {
+      if (err.message && (err.message.includes('ETIMEDOUT') || err.message.includes('ECONNREFUSED') || err.message.includes('ENOTFOUND'))) {
+        console.warn('[DB NOTICE] Activities fetch connection unavailable, returning cache:', err.message);
+        return res.json(cachedActivities);
+      }
       console.error('Activities fetch error:', err);
       res.status(500).json({ error: err.message });
     }
@@ -2436,14 +2922,23 @@ function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
 
   app.get("/api/health", async (req, res) => {
     try {
+      let dbStatus = "unconfigured";
       if (process.env.DB_PASSWORD && process.env.DB_NAME) {
-         // Only test ping if configured, otherwise just return ok to not crash if unconfigured
-         const [rows] = await pool.query('SELECT 1 + 1 AS result');
+        try {
+          await Promise.race([
+            pool.query('SELECT 1 + 1 AS result'),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('connect ETIMEDOUT')), 2000))
+          ]);
+          dbStatus = "connected";
+        } catch (dbErr: any) {
+          console.warn("[HEALTH] Database connection check notice:", dbErr.message);
+          dbStatus = "offline";
+        }
       }
-      res.json({ status: "ok", mysql: "configured" });
-    } catch (error) {
-      console.error("Database connection error:", error);
-      res.status(500).json({ status: "error", message: "Database connection failed" });
+      res.json({ status: "ok", mysql: dbStatus });
+    } catch (error: any) {
+      console.warn("Health check error:", error.message);
+      res.json({ status: "ok", mysql: "offline" });
     }
   });
 
