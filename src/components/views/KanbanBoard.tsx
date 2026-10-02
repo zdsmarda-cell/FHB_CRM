@@ -415,7 +415,13 @@ export function KanbanBoard() {
       const searchLower = state.kanbanCompanySearch.trim().toLowerCase();
       deals = deals.filter(d => {
         const company = state.companies.find(c => c.id === d.companyId);
-        return company && company.name.toLowerCase().includes(searchLower);
+        if (!company) return false;
+        const matchesName = Boolean(company.name && company.name.toLowerCase().includes(searchLower));
+        const matchesUrl = Boolean(
+          (company.urls && company.urls.some(u => typeof u === 'string' && u.toLowerCase().includes(searchLower))) ||
+          ((company as any).url && typeof (company as any).url === 'string' && (company as any).url.toLowerCase().includes(searchLower))
+        );
+        return matchesName || matchesUrl;
       });
     }
 
@@ -747,7 +753,7 @@ export function KanbanBoard() {
           <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder={t('kanban.searchCompanyPlaceholder', 'Hledat společnost...')}
+            placeholder={t('kanban.searchCompanyPlaceholder', 'Hledat společnost nebo URL...')}
             value={state.kanbanCompanySearch}
             onChange={(e) => state.setKanbanCompanySearch(e.target.value)}
             className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white"

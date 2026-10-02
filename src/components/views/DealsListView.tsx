@@ -119,7 +119,9 @@ export function DealsListView({
       const searchLower = effectiveSearch.toLowerCase();
       const matchesSearch = !effectiveSearch || 
         c.name.toLowerCase().includes(searchLower) || 
-        c.companyId.toLowerCase().includes(searchLower);
+        c.companyId.toLowerCase().includes(searchLower) ||
+        Boolean(c.urls && c.urls.some(u => typeof u === 'string' && u.toLowerCase().includes(searchLower))) ||
+        Boolean((c as any).url && typeof (c as any).url === 'string' && (c as any).url.toLowerCase().includes(searchLower));
       
       const effectiveCountries = selectedCountries.length > 0 ? selectedCountries : store.kanbanCountryFilter;
       const compCountry = c.country || 'Czechia';
