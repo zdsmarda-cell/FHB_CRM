@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS activities (
   createdBy VARCHAR(50),
   meetingLink TEXT,
   duration INT,
+  teamsSyncStatus VARCHAR(50),
   createdAt DATETIME
 );
 

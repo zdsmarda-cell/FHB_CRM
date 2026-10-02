@@ -189,6 +189,7 @@ async function startServer() {
         "CREATE TABLE IF NOT EXISTS contact_positions (id VARCHAR(50) PRIMARY KEY, name VARCHAR(255) NOT NULL, isActive BOOLEAN DEFAULT TRUE);",
         "CREATE TABLE IF NOT EXISTS stage_reminders (id VARCHAR(50) PRIMARY KEY, stage VARCHAR(50) NOT NULL, days INT NOT NULL, action VARCHAR(50) DEFAULT '', color VARCHAR(20) DEFAULT 'none');",
         "ALTER TABLE activities ADD COLUMN updatedAt DATETIME;",
+        "ALTER TABLE activities ADD COLUMN teamsSyncStatus VARCHAR(50);",
         "CREATE INDEX idx_audit_logs_deal_field ON audit_logs(dealId, field);",
         "CREATE INDEX idx_audit_logs_field ON audit_logs(field);",
         "CREATE INDEX idx_activities_dealId ON activities(dealId);",
@@ -3481,9 +3482,9 @@ setTimeout(() => {
     setInterval(async () => {
       try {
         console.log('[Worker] Running Teams Activity Worker to check summaries and recordings...');
-        // Only select records that are past
+        // Only select records that are past, within last 7 days, and not already resolved/skipped
         const [activities] = await pool.query(
-          "SELECT * FROM activities WHERE type = 'teams' AND externalEventId IS NOT NULL AND (recordingLink IS NULL OR meetingSummary IS NULL) AND date < NOW()"
+          "SELECT * FROM activities WHERE type = 'teams' AND externalEventId IS NOT NULL AND (recordingLink IS NULL OR meetingSummary IS NULL) AND date < NOW() AND date >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND (teamsSyncStatus IS NULL OR teamsSyncStatus = 'pending')"
         );
 
         if ((activities as any[]).length === 0) return;
@@ -3491,7 +3492,10 @@ setTimeout(() => {
         for (const activity of (activities as any[])) {
           try {
             const [users] = await pool.query('SELECT * FROM users WHERE id = ?', [activity.createdBy]);
-            if ((users as any[]).length === 0) continue;
+            if ((users as any[]).length === 0) {
+              await pool.query("UPDATE activities SET teamsSyncStatus = 'skipped_no_user' WHERE id = ?", [activity.id]);
+              continue;
+            }
             
             const user = (users as any[])[0];
             let msIntegration = null;
@@ -3501,29 +3505,87 @@ setTimeout(() => {
             if (!msIntegration?.connected || !msIntegration?.tokens) continue;
 
             await callMsGraphWithRetry(msIntegration.tokens, user.id, pool, async (client) => {
-              // 1. Get event to find joinUrl
+              // 1. Get event to find joinUrl and organizer
               let eventUrl = '';
+              let isOrganizer = true;
+              let organizerEmail = '';
               try {
-                const event = await client.api(`/me/events/${activity.externalEventId}`).select('onlineMeeting').get();
+                const event = await client.api(`/me/events/${activity.externalEventId}`)
+                  .select('onlineMeeting,organizer,isOnlineMeeting')
+                  .get();
                 eventUrl = event.onlineMeeting?.joinUrl;
+                organizerEmail = event.organizer?.emailAddress?.address || '';
+                if (organizerEmail && user.email) {
+                  isOrganizer = organizerEmail.toLowerCase() === user.email.toLowerCase();
+                }
               } catch (e: any) {
                 if (e.statusCode === 404) {
-                  // Event deleted
+                  // Event deleted from calendar
+                  await pool.query("UPDATE activities SET teamsSyncStatus = 'event_deleted' WHERE id = ?", [activity.id]);
                   return;
                 }
               }
 
-              if (!eventUrl) return;
+              if (!eventUrl) {
+                await pool.query("UPDATE activities SET teamsSyncStatus = 'no_join_url' WHERE id = ?", [activity.id]);
+                return;
+              }
+
+              // In Microsoft Graph, /me/onlineMeetings requires the meeting organizer's account.
+              if (!isOrganizer && organizerEmail) {
+                let foundOrgUser: any = null;
+                try {
+                  const [orgRows] = await pool.query('SELECT * FROM users WHERE LOWER(email) = ? AND isActive = 1', [organizerEmail.toLowerCase()]);
+                  if ((orgRows as any[]).length > 0) {
+                    const candidate = (orgRows as any[])[0];
+                    let orgMsInt = null;
+                    if (candidate.msIntegration) {
+                      try { orgMsInt = JSON.parse(candidate.msIntegration); } catch(e) {}
+                    }
+                    if (orgMsInt?.connected && orgMsInt?.tokens) {
+                      foundOrgUser = candidate;
+                    }
+                  }
+                } catch (err) {}
+
+                if (!foundOrgUser) {
+                  // Meeting was organized by an external party or user without MS tokens.
+                  // Graph /me/onlineMeetings will return 3004 if queried by an attendee.
+                  console.log(`[Worker] Activity ${activity.id}: Meeting organized by external host (${organizerEmail}), skipping /me/onlineMeetings query.`);
+                  await pool.query("UPDATE activities SET teamsSyncStatus = 'external_host' WHERE id = ?", [activity.id]);
+                  return;
+                }
+              }
 
               // 2. Get onlineMeeting detail by joinUrl
               let meetingId = null;
               try {
-                  const meetings = await client.api('/me/onlineMeetings').filter(`JoinWebUrl eq '${eventUrl}'`).get();
-                  if (meetings.value && meetings.value.length > 0) {
-                      meetingId = meetings.value[0].id;
-                  }
+                // In MS Graph OData, property is joinWebUrl (lowercase j)
+                const safeUrl = eventUrl.replace(/'/g, "''");
+                const meetings = await client.api('/me/onlineMeetings')
+                  .filter(`joinWebUrl eq '${safeUrl}'`)
+                  .get();
+
+                if (meetings.value && meetings.value.length > 0) {
+                  meetingId = meetings.value[0].id;
+                } else {
+                  console.log(`[Worker] Activity ${activity.id}: No onlineMeeting found matching joinWebUrl.`);
+                  await pool.query("UPDATE activities SET teamsSyncStatus = 'not_found' WHERE id = ?", [activity.id]);
+                  return;
+                }
               } catch (e: any) {
-                  console.warn(`[Worker] Could not resolve online meeting for activity ${activity.id} (requires OnlineMeetings.Read or OnlineMeetings.ReadWrite scope):`, e.message || e);
+                const isMeetingNotFound = e.statusCode === 404 || 
+                                          e.code === '3004' || 
+                                          String(e.message || '').includes('3004') || 
+                                          String(e.message || '').includes('Specified meeting is not found');
+                if (isMeetingNotFound) {
+                  console.log(`[Worker] Activity ${activity.id}: Online meeting not found in Graph (code 3004 / 404). Status set to not_found.`);
+                  await pool.query("UPDATE activities SET teamsSyncStatus = 'not_found' WHERE id = ?", [activity.id]);
+                  return;
+                } else {
+                  console.warn(`[Worker] Could not resolve online meeting for activity ${activity.id}:`, e.message || e);
+                  return;
+                }
               }
               
               if (!meetingId) return;
@@ -3533,53 +3595,62 @@ setTimeout(() => {
 
               // 3. Check recordings
               if (!newRecordingLink) {
-                  try {
-                      const recordings = await client.api(`/me/onlineMeetings/${meetingId}/recordings`).get();
-                      if (recordings.value && recordings.value.length > 0) {
-                          newRecordingLink = recordings.value[0].recordingContentUrl || recordings.value[0].webUrl;
-                      }
-                  } catch (e) {
-                      // Ignored
+                try {
+                  const recordings = await client.api(`/me/onlineMeetings/${meetingId}/recordings`).get();
+                  if (recordings.value && recordings.value.length > 0) {
+                    newRecordingLink = recordings.value[0].recordingContentUrl || recordings.value[0].webUrl;
                   }
+                } catch (e) {
+                  // Ignored
+                }
               }
 
               // 4. Check transcripts for Summary
               if (!newMeetingSummary) {
-                  try {
-                      const transcripts = await client.api(`/me/onlineMeetings/${meetingId}/transcripts`).get();
-                      if (transcripts.value && transcripts.value.length > 0) {
-                          const transcriptId = transcripts.value[0].id;
-                          try {
-                              const content = await client.api(`/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`).get();
-                              if (typeof content === 'string') {
-                                 const stripped = content.replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, '\n').substring(0, 5000);
-                                 newMeetingSummary = "Auto-fetched Transcript/Review:\n" + stripped;
-                              }
-                          } catch (e) {
-                             if (e.statusCode === 404) {
-                               // No content yet
-                             }
-                          }
+                try {
+                  const transcripts = await client.api(`/me/onlineMeetings/${meetingId}/transcripts`).get();
+                  if (transcripts.value && transcripts.value.length > 0) {
+                    const transcriptId = transcripts.value[0].id;
+                    try {
+                      const content = await client.api(`/me/onlineMeetings/${meetingId}/transcripts/${transcriptId}/content?$format=text/vtt`).get();
+                      if (typeof content === 'string') {
+                        const stripped = content.replace(/<[^>]+>/g, '').replace(/[\r\n]+/g, '\n').substring(0, 5000);
+                        newMeetingSummary = "Auto-fetched Transcript/Review:\n" + stripped;
                       }
-                  } catch (e) {
-                      // Ignored
+                    } catch (e) {
+                      if (e.statusCode === 404) {
+                        // No content yet
+                      }
+                    }
                   }
+                } catch (e) {
+                  // Ignored
+                }
               }
 
               // 5. Update DB and notify if changed
-              if (newRecordingLink !== activity.recordingLink || newMeetingSummary !== activity.meetingSummary) {
-                  await pool.query(
-                      "UPDATE activities SET recordingLink = ?, meetingSummary = ? WHERE id = ?",
-                      [newRecordingLink || null, newMeetingSummary || null, activity.id]
-                  );
-                  // Optionally emit websocket event
-                  const [updated] = await pool.query('SELECT * FROM activities WHERE id = ?', [activity.id]);
-                  if ((updated as any[]).length > 0) {
-                    const row = (updated as any[])[0];
-                    if (typeof row.participants === 'string') try { row.participants = JSON.parse(row.participants); } catch (e) {}
-                    row.isVisible = row.isVisible === 1 || row.isVisible === true;
-                    io.emit('db_changed', { type: 'activities', action: 'update', data: row });
-                  }
+              const hasNewData = (newRecordingLink && newRecordingLink !== activity.recordingLink) || 
+                                 (newMeetingSummary && newMeetingSummary !== activity.meetingSummary);
+
+              if (hasNewData) {
+                await pool.query(
+                  "UPDATE activities SET recordingLink = ?, meetingSummary = ?, teamsSyncStatus = 'completed' WHERE id = ?",
+                  [newRecordingLink || null, newMeetingSummary || null, activity.id]
+                );
+                // Optionally emit websocket event
+                const [updated] = await pool.query('SELECT * FROM activities WHERE id = ?', [activity.id]);
+                if ((updated as any[]).length > 0) {
+                  const row = (updated as any[])[0];
+                  if (typeof row.participants === 'string') try { row.participants = JSON.parse(row.participants); } catch (e) {}
+                  row.isVisible = row.isVisible === 1 || row.isVisible === true;
+                  io.emit('db_changed', { type: 'activities', action: 'update', data: row });
+                }
+              } else {
+                // If meeting occurred more than 24 hours ago and still has no recording or transcript, mark as checked
+                const meetingAgeHours = (Date.now() - new Date(activity.date).getTime()) / (1000 * 60 * 60);
+                if (meetingAgeHours > 24) {
+                  await pool.query("UPDATE activities SET teamsSyncStatus = 'checked_no_artifacts' WHERE id = ?", [activity.id]);
+                }
               }
             });
           } catch (internalErr: any) {
