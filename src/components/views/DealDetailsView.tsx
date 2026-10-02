@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Download, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot, Linkedin, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Download, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot, Linkedin, ExternalLink, FileText, Image as ImageIcon } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -10,6 +10,7 @@ import { PHONE_PREFIXES, getDefaultPhonePrefixForCountry } from '../../lib/count
 import { v4 as uuidv4 } from 'uuid';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { AlertModal } from '../modals/AlertModal';
+import { AttachmentModal } from '../modals/AttachmentModal';
 
 function extractCleanEmails(inputs: (string | null | undefined)[]): string[] {
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -2197,6 +2198,13 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+  const [selectedAttachment, setSelectedAttachment] = useState<{ activityId: string; filename: string } | null>(null);
+  const [alertModalState, setAlertModalState] = useState<{ isOpen: boolean; title: string; message: string; type?: 'error' | 'success' | 'info' }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'error'
+  });
   const [activityType, setActivityType] = useState<ActivityType>('meeting');
   const [duration, setDuration] = useState<number>(60);
   const [activityDate, setActivityDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
@@ -2710,17 +2718,25 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     const key = `${activityId}-${filename}`;
     try {
       setDownloadingAttachment(key);
-      const token = localStorage.getItem('token');
-      const url = `/api/activities/${activityId}/attachments/${encodeURIComponent(filename)}`;
-      const res = await fetch(url, {
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
-      });
+      const token = localStorage.getItem('jwt_token') || localStorage.getItem('token') || '';
+      const url = `/api/activities/${activityId}/attachments/${encodeURIComponent(filename)}?token=${encodeURIComponent(token)}`;
+      const res = await apiFetch(url);
 
       if (!res.ok) {
-        const errJson = await res.json().catch(() => null);
-        throw new Error(errJson?.error || `Chyba při stahování přílohy (${res.status})`);
+        let errText = `Chyba při stahování přílohy (${res.status})`;
+        try {
+          const errJson = await res.json();
+          if (res.status === 401 || errJson?.error === 'unauthorized') {
+            errText = t('auth.sessionExpired', 'Platnost vašeho přihlášení vypršela nebo nemáte platné oprávnění. Přihlaste se prosím znovu.');
+          } else if (errJson?.error || errJson?.message) {
+            errText = errJson.error || errJson.message;
+          }
+        } catch {
+          if (res.status === 401) {
+            errText = t('auth.sessionExpired', 'Platnost vašeho přihlášení vypršela nebo nemáte platné oprávnění. Přihlaste se prosím znovu.');
+          }
+        }
+        throw new Error(errText);
       }
 
       const blob = await res.blob();
@@ -2734,7 +2750,12 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
       URL.revokeObjectURL(downloadUrl);
     } catch (err: any) {
       console.error('Download attachment failed:', err);
-      alert(err?.message || 'Přílohu se nepodařilo stáhnout.');
+      setAlertModalState({
+        isOpen: true,
+        title: t('common.error', 'Chyba'),
+        message: err?.message || t('activities.downloadFailed', 'Přílohu se nepodařilo stáhnout ze serveru.'),
+        type: 'error'
+      });
     } finally {
       setDownloadingAttachment(null);
     }
@@ -2760,29 +2781,54 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                 return (
                   <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-2 pt-1 border-t border-gray-50">
                     <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{key}:</span>
-                    <div className="flex flex-wrap gap-x-2 gap-y-1.5 items-center">
+                    <div className="flex flex-wrap gap-2 items-center">
                       {attachmentsItems.map((att, idx) => {
                         const isDownloading = downloadingAttachment === `${activity.id}-${att}`;
+                        const ext = (att.split('.').pop() || '').toLowerCase();
+                        const isImg = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+                        const isPdf = ext === 'pdf';
                         return (
-                          <button
+                          <div
                             key={idx}
-                            type="button"
-                            disabled={isDownloading}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDownloadAttachment(activity.id, att);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-900 border border-indigo-200/80 rounded-md transition-all shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
-                            title={`Stáhnout přílohu ${att}`}
+                            className="inline-flex items-center rounded-md border border-indigo-200/90 bg-indigo-50/90 hover:bg-indigo-100 text-indigo-700 shadow-2xs hover:shadow-xs transition-all overflow-hidden group"
                           >
-                            {isDownloading ? (
-                              <Clock className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                            ) : (
-                              <Download className="w-3.5 h-3.5 text-indigo-600" />
-                            )}
-                            <span className="max-w-[220px] truncate">{att}</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setSelectedAttachment({ activityId: activity.id, filename: att });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium hover:text-indigo-950 cursor-pointer"
+                              title={t('activities.previewAttachment', 'Zobrazit náhled přílohy')}
+                            >
+                              {isImg ? (
+                                <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                              ) : isPdf ? (
+                                <FileText className="w-3.5 h-3.5 text-rose-600" />
+                              ) : (
+                                <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                              )}
+                              <span className="max-w-[200px] truncate">{att}</span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isDownloading}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDownloadAttachment(activity.id, att);
+                              }}
+                              className="px-2 py-1 text-indigo-600 hover:text-indigo-950 hover:bg-indigo-200/60 border-l border-indigo-200/70 transition-colors disabled:opacity-50 cursor-pointer"
+                              title={t('activities.downloadAttachment', 'Stáhnout přílohu')}
+                            >
+                              {isDownloading ? (
+                                <Clock className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                              ) : (
+                                <Download className="w-3.5 h-3.5 text-indigo-600" />
+                              )}
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -3218,6 +3264,23 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
           </button>
         </div>
       )}
+
+      {selectedAttachment && (
+        <AttachmentModal
+          isOpen={Boolean(selectedAttachment)}
+          onClose={() => setSelectedAttachment(null)}
+          activityId={selectedAttachment.activityId}
+          filename={selectedAttachment.filename}
+        />
+      )}
+
+      <AlertModal
+        isOpen={alertModalState.isOpen}
+        onClose={() => setAlertModalState(prev => ({ ...prev, isOpen: false }))}
+        title={alertModalState.title}
+        message={alertModalState.message}
+        type={alertModalState.type}
+      />
     </div>
   );
 }
@@ -3235,6 +3298,7 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
   const documents = deal.documents || [];
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [docAlertModalState, setDocAlertModalState] = useState<{ isOpen: boolean; title: string; message: string }>({ isOpen: false, title: '', message: '' });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3278,7 +3342,11 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (err) {
       console.error(err);
-      alert('Upload failed');
+      setDocAlertModalState({
+        isOpen: true,
+        title: t('common.error', 'Chyba'),
+        message: t('common.uploadFailed', 'Nahrání dokumentu se nezdařilo.')
+      });
     } finally {
       setIsUploading(false);
     }
@@ -3504,6 +3572,14 @@ function DocumentsManager({ deal, company, canEdit }: { deal: Deal, company: Com
           </div>
         </div>
       )}
+
+      <AlertModal
+        isOpen={docAlertModalState.isOpen}
+        onClose={() => setDocAlertModalState(prev => ({ ...prev, isOpen: false }))}
+        title={docAlertModalState.title}
+        message={docAlertModalState.message}
+        type="error"
+      />
     </div>
   );
 }

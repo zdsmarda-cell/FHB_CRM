@@ -23,6 +23,10 @@ const authMiddleware = (req: express.Request, res: express.Response, next: expre
   if (!token && req.query && typeof req.query.token === 'string') {
     token = req.query.token;
   }
+  if (!token && req.headers.cookie) {
+    const match = req.headers.cookie.match(/(?:^|;\s*)jwt_token=([^;]+)/);
+    if (match) token = decodeURIComponent(match[1]);
+  }
   if (!token) {
     return res.status(401).json({ error: 'unauthorized', message: 'Missing or invalid token' });
   }
@@ -449,6 +453,7 @@ async function startServer() {
         console.error('Failed to write login log:', logErr);
       }
 
+      res.setHeader('Set-Cookie', `jwt_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Max-Age=43200`);
       res.json({ token, refreshToken, user });
     } catch (err: any) {
       console.error('Login Error:', err);
@@ -492,6 +497,7 @@ async function startServer() {
         { expiresIn: '12h' }
       );
       
+      res.setHeader('Set-Cookie', `jwt_token=${encodeURIComponent(newToken)}; Path=/; SameSite=Lax; Max-Age=43200`);
       res.json({ token: newToken, refreshToken: newRefreshToken, user });
     } catch (e: any) {
       res.status(401).json({ error: 'unauthorized', message: e.message });
