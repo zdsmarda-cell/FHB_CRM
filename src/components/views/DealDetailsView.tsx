@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useStore, apiFetch } from '../../store';
-import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot, Linkedin, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Clock, User as UserIcon, Plus, X, Upload, Download, Mail, Phone, Ban, Calendar, AlertTriangle, Video, MessageSquare, RefreshCw, ChevronDown, ChevronUp, Trash2, Edit2, Check, Bot, Linkedin, ExternalLink } from 'lucide-react';
 import { format, parseISO, addMonths } from 'date-fns';
 import { Contact, Company, Region, Segment, Deal, Activity, ActivityType, PricingOffer, DealDocument } from '../../types';
 import { getSubordinateIds } from '../../lib/permissions';
@@ -2196,6 +2196,7 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
   const [isAdding, setIsAdding] = useState(false);
   const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
   const [isSyncingEmails, setIsSyncingEmails] = useState(false);
+  const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
   const [activityType, setActivityType] = useState<ActivityType>('meeting');
   const [duration, setDuration] = useState<number>(60);
   const [activityDate, setActivityDate] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
@@ -2705,6 +2706,40 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
     }
   };
 
+  const handleDownloadAttachment = async (activityId: string, filename: string) => {
+    const key = `${activityId}-${filename}`;
+    try {
+      setDownloadingAttachment(key);
+      const token = localStorage.getItem('token');
+      const url = `/api/activities/${activityId}/attachments/${encodeURIComponent(filename)}`;
+      const res = await fetch(url, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Chyba při stahování přílohy (${res.status})`);
+      }
+
+      const blob = await res.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      console.error('Download attachment failed:', err);
+      alert(err?.message || 'Přílohu se nepodařilo stáhnout.');
+    } finally {
+      setDownloadingAttachment(null);
+    }
+  };
+
   const renderActivityNote = (activity: Activity, isExpanded: boolean) => {
     if (activity.type === 'email' && activity.note.startsWith('Subject: ')) {
       const parts = activity.note.split('\n\n');
@@ -2725,13 +2760,31 @@ function ActivitiesManager({ deal, company, canEdit }: { deal: Deal, company: Co
                 return (
                   <div key={i} className="flex flex-col sm:flex-row gap-1 sm:gap-2 pt-1 border-t border-gray-50">
                     <span className="font-semibold text-gray-500 w-20 flex-shrink-0">{key}:</span>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      {attachmentsItems.map((att, idx) => (
-                        <a key={idx} href="#" onClick={e => { e.preventDefault(); e.stopPropagation(); alert('Stahování příloh z emailu není v preview implementováno.'); }} className="text-indigo-600 font-medium hover:underline flex items-center gap-1">
-                          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                          {att}
-                        </a>
-                      ))}
+                    <div className="flex flex-wrap gap-x-2 gap-y-1.5 items-center">
+                      {attachmentsItems.map((att, idx) => {
+                        const isDownloading = downloadingAttachment === `${activity.id}-${att}`;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            disabled={isDownloading}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDownloadAttachment(activity.id, att);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-900 border border-indigo-200/80 rounded-md transition-all shadow-2xs hover:shadow-xs disabled:opacity-50 cursor-pointer"
+                            title={`Stáhnout přílohu ${att}`}
+                          >
+                            {isDownloading ? (
+                              <Clock className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5 text-indigo-600" />
+                            )}
+                            <span className="max-w-[220px] truncate">{att}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );

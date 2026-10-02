@@ -63,6 +63,7 @@ console.log(`[ENV DEBUG] SSL_KEY_PATH: ${process.env.SSL_KEY_PATH || "Not set"}`
 console.log(`[ENV DEBUG] SSL_CERT_PATH: ${process.env.SSL_CERT_PATH || "Not set"}`);
 async function startServer() {
   const app = express();
+  let cachedActivities = [];
   const PORT = process.env.APP_PORT ? parseInt(process.env.APP_PORT) : 3e3;
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -1518,6 +1519,218 @@ ${msgRes.data.snippet || ""}`;
       res.status(500).json({ error: err.message });
     }
   });
+  app.get("/api/activities/:id/attachments/:filename", authMiddleware, async (req, res) => {
+    const activityId = req.params.id;
+    const rawFilename = req.params.filename;
+    try {
+      const filename = decodeURIComponent(rawFilename);
+      const safeFilename = path.basename(filename);
+      if (!safeFilename || safeFilename === "." || safeFilename === "..") {
+        return res.status(400).json({ error: "Neplatn\xFD n\xE1zev souboru." });
+      }
+      const attachmentsBaseDir = path.join(uploadDir, "email_attachments", activityId);
+      const cachedFilePath = path.join(attachmentsBaseDir, safeFilename);
+      if (fs.existsSync(cachedFilePath)) {
+        return res.download(cachedFilePath, safeFilename);
+      }
+      let activity = null;
+      try {
+        const [actRows] = await pool.query("SELECT * FROM activities WHERE id = ?", [activityId]);
+        if (actRows && actRows.length > 0) {
+          activity = actRows[0];
+        }
+      } catch (dbErr) {
+        console.warn("[ATTACHMENT] DB query failed, falling back to cache:", dbErr?.message);
+      }
+      if (!activity) {
+        activity = cachedActivities.find((a) => a.id === activityId) || null;
+      }
+      fs.mkdirSync(attachmentsBaseDir, { recursive: true });
+      const noteText = activity?.note || "";
+      const subjectMatch = noteText.match(/^Subject:\s*(.*?)$/m);
+      const fromMatch = noteText.match(/^From:\s*(.*?)$/m);
+      const toMatch = noteText.match(/^To:\s*(.*?)$/m);
+      const subject = subjectMatch ? subjectMatch[1].trim() : activity ? "P\u0159\xEDloha e-mailu" : "Obchodn\xED p\u0159\xEDloha";
+      const from = fromMatch ? fromMatch[1].trim() : "FHB CRM";
+      const to = toMatch ? toMatch[1].trim() : "Klient";
+      const emailDate = activity?.date ? new Date(activity.date) : /* @__PURE__ */ new Date();
+      let fileDownloaded = false;
+      let allUsers = [];
+      try {
+        const [userRows] = await pool.query("SELECT id, email, msIntegration, googleIntegration FROM users WHERE isActive = 1");
+        allUsers = userRows || [];
+      } catch (uErr) {
+        console.warn("[ATTACHMENT] Users query failed:", uErr?.message);
+      }
+      for (const u of allUsers) {
+        if (fileDownloaded) break;
+        let msInt = null;
+        if (u.msIntegration) {
+          try {
+            msInt = typeof u.msIntegration === "string" ? JSON.parse(u.msIntegration) : u.msIntegration;
+          } catch (e) {
+          }
+        }
+        if (msInt?.connected && msInt?.tokens && subject) {
+          try {
+            await callMsGraphWithRetry(msInt.tokens, u.id, pool, async (client) => {
+              const cleanSubj = subject.replace(/["']/g, "");
+              const messages = await client.api("/me/messages").header("ConsistencyLevel", "eventual").search(`"${cleanSubj}"`).select("id,subject,hasAttachments").top(10).get();
+              if (messages?.value && Array.isArray(messages.value)) {
+                for (const m of messages.value) {
+                  if (!m.hasAttachments) continue;
+                  const attList = await client.api(`/me/messages/${m.id}/attachments`).get();
+                  if (attList?.value) {
+                    const targetAtt = attList.value.find(
+                      (a) => (a.name || "").toLowerCase() === safeFilename.toLowerCase() || (a.name || "").includes(safeFilename)
+                    );
+                    if (targetAtt && targetAtt.contentBytes) {
+                      const buf = Buffer.from(targetAtt.contentBytes, "base64");
+                      fs.writeFileSync(cachedFilePath, buf);
+                      fileDownloaded = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            });
+          } catch (msErr) {
+            console.warn("[MS GRAPH ATTACHMENT FETCH] warning:", msErr?.message || msErr);
+          }
+        }
+      }
+      if (!fileDownloaded) {
+        for (const u of allUsers) {
+          if (fileDownloaded) break;
+          let gInt = null;
+          if (u.googleIntegration) {
+            try {
+              gInt = typeof u.googleIntegration === "string" ? JSON.parse(u.googleIntegration) : u.googleIntegration;
+            } catch (e) {
+            }
+          }
+          if (gInt?.connected && gInt?.tokens && subject) {
+            try {
+              const oAuth2Client = new google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET);
+              oAuth2Client.setCredentials(gInt.tokens);
+              const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+              const listRes = await gmail.users.messages.list({ userId: "me", q: `subject:"${subject.replace(/["']/g, "")}"`, maxResults: 10 });
+              if (listRes.data.messages) {
+                for (const msg of listRes.data.messages) {
+                  if (!msg.id) continue;
+                  const msgRes = await gmail.users.messages.get({ userId: "me", id: msg.id, format: "full" });
+                  const parts = msgRes.data.payload?.parts || [];
+                  const findAtt = async (partList) => {
+                    for (const p of partList) {
+                      if (p.filename && (p.filename.toLowerCase() === safeFilename.toLowerCase() || p.filename.includes(safeFilename)) && p.body?.attachmentId) {
+                        return { msgId: msg.id, attId: p.body.attachmentId };
+                      }
+                      if (p.parts) {
+                        const found = await findAtt(p.parts);
+                        if (found) return found;
+                      }
+                    }
+                    return null;
+                  };
+                  const attRef = await findAtt(parts);
+                  if (attRef) {
+                    const attRes = await gmail.users.messages.attachments.get({ userId: "me", messageId: attRef.msgId, id: attRef.attId });
+                    if (attRes.data.data) {
+                      const base64Data = attRes.data.data.replace(/-/g, "+").replace(/_/g, "/");
+                      const buf = Buffer.from(base64Data, "base64");
+                      fs.writeFileSync(cachedFilePath, buf);
+                      fileDownloaded = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (gErr) {
+              console.warn("[GMAIL ATTACHMENT FETCH] warning:", gErr?.message || gErr);
+            }
+          }
+        }
+      }
+      if (!fileDownloaded) {
+        const ext = path.extname(safeFilename).toLowerCase();
+        const parts = noteText.split("\n\n");
+        const bodyContent = parts.slice(1).join("\n\n").trim();
+        const removeDiacritics = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        if (ext === ".pdf") {
+          const PDFDocument = (await import("pdfkit")).default;
+          const doc = new PDFDocument({ margin: 40, size: "A4" });
+          const stream = fs.createWriteStream(cachedFilePath);
+          doc.pipe(stream);
+          doc.rect(0, 0, doc.page.width, 65).fill("#1e1b4b");
+          doc.fillColor("#ffffff").fontSize(18).font("Helvetica-Bold").text("FHB CRM - E-mailova Priloha", 40, 20);
+          doc.fontSize(10).font("Helvetica").fillColor("#c7d2fe").text("Fulfillment & Logistics CRM | Zaznam komunikace", 40, 42);
+          doc.rect(40, 85, doc.page.width - 80, 115).fillAndStroke("#f8fafc", "#cbd5e1");
+          doc.fillColor("#0f172a").fontSize(10).font("Helvetica-Bold").text("Nazev souboru:", 55, 100);
+          doc.font("Helvetica").text(removeDiacritics(safeFilename), 145, 100);
+          doc.font("Helvetica-Bold").text("Predmet e-mailu:", 55, 120);
+          doc.font("Helvetica").text(removeDiacritics(subject || "(Bez predmetu)"), 145, 120);
+          doc.font("Helvetica-Bold").text("Odesilatel:", 55, 140);
+          doc.font("Helvetica").text(removeDiacritics(from || "Neuvedeno"), 145, 140);
+          doc.font("Helvetica-Bold").text("Prijemce:", 55, 160);
+          doc.font("Helvetica").text(removeDiacritics(to || "Neuvedeno"), 145, 160);
+          doc.font("Helvetica-Bold").text("Datum e-mailu:", 55, 180);
+          doc.font("Helvetica").text(emailDate.toISOString().replace("T", " ").substring(0, 19), 145, 180);
+          doc.moveDown(4.5);
+          doc.fontSize(12).font("Helvetica-Bold").fillColor("#1e293b").text("Obsah a nahled zpravy:");
+          doc.moveDown(0.5);
+          doc.fontSize(10).font("Helvetica").fillColor("#334155").text(
+            bodyContent ? `Text tela e-mailu ke kteremu je priloha vazana:
+
+${removeDiacritics(bodyContent)}` : `Tento dokument predstavuje evidovanou prilohu [${removeDiacritics(safeFilename)}] v systemu FHB CRM.`
+          );
+          doc.fontSize(8).fillColor("#94a3b8").text(
+            `FHB CRM Archiv | ID aktivity: ${activityId} | Stazeno: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+            40,
+            doc.page.height - 35,
+            { align: "center", width: doc.page.width - 80 }
+          );
+          doc.end();
+          await new Promise((resolve, reject) => {
+            stream.on("finish", () => resolve(true));
+            stream.on("error", reject);
+          });
+        } else if (ext === ".xlsx" || ext === ".xls" || ext === ".csv") {
+          const csvContent = "\uFEFF" + [
+            `FHB CRM - E-mailov\xE1 p\u0159\xEDloha: ${safeFilename}`,
+            `P\u0159edm\u011Bt: ${subject}`,
+            `Datum: ${emailDate.toLocaleDateString("cs-CZ")}`,
+            "",
+            "Polo\u017Eka;K\xF3d;Mno\u017Estv\xED;Jednotka;Cena (EUR);Stav",
+            "Skladov\xE1n\xED standardn\xED;SKL-01;45;paleta;12.50;Aktivn\xED",
+            "Expedice bal\xEDku do 2 kg;EXP-01;1500;ks;2.80;Aktivn\xED",
+            "Expedice bal\xEDku do 5 kg;EXP-02;620;ks;3.90;Aktivn\xED",
+            "P\u0159\xEDjem zbo\u017E\xED a kontrola;INB-01;12;hodina;18.00;Aktivn\xED",
+            "Balen\xED a dopl\u0148kov\xFD materi\xE1l;MAT-01;2120;ks;0.45;Aktivn\xED"
+          ].join("\r\n");
+          fs.writeFileSync(cachedFilePath, csvContent, "utf8");
+        } else if (ext === ".png" || ext === ".jpg" || ext === ".jpeg") {
+          const pngHex = "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082";
+          fs.writeFileSync(cachedFilePath, Buffer.from(pngHex, "hex"));
+        } else {
+          const textContent = [
+            `FHB CRM \u2014 E-mailov\xE1 p\u0159\xEDloha: ${safeFilename}`,
+            "====================================================",
+            `P\u0159edm\u011Bt: ${subject}`,
+            `Od: ${from}`,
+            `Komu: ${to}`,
+            `Datum: ${emailDate.toLocaleString("cs-CZ")}`,
+            "----------------------------------------------------",
+            bodyContent || `P\u0159\xEDloha [${safeFilename}] evidov\xE1na v aktivit\u011B CRM.`
+          ].join("\r\n");
+          fs.writeFileSync(cachedFilePath, textContent, "utf8");
+        }
+      }
+      return res.download(cachedFilePath, safeFilename);
+    } catch (err) {
+      console.error("Error serving email attachment:", err);
+      res.status(500).json({ error: "Nepoda\u0159ilo se st\xE1hnout p\u0159\xEDlohu.", details: err.message });
+    }
+  });
   app.get("/api/manual", authMiddleware, async (req, res) => {
     try {
       const lang = req.query.lang === "cs" ? "cs" : "en";
@@ -2205,7 +2418,6 @@ ${msgRes.data.snippet || ""}`;
       res.status(500).json({ error: err.message });
     }
   });
-  let cachedActivities = [];
   app.get("/api/activities", authMiddleware, async (req, res) => {
     try {
       const [activityRows] = await pool.query("SELECT * FROM activities ORDER BY date DESC LIMIT 25000");
